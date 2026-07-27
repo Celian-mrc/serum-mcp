@@ -48,10 +48,32 @@ def test_generate_preset_writes_valid_file(presets_dir):
     assert preset.data["VoiceFilter0"]["plainParams"]["kParamType"] == "L24"
 
 
-def test_edit_preset_updates_in_place(presets_dir):
+def test_edit_preset_without_rename_keeps_same_path(presets_dir):
     path = generate_preset_mod.generate_preset(_bass_spec())
 
-    # A partial spec: only the filter changes, everything else is left alone.
+    # A partial spec: only the filter changes, name unchanged.
+    edit_spec = PresetSpec(
+        name="BA - Simple LP Bass",
+        description="",
+        filters=[FilterSpec(enabled=True, type="lowpass_24", cutoff=0.9, resonance=15)],
+    )
+    edited_path = edit_preset_mod.edit_preset(path, edit_spec)
+
+    assert edited_path == path
+    preset = unpack_file(edited_path)
+    assert preset.data["VoiceFilter0"]["plainParams"]["kParamFreq"] == 0.9
+    # Untouched by the edit spec (empty oscillators list):
+    assert preset.data["Oscillator0"]["plainParams"]["kParamOctave"] == -1.0
+
+
+def test_edit_preset_renames_file_when_name_changes(presets_dir):
+    """Regression test: Serum's preset browser displays the filename, not
+    the internal presetName metadata (confirmed against a live Serum 2
+    install -- editing metadata alone left the name shown in Serum
+    unchanged). edit_preset must rename the file to match a changed name,
+    not just update metadata, and must clean up the old file."""
+    path = generate_preset_mod.generate_preset(_bass_spec())
+
     edit_spec = PresetSpec(
         name="BA - Simple LP Bass (brighter)",
         description="",
@@ -59,7 +81,9 @@ def test_edit_preset_updates_in_place(presets_dir):
     )
     edited_path = edit_preset_mod.edit_preset(path, edit_spec)
 
-    assert edited_path == path
+    assert edited_path != path
+    assert Path(edited_path).name == "BA - Simple LP Bass brighter.SerumPreset"
+    assert not Path(path).exists()  # old file removed
     preset = unpack_file(edited_path)
     assert preset.data["VoiceFilter0"]["plainParams"]["kParamFreq"] == 0.9
     assert preset.metadata["presetName"] == "BA - Simple LP Bass (brighter)"

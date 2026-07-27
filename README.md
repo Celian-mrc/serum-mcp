@@ -130,7 +130,7 @@ Same shape, in Claude Desktop's `claude_desktop_config.json`
 | Tool | Description |
 |---|---|
 | `generate_preset(spec)` | Build a new preset from a `PresetSpec` and write it to your Serum presets folder. |
-| `edit_preset(preset_path, spec)` | Apply a partial `PresetSpec` update to an existing preset, in place. |
+| `edit_preset(preset_path, spec)` | Apply a partial `PresetSpec` update to an existing preset. Renames the file if `spec.name` changes (Serum's browser displays the filename, not internal metadata). |
 | `list_parameters()` | Full documented parameter schema (names, ranges, units, enum values, confidence) as JSON. |
 | `describe_preset(preset_path)` | Human-readable summary of a preset's current sound-shaping parameters. |
 

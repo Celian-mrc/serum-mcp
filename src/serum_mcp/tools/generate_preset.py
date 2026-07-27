@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from serum_mcp import config
@@ -10,13 +9,10 @@ from serum_mcp.generation.spec import PresetSpec
 from serum_mcp.preset.mapping import apply_spec
 from serum_mcp.preset.packer import SerumPreset, pack_file, unpack_file
 
+from ._naming import slugify_preset_name
+
 FIXTURES_DIR = Path(__file__).resolve().parents[3] / "fixtures"
 INIT_PRESET_PATH = FIXTURES_DIR / "init_preset.SerumPreset"
-
-
-def _slugify(name: str) -> str:
-    slug = re.sub(r"[^A-Za-z0-9 _\-]", "", name).strip()
-    return slug or "Untitled"
 
 
 def generate_preset(spec: PresetSpec) -> str:
@@ -38,6 +34,6 @@ def generate_preset(spec: PresetSpec) -> str:
     metadata["presetAuthor"] = "serum-mcp"
 
     out_preset = SerumPreset(metadata=metadata, data=data)
-    dest = config.get_presets_dir() / f"{_slugify(spec.name)}.SerumPreset"
+    dest = config.get_presets_dir() / f"{slugify_preset_name(spec.name)}.SerumPreset"
     written = pack_file(out_preset, dest)
     return str(written)
