@@ -663,6 +663,10 @@ for _i in range(3):
         "WTOsc", _i, "kParamTablePos", 6
     )
     MOD_DEST_TARGETS[f"oscillator{_i}.warp_amount"] = ModDestDef("WTOsc", _i, "kParamWarp", 0)
+for _i in range(10):
+    MOD_DEST_TARGETS[f"lfo{_i}.rate"] = ModDestDef("LFO", _i, "kParamRate", 0)
+for _i in range(8):
+    MOD_DEST_TARGETS[f"macro{_i}.value"] = ModDestDef("Macro", _i, "kParamValue", 0)
 del _i
 
 # ---------------------------------------------------------------------------

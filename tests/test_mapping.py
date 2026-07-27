@@ -330,3 +330,75 @@ def test_lfo_extras_and_poly_count(init_data):
     assert extracted.lfos[0].beat_sync is True
     assert extracted.lfos[0].delay == 0.5
     assert extracted.global_.poly_count == 4.0
+
+
+def test_fxeq_can_be_generated(init_data):
+    """Regression test: FXEQ has no kParamWet, but _build_fx_entry used to
+    force one into every FX type's plainParams unconditionally, so FXEQ
+    could never be generated at all (always failed validation)."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        fx_chain=[FxUnitSpec(type="FXEQ", params={"kParamGain1": 3.0})],
+    )
+    data = apply_spec(init_data, spec)
+    fx_params = data["FXRack0"]["FX"][0]["FXEQ"]["plainParams"]
+    assert "kParamWet" not in fx_params
+    assert fx_params["kParamGain1"] == 3.0
+
+    extracted = extract_spec(data)
+    assert extracted.fx_chain[0].type == "FXEQ"
+    assert extracted.fx_chain[0].params["kParamGain1"] == 3.0
+
+
+def test_fx_wet_and_lfo_macro_mod_destinations(init_data):
+    spec = PresetSpec(
+        name="X",
+        description="",
+        fx_chain=[FxUnitSpec(type="FXReverb", wet=0.0), FxUnitSpec(type="FXDelay", wet=20.0)],
+        mod_routes=[
+            ModRouteSpec(source="macro0", destination="fx0.wet", amount=50.0),
+            ModRouteSpec(source="lfo0", destination="lfo1.rate", amount=30.0),
+            ModRouteSpec(source="macro1", destination="macro0.value", amount=10.0),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["ModSlot0"]["destModuleTypeString"] == "FXReverb"
+    assert data["ModSlot0"]["destModuleID"] == 0
+    assert data["ModSlot0"]["destModuleParamName"] == "kParamWet"
+    assert data["ModSlot0"]["destModuleParamID"] == 1
+
+    assert data["ModSlot1"]["destModuleTypeString"] == "LFO"
+    assert data["ModSlot1"]["destModuleID"] == 1
+    assert data["ModSlot1"]["destModuleParamName"] == "kParamRate"
+
+    assert data["ModSlot2"]["destModuleTypeString"] == "Macro"
+    assert data["ModSlot2"]["destModuleID"] == 0
+
+    extracted = extract_spec(data)
+    routes = {r.destination: r.source for r in extracted.mod_routes}
+    assert routes["fx0.wet"] == "macro0"
+    assert routes["lfo1.rate"] == "lfo0"
+    assert routes["macro0.value"] == "macro1"
+
+
+def test_fx_wet_mod_destination_errors(init_data):
+    # References a slot that doesn't exist in fx_chain.
+    spec = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[ModRouteSpec(source="lfo0", destination="fx0.wet", amount=10.0)],
+    )
+    with pytest.raises(ValueError, match="fx_chain\\[0\\]"):
+        apply_spec(init_data, spec)
+
+    # FXEQ has no wet knob to modulate.
+    spec = PresetSpec(
+        name="X",
+        description="",
+        fx_chain=[FxUnitSpec(type="FXEQ")],
+        mod_routes=[ModRouteSpec(source="lfo0", destination="fx0.wet", amount=10.0)],
+    )
+    with pytest.raises(ValueError, match="no kParamWet"):
+        apply_spec(init_data, spec)

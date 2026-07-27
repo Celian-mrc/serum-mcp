@@ -335,8 +335,23 @@ enum reads `kParamEnable=0, kParamVolume, kParamPan, kParamOctave,
 kParamPitch, kParamFine, kParamCoarsePit, ...`, which assigns `kParamVolume
 = 1`, matching the empirical result exactly. `schema.MOD_DEST_TARGETS`
 exposes the curated, generation-ready subset of this table (oscillator
-volume/pan/octave/pitch/fine; filter cutoff/resonance/drive; envelope
-attack/decay/sustain/release).
+volume/pan/octave/pitch/fine/table_position/warp_amount; filter cutoff/
+resonance/drive; envelope attack/decay/sustain/release; LFO rate; macro
+value).
+
+FX destinations are a special case, handled outside `MOD_DEST_TARGETS`:
+an FX rack slot's `destModuleTypeString` is whichever FX type actually sits
+there (e.g. `"FXReverb"`), which depends on what a given `PresetSpec` puts
+in its own `fx_chain` — it can't be a fixed table entry the way every other
+destination is. `preset/mapping.py::_resolve_mod_destination` resolves the
+generation-facing name `fx{i}.wet` (0-based index into that same call's
+`fx_chain`) dynamically against `fx_chain[i].type`, using the confirmed
+`kParamWet -> destModuleParamID 1` mapping that holds for every FX type
+that has a wet knob at all (`FXEQ` doesn't, and generating a mod route
+targeting `fx{i}.wet` for an `FXEQ` slot is a validation error, not a
+silent no-op). `preset/introspect.py::extract_spec` mirrors this on the
+read side, matching each `ModSlot` destination against the preset's own
+extracted `fx_chain` before falling back to the static table.
 
 ### Source side (partially decoded)
 

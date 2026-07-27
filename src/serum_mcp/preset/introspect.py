@@ -150,6 +150,14 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         params = {k: v for k, v in pp.items() if k != "kParamWet"}
         fx_chain.append(FxUnitSpec(type=fx_name, wet=wet, params=params))
 
+    # fx{i}.wet destinations aren't in the static _REVERSE_MOD_DEST_TARGETS
+    # table -- an FX rack slot's destModuleTypeString is whichever FX type
+    # is actually there, only known from this preset's own fx_chain (see
+    # mapping._resolve_mod_destination).
+    fx_wet_dest_by_key = {
+        (fx.type, idx, "kParamWet"): f"fx{idx}.wet" for idx, fx in enumerate(fx_chain)
+    }
+
     # Only routes whose source AND destination are both in our resolved
     # vocabulary (see schema.MOD_SOURCE_IDS / MOD_DEST_TARGETS) round-trip
     # here -- everything else (undecoded sources, unmodeled destinations)
@@ -172,7 +180,7 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             entry.get("destModuleID"),
             entry.get("destModuleParamName"),
         )
-        dest_name = _REVERSE_MOD_DEST_TARGETS.get(dest_key)
+        dest_name = _REVERSE_MOD_DEST_TARGETS.get(dest_key) or fx_wet_dest_by_key.get(dest_key)
         if dest_name is None:
             continue
         pp = entry.get("plainParams", {}) or {}

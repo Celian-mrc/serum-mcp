@@ -72,7 +72,11 @@ def _build_fx_entry(fx: FxUnitSpec) -> dict[str, Any]:
     if fx_module_key not in schema.FX_PARAMS:
         raise ValueError(f"unknown FX type {fx.type!r}; expected one of {sorted(schema.FX_PARAMS)}")
     fx_schema = schema.FX_PARAMS[fx_module_key]
-    plain_params: dict[str, Any] = {"kParamWet": fx.wet}
+    # Not every FX type has a wet/mix knob (FXEQ doesn't) -- forcing one in
+    # unconditionally made FXEQ impossible to generate at all.
+    plain_params: dict[str, Any] = {}
+    if "kParamWet" in fx_schema:
+        plain_params["kParamWet"] = fx.wet
     plain_params.update(fx.params)
     validate_params(fx_module_key, plain_params, fx_schema)
 
@@ -84,17 +88,47 @@ def _build_fx_entry(fx: FxUnitSpec) -> dict[str, Any]:
     }
 
 
-def _build_modslot_entry(route: ModRouteSpec) -> dict[str, Any]:
+def _resolve_mod_destination(destination: str, fx_chain: list[FxUnitSpec]) -> schema.ModDestDef:
+    """Resolve a mod-matrix destination name.
+
+    Most destinations are static (fixed module type + slot index), looked
+    up directly in ``schema.MOD_DEST_TARGETS``. FX destinations are the
+    exception: an FX rack slot's ``destModuleTypeString`` is whichever FX
+    type actually sits there (e.g. "FXReverb"), which is only known once
+    ``fx_chain`` has been built -- so ``fx{i}.wet`` is resolved dynamically
+    against ``fx_chain[i]`` instead of being a fixed table entry.
+    """
+    if destination in schema.MOD_DEST_TARGETS:
+        return schema.MOD_DEST_TARGETS[destination]
+
+    if destination.startswith("fx") and destination.endswith(".wet"):
+        index_part = destination[len("fx") : -len(".wet")]
+        if index_part.isdigit():
+            index = int(index_part)
+            if index >= len(fx_chain):
+                raise ValueError(
+                    f"mod destination {destination!r} references fx_chain[{index}], "
+                    f"but fx_chain only has {len(fx_chain)} entries"
+                )
+            fx_type = fx_chain[index].type
+            if fx_type not in schema.FX_PARAMS or "kParamWet" not in schema.FX_PARAMS[fx_type]:
+                raise ValueError(f"{fx_type!r} (fx_chain[{index}]) has no kParamWet to modulate")
+            # kParamWet -> destModuleParamID 1 is confirmed for every FX
+            # type that has a wet knob at all (see docs/PARAMETER_SCHEMA.md).
+            return schema.ModDestDef(fx_type, index, "kParamWet", 1)
+
+    raise ValueError(
+        f"unknown mod destination {destination!r}; expected one of "
+        f"{sorted(schema.MOD_DEST_TARGETS)}, or 'fx{{i}}.wet' for an index into fx_chain"
+    )
+
+
+def _build_modslot_entry(route: ModRouteSpec, fx_chain: list[FxUnitSpec]) -> dict[str, Any]:
     if route.source not in schema.MOD_SOURCE_IDS:
         raise ValueError(
             f"unknown mod source {route.source!r}; expected one of {sorted(schema.MOD_SOURCE_IDS)}"
         )
-    if route.destination not in schema.MOD_DEST_TARGETS:
-        raise ValueError(
-            f"unknown mod destination {route.destination!r}; "
-            f"expected one of {sorted(schema.MOD_DEST_TARGETS)}"
-        )
-    dest = schema.MOD_DEST_TARGETS[route.destination]
+    dest = _resolve_mod_destination(route.destination, fx_chain)
     plain_params: dict[str, Any] = {"kParamAmount": route.amount}
     if route.bipolar:
         plain_params["kParamBipolar"] = True
@@ -194,7 +228,7 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
     if spec.mod_routes:
         indices = _free_modslot_indices(data, len(spec.mod_routes))
         for idx, route in zip(indices, spec.mod_routes, strict=True):
-            data[f"ModSlot{idx}"] = _build_modslot_entry(route)
+            data[f"ModSlot{idx}"] = _build_modslot_entry(route, spec.fx_chain)
 
     global_params = _plain_params(data, "Global0")
     global_params["kParamMasterVolume"] = spec.global_.master_volume
