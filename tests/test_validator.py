@@ -38,3 +38,20 @@ def test_enum_param_validated():
 def test_bool_param_type_checked():
     with pytest.raises(ParamValidationError):
         validate_params("VoiceFilter0", {"kParamEnable": "yes"}, VOICE_FILTER_PARAMS)
+
+
+def test_bool_params_normalized_to_cbor_safe_floats():
+    """Regression test: real Serum presets store plainParams booleans as
+    CBOR floats (1.0/0.0), never a native CBOR bool. Writing a real Python
+    bool into the CBOR payload crashes Serum's loader (confirmed against a
+    live FL Studio + Serum 2 install -- the host closed ~2s after selecting
+    a preset built with a raw bool in kParamEnable, no error dialog)."""
+    params = {"kParamEnable": True, "kParamFreq": 0.5}
+    validate_params("VoiceFilter0", params, VOICE_FILTER_PARAMS)
+    assert params["kParamEnable"] == 1.0
+    assert type(params["kParamEnable"]) is float
+
+    params = {"kParamEnable": False}
+    validate_params("VoiceFilter0", params, VOICE_FILTER_PARAMS)
+    assert params["kParamEnable"] == 0.0
+    assert type(params["kParamEnable"]) is float

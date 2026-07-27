@@ -36,7 +36,11 @@ def test_simple_bass_end_to_end(init_data):
 
     data = apply_spec(init_data, spec)
 
-    assert data["Oscillator0"]["plainParams"]["kParamEnable"] is True
+    # kParamEnable is stored as a CBOR float (1.0/0.0) in real Serum
+    # presets, not a native CBOR bool -- writing a real bool crashes
+    # Serum's loader (confirmed against a live FL Studio install).
+    assert data["Oscillator0"]["plainParams"]["kParamEnable"] == 1.0
+    assert type(data["Oscillator0"]["plainParams"]["kParamEnable"]) is float
     assert data["Oscillator0"]["plainParams"]["kParamOctave"] == -1.0
     assert data["VoiceFilter0"]["plainParams"]["kParamType"] == "L24"
     assert data["VoiceFilter0"]["plainParams"]["kParamFreq"] == 0.35
@@ -111,7 +115,8 @@ def test_mod_route_round_trips_through_introspection(init_data):
     assert data["ModSlot0"]["destModuleParamName"] == "kParamFreq"
     assert data["ModSlot0"]["destModuleParamID"] == 3
     assert data["ModSlot0"]["plainParams"]["kParamAmount"] == 53.2
-    assert data["ModSlot0"]["plainParams"]["kParamBipolar"] is True
+    assert data["ModSlot0"]["plainParams"]["kParamBipolar"] == 1.0
+    assert type(data["ModSlot0"]["plainParams"]["kParamBipolar"]) is float
 
     assert data["ModSlot1"]["source"] == [27, 0]  # macro2
 
