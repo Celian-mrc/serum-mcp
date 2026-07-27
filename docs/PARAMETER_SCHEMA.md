@@ -321,22 +321,42 @@ against Xfer's own source/docs the way the destination side was) but strong
 enough that `serum-mcp` generates and reads back routes for them (see
 `schema.MOD_SOURCE_IDS`, `generation/spec.py::ModRouteSpec`).
 
-**Unresolved**: ids `1-5` (low usage relative to Macro, low bipolar rate —
-plausibly Envelope 1-4 plus one more, but id 3 is used almost as often as
-the Macro block while ids 2/5 are used an order of magnitude less, which
-doesn't cleanly fit "4 envelopes used somewhat evenly"), ids `16-24`
-(scattered usage and bipolar rates, no clean block), and ids `34+` (rare,
-small samples, high noise). These are plausibly Velocity, Mod Wheel,
-Aftertouch, Pitch Bend, Key Track, and Random/S&H, based on their names
-appearing in the plugin binary's strings (`Velocity`, `Mod Wheel`,
-`Aftertouch`, `Pitch Bend`, `KeyTrack`, `Random` all appear as literal UI
-strings), but no enum declaration tying a specific string to a specific
-`ModSlot.source` integer was found. `subIndex` (`source[1]`) is unresolved
-for every source family — it's 0 in the overwhelming majority of samples;
-a handful of source IDs (notably 6-9) show varied non-zero subIndex values
-correlated with other valid source IDs (16-32ish), suggestive of some kind
-of chained/secondary modulation, but this wasn't pinned down further.
+**Unresolved, but with a candidate hypothesis** (do NOT wire this into
+generation — it's below our confidence bar, documented so a future
+contributor doesn't start from zero): ids `1-5`, `16-24`, and `34+` remain
+undecoded. Two more rounds of investigation were tried and didn't clear the
+bar:
+
+- *Binary string mining*: unlike `destModuleParamID`, no enum declaration or
+  control-tag JSON entry tying a specific source name (`Velocity`, `Mod
+  Wheel`, `Aftertouch`, `Pitch Bend`, `KeyTrack`, `Random` all appear as
+  literal UI strings in the binary) to a specific `ModSlot.source` integer
+  was found, despite targeted searches.
+- *destModuleParamName distribution per source ID*: looking at exactly
+  which parameter (not just which module type) each source ID most often
+  targets gives suggestive, but not conclusive, signal. For example: id `1`
+  most often targets `VoiceFilter.kParamFreq` and `Macro.kParamValue`; id
+  `16` most often targets `Env.kParamDecay`/`Env.kParamAttack` (envelope
+  *time* modulation is a classic velocity-sensitivity technique, which
+  would suggest id 16 = Velocity rather than id 1); id `23` targets
+  `Oscillator.kParamPan` disproportionately with a high bipolar rate (75%),
+  consistent with a per-voice Random source used for pan humanization. None
+  of this rises to the "contiguous block, internally consistent, matches a
+  known count" standard that closed the LFO/Macro case — it's circumstantial
+  at best, and in at least one place (id 16 vs id 1 for Velocity) two
+  plausible readings of the same data actively disagree with each other.
 
 If you can resolve any of this further — a MIDI Learn export, a Serum
-factory-default XML/plist, or just more presets that isolate a single
-source ID in an unambiguous way — see `CONTRIBUTING.md`.
+factory-default XML/plist, an enum declaration in a newer plugin build, or
+just more presets that isolate a single source ID unambiguously (e.g. a
+preset where you, with the real Serum UI open, wire up exactly one known
+source and inspect the resulting file) — see `CONTRIBUTING.md`. The
+`(destModuleTypeString, destModuleParamID)` binary-string cross-validation
+technique from §2 is reusable if a similar debug enum for mod sources turns
+up in a future Serum build.
+
+`subIndex` (`source[1]`) is unresolved for every source family — it's 0 in
+the overwhelming majority of samples; a handful of source IDs (notably 6-9,
+inside the LFO block) show varied non-zero subIndex values correlated with
+other valid source IDs (16-32ish), suggestive of some kind of chained/
+secondary modulation, but this wasn't pinned down further either.
