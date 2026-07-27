@@ -230,11 +230,19 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         for idx, route in zip(indices, spec.mod_routes, strict=True):
             data[f"ModSlot{idx}"] = _build_modslot_entry(route, spec.fx_chain)
 
-    global_params = _plain_params(data, "Global0")
-    global_params["kParamMasterVolume"] = spec.global_.master_volume
-    global_params["kParamMonoToggle"] = spec.global_.mono
-    global_params["kParamPortamentoTime"] = spec.global_.portamento_time
-    global_params["kParamPolyCount"] = spec.global_.poly_count
-    validate_params("Global0", global_params, schema.GLOBAL_PARAMS)
+    # Unlike oscillators/filters/envelopes/etc. (lists, only touched per
+    # index when present), `global` is a single nested object that always
+    # has a value -- PresetSpec() with no "global" key still gets a
+    # default-valued GlobalSpec(). Without this check, every edit_preset
+    # call that didn't explicitly repeat the current global settings would
+    # silently reset them to defaults, breaking the "only change what you
+    # specify" contract every other section honors.
+    if "global_" in spec.model_fields_set:
+        global_params = _plain_params(data, "Global0")
+        global_params["kParamMasterVolume"] = spec.global_.master_volume
+        global_params["kParamMonoToggle"] = spec.global_.mono
+        global_params["kParamPortamentoTime"] = spec.global_.portamento_time
+        global_params["kParamPolyCount"] = spec.global_.poly_count
+        validate_params("Global0", global_params, schema.GLOBAL_PARAMS)
 
     return data

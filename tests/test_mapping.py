@@ -402,3 +402,26 @@ def test_fx_wet_mod_destination_errors(init_data):
     )
     with pytest.raises(ValueError, match="no kParamWet"):
         apply_spec(init_data, spec)
+
+
+def test_omitting_global_does_not_reset_it(init_data):
+    """Regression test (found via real-world use, not a unit test): unlike
+    oscillators/filters/envelopes/etc. -- lists only touched per index when
+    present -- `global` is a single nested object that always has a value,
+    since PresetSpec() with no "global" key still gets a default-valued
+    GlobalSpec(). apply_spec used to write it unconditionally, so an
+    edit_preset call that didn't repeat the current global settings would
+    silently reset master_volume/mono/portamento/poly_count to defaults --
+    breaking the "only change what you specify" contract every other
+    section honors. Caught when poly_count silently dropped from 6 to 8
+    (the default) after an edit that only touched oscillators/filters."""
+    first = PresetSpec(
+        name="X", description="", **{"global": GlobalSpec(poly_count=6.0, mono=True)}
+    )
+    data = apply_spec(init_data, first)
+    assert data["Global0"]["plainParams"]["kParamPolyCount"] == 6.0
+
+    second = PresetSpec(name="X", description="", filters=[FilterSpec(enabled=True, cutoff=0.9)])
+    data = apply_spec(data, second)
+    assert data["Global0"]["plainParams"]["kParamPolyCount"] == 6.0
+    assert data["Global0"]["plainParams"]["kParamMonoToggle"] == 1.0
