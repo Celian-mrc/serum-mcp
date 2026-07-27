@@ -11,9 +11,10 @@ expand or correct our understanding of it are just as valuable as code.
   Wheel/Aftertouch/Pitch Bend/Key Track/Random are still unresolved, though
   LFO and Macro sources were decoded — see §6 for the method, which is
   reusable), the filter cutoff Hz curve, unmodeled oscillator engines
-  (granular/multisample/spectral/sample), LFO/envelope curve shapes, and 5
-  FX types without full param schemas. Any of these, backed by evidence (see
-  "Evidence standard" below), is welcome.
+  (granular/multisample/spectral/sample), LFO/envelope curve shapes, and the
+  3 band-splitter FX types (`FXSplit`/`FXSplit3`/`FXSplitMS`), which need a
+  recursive FX schema rather than a flat one. Any of these, backed by
+  evidence (see "Evidence standard" below), is welcome.
 - **Add parameter coverage.** More of Serum 2's ~2,600 VST3 parameters could
   be mapped into `src/serum_mcp/preset/schema.py` and exposed through
   `generation/spec.py`.

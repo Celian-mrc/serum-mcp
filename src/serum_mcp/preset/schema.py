@@ -818,6 +818,102 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
         "kParamDrive": ParamDef("kParamDrive", "float", default=0.0, min=0.0, max=100.0, unit="%"),
         "kParamWet": ParamDef("kParamWet", "float", default=100.0, min=0.0, max=100.0, unit="%"),
     },
+    # Frequency shifter ("Bode Shifter"). All bounds/defaults observed
+    # empirically; destModuleParamID not confirmed for any of these (never
+    # seen as a mod-matrix destination in our sample), so they aren't in
+    # MOD_DEST_TARGETS.
+    "FXBode": {
+        "kParamShift": ParamDef(
+            "kParamShift", "float", default=0.0, min=-100.0, max=73.4, unit="% (approx.)"
+        ),
+        "kParamRange": ParamDef(
+            "kParamRange", "float", default=100.0, min=0.1, max=3043.2, unit="Hz (approx.)"
+        ),
+        "kParamFeedback": ParamDef(
+            "kParamFeedback", "float", default=0.0, min=0.0, max=100.0, unit="%"
+        ),
+        "kParamBlur": ParamDef("kParamBlur", "float", default=0.0, min=0.0, max=100.0, unit="%"),
+        "kParamDelayTime": ParamDef(
+            "kParamDelayTime", "float", default=0.0, min=0.0, max=1.62, unit="seconds (approx.)"
+        ),
+        "kParamOutputWidth": ParamDef(
+            "kParamOutputWidth", "float", default=0.0, min=0.0, max=96.5, unit="%"
+        ),
+        "kParamOutputMix": ParamDef(
+            "kParamOutputMix", "float", default=0.0, min=-73.9, max=100.0, unit="%"
+        ),
+        "kParamWet": ParamDef("kParamWet", "float", default=30.0, min=0.0, max=100.0, unit="%"),
+    },
+    # "Hyper Dimension" stereo widener/unison-style FX.
+    "FXHyperD": {
+        "kParamRate": ParamDef("kParamRate", "float", default=0.0, min=0.0, max=100.0, unit="%"),
+        "kParamDetune": ParamDef(
+            "kParamDetune", "float", default=0.0, min=0.0, max=100.0, unit="%"
+        ),
+        "kParamUnison": ParamDef("kParamUnison", "float", default=0.0, min=0.0, max=7.0),
+        "kParamDimESize": ParamDef(
+            "kParamDimESize", "float", default=0.0, min=0.0, max=100.0, unit="%"
+        ),
+        "kParamDimEWet": ParamDef(
+            "kParamDimEWet", "float", default=0.0, min=0.0, max=100.0, unit="%"
+        ),
+        "kParamWet": ParamDef("kParamWet", "float", default=50.0, min=0.0, max=100.0, unit="%"),
+    },
+    # Convolution reverb (loads an impulse response file, `relativePathToIR`
+    # -- not modeled here, generation can't select an IR yet).
+    "FXConv": {
+        "kParamSize": ParamDef(
+            "kParamSize", "float", default=100.0, min=10.0, max=1000.0, unit="% (IR stretch)"
+        ),
+        "kParamDecay": ParamDef(
+            "kParamDecay", "float", default=1.0, min=0.0, max=40.0, unit="seconds (approx.)"
+        ),
+        "kParamTone": ParamDef("kParamTone", "float", default=0.0, min=-100.0, max=84.2, unit="%"),
+        "kParamIpTrim": ParamDef(
+            "kParamIpTrim", "float", default=0.0, min=-34.0, max=6.0, unit="dB"
+        ),
+        "kParamDamping": ParamDef(
+            "kParamDamping", "float", default=50.0, min=0.0, max=100.0, unit="%"
+        ),
+        "kParamWet": ParamDef("kParamWet", "float", default=30.0, min=0.0, max=100.0, unit="%"),
+    },
+    # Stereo/frequency utility (width, balance, HP/LP cleanup) -- no single
+    # coherent "wet" behavior observed (only 2 samples), included for
+    # completeness but low confidence.
+    "FXUtils": {
+        "kParamWidth": ParamDef(
+            "kParamWidth", "float", default=100.0, min=0.0, max=800.0, unit="%"
+        ),
+        "kParamBalance": ParamDef(
+            "kParamBalance", "float", default=0.0, min=-100.0, max=100.0, unit="%"
+        ),
+        "kParamHPF": ParamDef(
+            "kParamHPF", "float", default=20.0, min=1.3, max=400.0, unit="Hz (approx.)"
+        ),
+        "kParamLPF": ParamDef(
+            "kParamLPF", "float", default=20000.0, min=50.0, max=18976.0, unit="Hz (approx.)"
+        ),
+        "kParamLFXover": ParamDef(
+            "kParamLFXover", "float", default=150.0, min=20.25, max=300.0, unit="Hz (approx.)"
+        ),
+        "kParamWet": ParamDef(
+            "kParamWet",
+            "float",
+            default=100.0,
+            min=0.0,
+            max=100.0,
+            unit="%",
+            confidence="uncertain",
+            notes="Only 2 samples observed; FXUtils may not meaningfully use a wet knob.",
+        ),
+    },
 }
+
+# FXSplit / FXSplit3 / FXSplitMS (band-splitter racks: each holds N nested
+# sub-effect-chains, one per frequency band, via kParamModuleCount1/2/3) are
+# structurally different from every other FX type -- not a flat plainParams
+# effect but a container for further FX lists. Cataloged in FX_TYPE_IDS
+# (round-trips fine) but NOT modeled in FX_PARAMS; generation cannot target
+# them. A real implementation would need a recursive FxUnitSpec.
 
 ALL_FX_TYPES: tuple[str, ...] = tuple(FX_TYPE_IDS.values())

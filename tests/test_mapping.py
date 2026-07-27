@@ -80,6 +80,25 @@ def test_fx_chain_round_trips_through_introspection(init_data):
     assert extracted.fx_chain[0].params["kParamSize"] == 60.0
 
 
+@pytest.mark.parametrize(
+    ("fx_type", "extra_params"),
+    [
+        ("FXBode", {"kParamShift": 20.0, "kParamRange": 500.0}),
+        ("FXHyperD", {"kParamUnison": 4.0, "kParamDetune": 30.0}),
+        ("FXConv", {"kParamSize": 200.0}),
+        ("FXUtils", {"kParamWidth": 150.0}),
+    ],
+)
+def test_previously_uncovered_fx_types(init_data, fx_type, extra_params):
+    spec = PresetSpec(
+        name="X", description="", fx_chain=[FxUnitSpec(type=fx_type, params=extra_params)]
+    )
+    data = apply_spec(init_data, spec)
+    entry = data["FXRack0"]["FX"][0]
+    for key, value in extra_params.items():
+        assert entry[fx_type]["plainParams"][key] == value
+
+
 def test_invalid_fx_param_rejected(init_data):
     spec = PresetSpec(
         name="X",

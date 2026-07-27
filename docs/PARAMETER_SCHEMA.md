@@ -38,6 +38,22 @@ The **metadata** JSON is small and self-explanatory: `presetName`,
 The **CBOR payload** (`data` in this codebase) is the actual engine state,
 and is what the rest of this document covers.
 
+**A CBOR wire-type gotcha, confirmed the hard way**: inside `plainParams`
+dicts, conceptually-boolean fields (`kParamEnable`, `kParamBipolar`,
+`kParamMonoToggle`, ...) are stored as CBOR **doubles** (`1.0`/`0.0`),
+*never* as a native CBOR boolean, even though they only ever hold 0 or 1.
+Writing a real CBOR boolean there (e.g. naively serializing a Python `bool`)
+produces a structurally different wire type — confirmed to reliably crash
+Serum's native loader (FL Studio closed ~2 seconds after selecting a preset
+built this way, no error dialog). `serum_mcp.preset.validator.validate_params`
+normalizes this automatically for every "bool"-kind field it validates, so
+nothing above that layer needs to think about it — but if you're writing
+CBOR by hand outside this codebase, don't assume Python's natural bool → CBOR
+bool mapping is safe here. Note this is scoped to `plainParams` fields
+specifically: a few *top-level* flags outside `plainParams` (`mpeEnabled`,
+`lockOversampling`, `lockTuning`) genuinely are native CBOR booleans in real
+presets — don't "fix" those.
+
 ## 2. Methodology
 
 Two independent sources were used, and cross-checked against each other:
@@ -185,12 +201,22 @@ into generation.
 3 independent racks (`FXRack0..2`); V1 generation only writes to
 `FXRack0`. Each rack holds an ordered `FX` list; each entry has an integer
 `type` selecting one of 16 effect kinds (`FX_TYPE_IDS` in `schema.py`) and a
-`plainParams` dict specific to that type. 9 of the 16 are modeled with full
-param schemas in V1 (`FXDistortion`, `FXChorus`, `FXFlanger`, `FXPhaser`,
-`FXDelay`, `FXReverb`, `FXComp`, `FXEQ`, `FXFilter`); `FXBode` (frequency
-shifter), `FXHyperD` ("hyper dimension" widener), `FXConv` (convolution/IR),
-`FXUtils`, and the `FXSplit*` band-splitter variants are cataloged (types
-enumerated) but their parameters are not yet schema'd.
+`plainParams` dict specific to that type. 13 of the 16 are modeled with full
+param schemas (`FXDistortion`, `FXChorus`, `FXFlanger`, `FXPhaser`,
+`FXDelay`, `FXReverb`, `FXComp`, `FXEQ`, `FXFilter`, `FXBode` (frequency
+shifter), `FXHyperD` ("hyper dimension" widener), `FXConv`
+(convolution/IR — the IR file itself, `relativePathToIR`, isn't selectable
+by generation, only its processing params), `FXUtils` (width/balance/HP-LP
+cleanup; its `kParamWet` is `uncertain`-confidence, only 2 samples observed
+using one).
+
+The remaining 3 — `FXSplit`, `FXSplit3`, `FXSplitMS` — are structurally
+different from every other FX type: instead of a flat `plainParams` dict,
+they're band-splitter containers holding N nested sub-effect-chains (one per
+frequency band, via `kParamModuleCount1/2/3`). They're cataloged in
+`FX_TYPE_IDS` and round-trip fine, but aren't modeled in `FX_PARAMS` —
+targeting them would need a recursive `FxUnitSpec` (an FX chain that itself
+contains FX chains), which is a bigger feature than a flat param schema.
 
 We also confirmed empirically that an FX entry's `destModuleID` in the mod
 matrix encodes *which rack* an FX unit lives in: `0-11` for rack 0 slots,
@@ -223,8 +249,9 @@ improve generation quality if resolved:
    MultiSampleOsc (used for realistic instrument patches) would be valuable.
 4. **LFO curve shapes** (`curveData`) and **free-drawn envelope curves** are
    unmodeled — Serum 2's point-based custom curve editor data.
-5. **5 of 16 FX types lack full param schemas** (`FXBode`, `FXHyperD`,
-   `FXConv`, `FXUtils`, `FXSplit`/`FXSplit3`/`FXSplitMS`) — see §4.
+5. **3 of 16 FX types lack param schemas**: `FXSplit`/`FXSplit3`/`FXSplitMS`
+   — structurally different (nested band-splitter containers, not a flat
+   `plainParams` dict), see §4. The other 13 are fully modeled.
 6. Several numeric ranges are marked `uncertain` in `schema.py` (e.g. unison
    voice count ceiling, LFO/Chorus/Delay times where only normalized values
    were observed without a confirmed Hz/ms curve) — these are *observed*
