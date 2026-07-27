@@ -53,6 +53,23 @@ def describe_preset(preset_path: str) -> str:
             f"sustain={env.sustain:.2f}  release={env.release:.2f}s"
         )
 
+    active_lfos = [
+        (i, lfo) for i, lfo in enumerate(spec.lfos, start=1) if lfo.rate or lfo.mode != "Free"
+    ]
+    if active_lfos:
+        lines.append("")
+        for i, lfo in active_lfos:
+            sync = "  beat_sync" if lfo.beat_sync else ""
+            delay = f"  delay={lfo.delay:.2f}s" if lfo.delay else ""
+            lines.append(f"LFO {i}: rate={lfo.rate:.0f}  mode={lfo.mode}{sync}{delay}")
+
+    active_macros = [(i, m) for i, m in enumerate(spec.macros, start=1) if m.value or m.name]
+    if active_macros:
+        lines.append("")
+        for i, macro in active_macros:
+            name = f' "{macro.name}"' if macro.name else ""
+            lines.append(f"Macro {i}{name}: {macro.value:.0f}%")
+
     lines.append("")
     if spec.fx_chain:
         lines.append("FX chain:")
@@ -76,7 +93,8 @@ def describe_preset(preset_path: str) -> str:
     )
     lines.append(
         f"Global: master_volume={spec.global_.master_volume:.2f}  "
-        f"mono={'on' if spec.global_.mono else 'off'}{porta}"
+        f"mono={'on' if spec.global_.mono else 'off'}  "
+        f"poly={spec.global_.poly_count:.0f}{porta}"
     )
 
     return "\n".join(lines)

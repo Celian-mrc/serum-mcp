@@ -80,7 +80,19 @@ class EnvelopeSpec(BaseModel):
 
 class LfoSpec(BaseModel):
     rate: float = Field(0.0, ge=0.0, le=100.0, description="normalized rate, not literal Hz")
-    mode: str = Field("Free", description="'Free' or 'Envelope'")
+    mode: str = Field("Free", description="'Free', 'Retrig', or 'Envelope'")
+    beat_sync: bool = Field(False, description="tempo-synced rate instead of free-running Hz")
+    delay: float = Field(
+        0.0,
+        ge=0.0,
+        le=3.6,
+        description="seconds before the LFO starts after note-on -- use for "
+        "'vibrato that kicks in after a moment' style requests, 0 = starts immediately",
+    )
+    rise: float = Field(0.0, ge=0.0, le=3.0, description="seconds to ramp up to full depth")
+    smooth: float = Field(
+        0.0, ge=0.0, le=100.0, description="% lag smoothing, higher = less steppy/more glidey"
+    )
 
 
 class MacroSpec(BaseModel):
@@ -100,6 +112,7 @@ class GlobalSpec(BaseModel):
     portamento_time: float = Field(
         0.0, ge=0.0, le=2.6, description="glide time between notes, seconds"
     )
+    poly_count: float = Field(8.0, ge=1.0, le=32.0, description="max simultaneous voices")
 
 
 class ModRouteSpec(BaseModel):

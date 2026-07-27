@@ -49,7 +49,13 @@ _ENV_KEYS = {
     "sustain": "kParamSustain",
     "release": "kParamRelease",
 }
-_LFO_KEYS = {"rate": "kParamRate"}
+_LFO_KEYS = {
+    "rate": "kParamRate",
+    "beat_sync": "kParamBeatSync",
+    "delay": "kParamDelay",
+    "rise": "kParamRise",
+    "smooth": "kParamSmooth",
+}
 
 
 def _plain_params(container: dict[str, Any], key: str) -> dict[str, Any]:
@@ -194,6 +200,7 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
     global_params["kParamMasterVolume"] = spec.global_.master_volume
     global_params["kParamMonoToggle"] = spec.global_.mono
     global_params["kParamPortamentoTime"] = spec.global_.portamento_time
+    global_params["kParamPolyCount"] = spec.global_.poly_count
     validate_params("Global0", global_params, schema.GLOBAL_PARAMS)
 
     return data

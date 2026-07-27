@@ -58,7 +58,13 @@ mcp = FastMCP(
         "envelopes[].hold is a rarely-needed extra plateau at full level before "
         "decay starts, seconds -- leave at 0 unless asked for.\n"
         "- global.portamento_time (seconds) is glide between notes -- use for "
-        "'glide', 'portamento', 'slide between notes' requests; 0 = off (default)."
+        "'glide', 'portamento', 'slide between notes' requests; 0 = off (default). "
+        "global.poly_count caps simultaneous voices (default 8) -- lower it only "
+        "if asked to save CPU or force fewer overlapping notes.\n"
+        "- lfos[].delay (seconds) is a fade-in before the LFO starts after note-on "
+        "-- use for 'vibrato that kicks in after a moment'. lfos[].smooth (%) "
+        "softens steppy/random LFO shapes into something glidey. lfos[].beat_sync "
+        "ties rate to tempo instead of free Hz."
     ),
 )
 

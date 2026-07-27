@@ -211,10 +211,14 @@ before decay starts) defaults to 0 and is rarely needed.
 
 ### LFOs
 
-10 slots (`LFO0..9`). Only `kParamRate`/`kParamMode`/basic timing are
-modeled. Free-hand curve-drawn LFO shapes (`curveData`: `xVals`/`yVals`/
-`curveVals`) exist and round-trip, but generating them is out of scope for
-V1 (no natural-language mapping for "draw this LFO shape" yet).
+10 slots (`LFO0..9`). `LfoSpec` generates `rate`, `mode` (`Free`/`Retrig`/
+`Envelope` — `Retrig` recovered from the plugin binary's debug strings,
+never observed in the factory sample), `beat_sync`, `delay` (fade-in before
+the LFO starts after note-on), `rise` (ramp-up time), and `smooth` (lag
+smoothing, for less steppy random/S&H shapes). Free-hand curve-drawn LFO
+shapes (`curveData`: `xVals`/`yVals`/`curveVals`) exist and round-trip, but
+generating them is out of scope for V1 (no natural-language mapping for
+"draw this LFO shape" yet).
 
 ### Macros & Global
 

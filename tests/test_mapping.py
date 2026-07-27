@@ -9,6 +9,7 @@ from serum_mcp.generation.spec import (
     FilterSpec,
     FxUnitSpec,
     GlobalSpec,
+    LfoSpec,
     ModRouteSpec,
     OscillatorSpec,
     PresetSpec,
@@ -306,3 +307,26 @@ def test_filter_stereo_env_hold_global_portamento(init_data):
     assert extracted.filters[0].stereo == 40.0
     assert extracted.envelopes[0].hold == 0.2
     assert extracted.global_.portamento_time == 0.3
+
+
+def test_lfo_extras_and_poly_count(init_data):
+    spec = PresetSpec(
+        name="X",
+        description="",
+        lfos=[LfoSpec(rate=5.0, mode="Free", beat_sync=True, delay=0.5, rise=0.3, smooth=20.0)],
+        **{"global": GlobalSpec(poly_count=4.0)},
+    )
+    data = apply_spec(init_data, spec)
+
+    lfo_params = data["LFO0"]["plainParams"]
+    assert lfo_params["kParamBeatSync"] == 1.0
+    assert type(lfo_params["kParamBeatSync"]) is float
+    assert lfo_params["kParamDelay"] == 0.5
+    assert lfo_params["kParamRise"] == 0.3
+    assert lfo_params["kParamSmooth"] == 20.0
+    assert data["Global0"]["plainParams"]["kParamPolyCount"] == 4.0
+
+    extracted = extract_spec(data)
+    assert extracted.lfos[0].beat_sync is True
+    assert extracted.lfos[0].delay == 0.5
+    assert extracted.global_.poly_count == 4.0

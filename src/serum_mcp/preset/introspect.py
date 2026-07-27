@@ -120,6 +120,10 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             LfoSpec(
                 rate=_resolve(pp, "kParamRate", schema.LFO_PARAMS),
                 mode=_resolve(pp, "kParamMode", schema.LFO_PARAMS),
+                beat_sync=bool(_resolve(pp, "kParamBeatSync", schema.LFO_PARAMS)),
+                delay=_resolve(pp, "kParamDelay", schema.LFO_PARAMS),
+                rise=_resolve(pp, "kParamRise", schema.LFO_PARAMS),
+                smooth=_resolve(pp, "kParamSmooth", schema.LFO_PARAMS),
             )
         )
 
@@ -186,6 +190,7 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         master_volume=_resolve(global_pp, "kParamMasterVolume", schema.GLOBAL_PARAMS),
         mono=bool(_resolve(global_pp, "kParamMonoToggle", schema.GLOBAL_PARAMS)),
         portamento_time=_resolve(global_pp, "kParamPortamentoTime", schema.GLOBAL_PARAMS),
+        poly_count=_resolve(global_pp, "kParamPolyCount", schema.GLOBAL_PARAMS),
     )
 
     return PresetSpec(

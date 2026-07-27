@@ -533,7 +533,9 @@ LFO_PARAMS: dict[str, ParamDef] = {
         "enum",
         default="Free",
         confidence="observed",
-        enum_values=("Free", "Envelope"),
+        enum_values=("Free", "Retrig", "Envelope"),
+        notes="'Retrig' recovered from the plugin binary's debug strings "
+        "('Free = 0, Retrig, Envelope, kCount'); never observed in the factory sample.",
     ),
     "kParamBeatSync": ParamDef("kParamBeatSync", "bool", default=False),
     "kParamRise": ParamDef("kParamRise", "float", default=0.0, min=0.0, max=3.0, unit="seconds"),
