@@ -39,20 +39,25 @@ The **CBOR payload** (`data` in this codebase) is the actual engine state,
 and is what the rest of this document covers.
 
 **A CBOR wire-type gotcha, confirmed the hard way**: inside `plainParams`
-dicts, conceptually-boolean fields (`kParamEnable`, `kParamBipolar`,
-`kParamMonoToggle`, ...) are stored as CBOR **doubles** (`1.0`/`0.0`),
-*never* as a native CBOR boolean, even though they only ever hold 0 or 1.
-Writing a real CBOR boolean there (e.g. naively serializing a Python `bool`)
-produces a structurally different wire type — confirmed to reliably crash
-Serum's native loader (FL Studio closed ~2 seconds after selecting a preset
-built this way, no error dialog). `serum_mcp.preset.validator.validate_params`
-normalizes this automatically for every "bool"-kind field it validates, so
-nothing above that layer needs to think about it — but if you're writing
-CBOR by hand outside this codebase, don't assume Python's natural bool → CBOR
-bool mapping is safe here. Note this is scoped to `plainParams` fields
-specifically: a few *top-level* flags outside `plainParams` (`mpeEnabled`,
-`lockOversampling`, `lockTuning`) genuinely are native CBOR booleans in real
-presets — don't "fix" those.
+dicts, every numeric field is stored as a CBOR **double**, including ones
+that are conceptually integer or boolean (`kParamEnable`, `kParamBipolar`,
+`kParamMonoToggle`, `kParamUnison`, ...) — *never* as a native CBOR boolean
+or CBOR integer, even though e.g. `kParamEnable` only ever holds `0.0`/`1.0`
+and `kParamUnison` only ever holds whole numbers. Writing a real CBOR bool
+or CBOR int there (e.g. naively serializing a Python `bool`, or a
+strictly-`int`-typed field) produces a structurally different wire type —
+confirmed to reliably crash Serum's native loader for the bool case (FL
+Studio closed ~2 seconds after selecting a preset built this way, no error
+dialog). `serum_mcp.preset.validator.validate_params` normalizes both cases
+automatically (bool → `1.0`/`0.0`, any `int` → `float`) for every field it
+validates, so nothing above that layer needs to think about it — but if
+you're writing CBOR by hand outside this codebase, don't assume Python's
+natural bool/int → CBOR mapping is safe here. Note this is scoped to
+`plainParams` fields specifically: a few *top-level* flags outside
+`plainParams` (`mpeEnabled`, `lockOversampling`, `lockTuning`) genuinely are
+native CBOR booleans in real presets, and `destModuleID`/`destModuleParamID`/
+`ModSlot.source`/FX `type` genuinely are native CBOR integers — don't "fix"
+those.
 
 ## 2. Methodology
 
@@ -148,15 +153,28 @@ Every `ParamDef` carries a `confidence` field:
 5 slots (`Oscillator0..4` = Osc A/B/C/Noise/Sub in Serum's UI). Only **Osc A
 is enabled by default** — this is a *per-slot* default, not a shared one
 (confirmed via the VST3 dump), which is why `preset/introspect.py`
-special-cases slot 0 rather than encoding it in the shared param table.
+special-cases slot 0 rather than encoding it in the shared param table. The
+shared params (`kParamEnable`, `kParamOctave`, `kParamVolume`, `kParamPan`,
+`kParamUnison`, `kParamDetune`) apply to all 5 slots identically and are
+fully generatable via `OscillatorSpec`.
 
-Each slot's sound source is one of 5 engines, keyed as `WTOsc{i}`,
-`GranularOsc{i}`, `MultiSampleOsc{i}`, `SampleOsc{i}`, `SpectralOsc{i}` inside
-`Oscillator{i}`. **Only `WTOsc` (the classic wavetable engine) is modeled**
-in V1 — it's the default engine and the one every factory bass/lead/pad
-preset we sampled that wasn't a multisample instrument used. Granular,
+**Slots 0-2 (Osc A/B/C)** each have a sound source that's one of 5 engines,
+keyed as `WTOsc{i}`, `GranularOsc{i}`, `MultiSampleOsc{i}`, `SampleOsc{i}`,
+`SpectralOsc{i}` inside `Oscillator{i}`. **Only `WTOsc` (the classic
+wavetable engine) is modeled** — it's the default engine and the one every
+factory bass/lead/pad preset we sampled that wasn't a multisample
+instrument used (`OscillatorSpec.table_position`/`warp_amount`). Granular,
 multisample, spectral and raw sample playback exist in the format and
 round-trip fine, but `serum-mcp` cannot currently generate or target them.
+
+**Slots 3 and 4 are not the same engine family** — this is structural, not
+a modeling gap: slot 3 is *always* `NoiseOsc3` (white/pink/brown/geiger
+noise, `OscillatorSpec.noise_type`) and slot 4 is *always* `SubOsc4` (a
+single basic waveform — saw/square/triangle/pulse/round-rect,
+`OscillatorSpec.sub_shape`) in every preset we've seen; real Serum presets
+never have a `WTOsc3`/`WTOsc4` key. `table_position`/`warp_amount` are
+ignored by `apply_spec` for these two slots rather than being (wrongly)
+written into a `WTOsc` key Serum never produces there.
 
 ### Filters
 

@@ -1,10 +1,10 @@
-"""The semantic, LLM-facing preset schema.
+"""The semantic, MCP-client-facing preset schema.
 
 This is deliberately a *simplified* view of the full raw parameter set in
 :mod:`serum_mcp.preset.schema` -- friendly field names, a curated filter-type
 vocabulary, seconds instead of opaque curve values where we're confident of
-the unit. The LLM is constrained to emit JSON matching :class:`PresetSpec`
-(via Anthropic tool-use / structured output); :mod:`serum_mcp.preset.mapping`
+the unit. The calling model (see ``server.py``'s tool instructions) builds
+JSON matching :class:`PresetSpec` itself; :mod:`serum_mcp.preset.mapping`
 then translates a validated ``PresetSpec`` onto the raw CBOR structure.
 
 Every field range mirrors the bounds recorded in ``preset/schema.py`` --
@@ -15,20 +15,44 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from serum_mcp.preset.schema import SIMPLE_FILTER_TYPES
+from serum_mcp.preset.schema import SIMPLE_FILTER_TYPES, SIMPLE_SUB_SHAPES
 
 FilterTypeName = str  # validated against SIMPLE_FILTER_TYPES keys in mapping.py
 
 
 class OscillatorSpec(BaseModel):
+    """Shared fields apply to all 5 oscillator slots (A/B/C/Noise/Sub).
+    ``table_position``/``warp_amount`` only affect slots 0-2 (the wavetable
+    engine); ``noise_type`` only affects slot 3; ``sub_shape`` only affects
+    slot 4 -- mapping.py ignores the fields that don't apply to a given slot
+    rather than writing them somewhere Serum doesn't expect.
+    """
+
     enabled: bool = True
     octave: float = Field(0.0, ge=-4.0, le=4.0)
     volume: float = Field(0.75, ge=0.0, le=1.0, description="0=silent, 1=unity gain")
     pan: float = Field(0.0, ge=-50.0, le=50.0)
-    unison: int = Field(1, ge=1, le=16)
-    detune: float = Field(0.0, ge=0.0, le=1.0, description="unison detune amount")
-    table_position: float = Field(0.0, ge=0.0, le=256.0, description="wavetable frame position")
-    warp_amount: float = Field(0.0, ge=0.0, le=1.0)
+    unison: float = Field(
+        1.0,
+        ge=1.0,
+        le=16.0,
+        description="voice count, slots 0-2 only. Stored as a float in Serum's own "
+        "format even though it's conceptually an integer -- keep it typed float here "
+        "so pydantic doesn't hand back a Python int, which would encode as the wrong "
+        "CBOR wire type (see docs/PARAMETER_SCHEMA.md's CBOR bool/float note).",
+    )
+    detune: float = Field(0.0, ge=0.0, le=1.0, description="unison detune amount, slots 0-2 only")
+    table_position: float = Field(
+        0.0, ge=0.0, le=256.0, description="wavetable frame position, slots 0-2 only"
+    )
+    warp_amount: float = Field(0.0, ge=0.0, le=1.0, description="slots 0-2 only")
+    noise_type: str = Field(
+        "White", description="slot 3 (Noise) only, one of: White, Pink, Brown, Geiger"
+    )
+    sub_shape: str = Field(
+        "saw",
+        description=f"slot 4 (Sub) only, one of: {', '.join(sorted(SIMPLE_SUB_SHAPES))}",
+    )
 
 
 class FilterSpec(BaseModel):

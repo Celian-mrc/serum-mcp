@@ -21,12 +21,18 @@ def describe_preset(preset_path: str) -> str:
     lines.append(f"Author: {preset.metadata.get('presetAuthor', '?')}")
     lines.append("")
 
-    for label, osc in zip(_OSC_LABELS, spec.oscillators, strict=True):
+    for i, (label, osc) in enumerate(zip(_OSC_LABELS, spec.oscillators, strict=True)):
         state = "ON " if osc.enabled else "off"
-        lines.append(
-            f"Osc {label}: {state}  octave={osc.octave:+.0f}  volume={osc.volume:.2f}  "
-            f"pan={osc.pan:+.0f}  table_pos={osc.table_position:.1f}"
-        )
+        common = f"octave={osc.octave:+.0f}  volume={osc.volume:.2f}  pan={osc.pan:+.0f}"
+        if i in (0, 1, 2):
+            extra = f"table_pos={osc.table_position:.1f}"
+            if osc.unison > 1:
+                extra += f"  unison={osc.unison:.0f}  detune={osc.detune:.2f}"
+        elif i == 3:
+            extra = f"noise_type={osc.noise_type}"
+        else:
+            extra = f"sub_shape={osc.sub_shape}"
+        lines.append(f"Osc {label}: {state}  {common}  {extra}")
 
     lines.append("")
     for i, flt in enumerate(spec.filters, start=1):

@@ -280,6 +280,16 @@ SUBOSC_PARAMS: dict[str, ParamDef] = {
     ),
 }
 
+# Friendly names -> SUBOSC_PARAMS["kParamShape"] enum values, offered to
+# generation instead of the raw "kXxx" strings.
+SIMPLE_SUB_SHAPES: dict[str, str] = {
+    "saw": "kSaw",
+    "square": "kSquare",
+    "triangle": "kTriangle",
+    "pulse": "kPulse",
+    "round_rect": "kRoundRect",
+}
+
 # ---------------------------------------------------------------------------
 # Voice filters (VoiceFilter0 / VoiceFilter1 -- Serum's "Filter 1" / "Filter 2").
 # `kParamType` enum below is the union of every filter model seen across our

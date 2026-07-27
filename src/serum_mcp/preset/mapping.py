@@ -21,11 +21,21 @@ _OSC_KEYS = {
     "octave": "kParamOctave",
     "volume": "kParamVolume",
     "pan": "kParamPan",
+    "unison": "kParamUnison",
+    "detune": "kParamDetune",
 }
 _WTOSC_KEYS = {
     "table_position": "kParamTablePos",
     "warp_amount": "kParamWarp",
 }
+# Which slot indices use which sound-source engine. Slots 0-2 (Osc A/B/C)
+# default to the wavetable engine; slot 3 is always Noise, slot 4 always
+# Sub -- real Serum presets never have a WTOsc3/WTOsc4 key, only
+# NoiseOsc3/SubOsc4, so table_position/warp_amount must not be written
+# there (see docs/PARAMETER_SCHEMA.md).
+_WTOSC_SLOTS = (0, 1, 2)
+_NOISE_SLOT = 3
+_SUB_SLOT = 4
 _FILTER_KEYS = {
     "cutoff": "kParamFreq",
     "resonance": "kParamReso",
@@ -123,10 +133,19 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             osc_params[param_key] = getattr(osc, spec_key)
         validate_params(f"Oscillator{i}", osc_params, schema.OSCILLATOR_PARAMS)
 
-        wtosc_params = _plain_params(osc_container, f"WTOsc{i}")
-        for spec_key, param_key in _WTOSC_KEYS.items():
-            wtosc_params[param_key] = getattr(osc, spec_key)
-        validate_params(f"WTOsc{i}", wtosc_params, schema.WTOSC_PARAMS)
+        if i in _WTOSC_SLOTS:
+            wtosc_params = _plain_params(osc_container, f"WTOsc{i}")
+            for spec_key, param_key in _WTOSC_KEYS.items():
+                wtosc_params[param_key] = getattr(osc, spec_key)
+            validate_params(f"WTOsc{i}", wtosc_params, schema.WTOSC_PARAMS)
+        elif i == _NOISE_SLOT:
+            noise_params = _plain_params(osc_container, f"NoiseOsc{i}")
+            noise_params["kParamNoiseType"] = osc.noise_type
+            validate_params(f"NoiseOsc{i}", noise_params, schema.NOISEOSC_PARAMS)
+        elif i == _SUB_SLOT:
+            sub_params = _plain_params(osc_container, f"SubOsc{i}")
+            sub_params["kParamShape"] = schema.SIMPLE_SUB_SHAPES.get(osc.sub_shape, osc.sub_shape)
+            validate_params(f"SubOsc{i}", sub_params, schema.SUBOSC_PARAMS)
 
     for i, flt in enumerate(spec.filters):
         filter_params = _plain_params(data, f"VoiceFilter{i}")

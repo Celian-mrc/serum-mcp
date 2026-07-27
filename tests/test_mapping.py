@@ -174,3 +174,85 @@ def test_unknown_mod_source_rejected(init_data):
     )
     with pytest.raises(ValueError, match="unknown mod source"):
         apply_spec(init_data, spec)
+
+
+def test_unison_and_detune_are_applied(init_data):
+    """Regression test: unison/detune were defined on OscillatorSpec but
+    silently dropped by apply_spec (missing from _OSC_KEYS)."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, unison=6.0, detune=0.4)],
+    )
+    data = apply_spec(init_data, spec)
+    params = data["Oscillator0"]["plainParams"]
+    assert params["kParamUnison"] == 6.0
+    assert type(params["kParamUnison"]) is float  # not a Python int -- see validator.py
+    assert params["kParamDetune"] == 0.4
+
+
+def test_noise_and_sub_slots_use_their_own_engine(init_data):
+    """Regression test: slots 3 (Noise) and 4 (Sub) don't have a WTOsc
+    sub-key in real Serum presets -- writing table_position/warp_amount
+    there would inject a key Serum never produces."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(enabled=True),
+            OscillatorSpec(),
+            OscillatorSpec(),
+            OscillatorSpec(enabled=True, noise_type="Pink"),
+            OscillatorSpec(enabled=True, sub_shape="triangle"),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert "WTOsc3" not in data["Oscillator3"]
+    assert data["Oscillator3"]["NoiseOsc3"]["plainParams"]["kParamNoiseType"] == "Pink"
+
+    assert "WTOsc4" not in data["Oscillator4"]
+    assert data["Oscillator4"]["SubOsc4"]["plainParams"]["kParamShape"] == "kTriangle"
+
+    extracted = extract_spec(data)
+    assert extracted.oscillators[3].noise_type == "Pink"
+    assert extracted.oscillators[4].sub_shape == "triangle"
+
+
+def test_no_int_leaks_into_any_plain_params(init_data):
+    """Broader regression test for the whole class of bug behind the two
+    tests above: every value written into a plainParams dict by apply_spec
+    must be a float (or str/bool-as-float via validate_params), never a
+    raw Python int -- Serum's CBOR parser needs doubles even for
+    conceptually-integer fields."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(enabled=True, unison=6.0, octave=-2.0),
+            OscillatorSpec(),
+            OscillatorSpec(),
+            OscillatorSpec(enabled=True, noise_type="White"),
+            OscillatorSpec(enabled=True, sub_shape="saw"),
+        ],
+        filters=[FilterSpec(enabled=True, cutoff=0.5, resonance=20)],
+        envelopes=[EnvelopeSpec(attack=0.1, decay=1, sustain=1, release=1)],
+        fx_chain=[FxUnitSpec(type="FXDistortion", params={"kParamNumStages": 4})],
+        mod_routes=[ModRouteSpec(source="lfo0", destination="filter0.cutoff", amount=10)],
+    )
+    data = apply_spec(init_data, spec)
+
+    def walk(obj):
+        if isinstance(obj, dict):
+            if isinstance(obj.get("plainParams"), dict):
+                for key, value in obj["plainParams"].items():
+                    assert not (isinstance(value, int) and not isinstance(value, bool)), (
+                        f"{key}={value!r} is a raw int, not a float"
+                    )
+            for value in obj.values():
+                walk(value)
+        elif isinstance(obj, list):
+            for value in obj:
+                walk(value)
+
+    walk(data)

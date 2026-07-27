@@ -24,6 +24,7 @@ def list_parameters() -> str:
         "wavetable_oscillator": _dump(schema.WTOSC_PARAMS),
         "noise_oscillator": _dump(schema.NOISEOSC_PARAMS),
         "sub_oscillator": _dump(schema.SUBOSC_PARAMS),
+        "simple_sub_shapes": schema.SIMPLE_SUB_SHAPES,
         "voice_filter": _dump(schema.VOICE_FILTER_PARAMS),
         "simple_filter_types": schema.SIMPLE_FILTER_TYPES,
         "envelope": _dump(schema.ENV_PARAMS),

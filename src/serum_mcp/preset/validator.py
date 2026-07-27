@@ -3,15 +3,27 @@ before they get written into a preset. Catches out-of-range values and typos
 in ``kParam*`` names early, instead of silently writing a file Serum may
 refuse to load or may clip/misinterpret.
 
-Also normalizes "bool"-kind values in place: real Serum presets store
-`plainParams` booleans as CBOR floats (``1.0``/``0.0``), never a native CBOR
-boolean -- writing a real ``bool`` there produces a structurally different
-CBOR type that Serum's loader does not expect and reliably crashes on
-(confirmed: a hand-built preset with a raw CBOR bool in ``kParamEnable``
-crashed FL Studio ~2 seconds after selecting the preset in the browser, no
-error dialog). :func:`validate_params` is called at every site that writes
-into a preset's raw data, so folding the fix in here means it cannot be
-forgotten at a new call site.
+Also normalizes values to CBOR-safe types in place, for the same reason in
+both cases: Serum's native CBOR parser is strict about wire types even for
+fields that are conceptually simpler than what they're stored as, and
+writing the "obviously correct" Python type produces a structurally
+different (and sometimes crashing) CBOR encoding:
+
+- "bool"-kind values: real Serum presets store `plainParams` booleans as
+  CBOR floats (``1.0``/``0.0``), never a native CBOR boolean -- writing a
+  real ``bool`` there produces a structurally different CBOR type that
+  Serum's loader does not expect and reliably crashes on (confirmed: a
+  hand-built preset with a raw CBOR bool in ``kParamEnable`` crashed FL
+  Studio ~2 seconds after selecting the preset in the browser, no error
+  dialog).
+- "float"-kind values: real Serum presets store even integer-valued fields
+  (e.g. unison voice count) as CBOR doubles, never a CBOR integer -- a
+  Python ``int`` slipping through (e.g. from a strictly-``int``-typed
+  Pydantic field) would hit the same class of bug.
+
+:func:`validate_params` is called at every site that writes into a preset's
+raw data, so folding both fixes in here means neither can be forgotten at a
+new call site.
 """
 
 from __future__ import annotations
@@ -65,3 +77,5 @@ def validate_params(
                 raise ParamValidationError(
                     f"{module_name}.{key}={value} is above the maximum {param_def.max}"
                 )
+            if isinstance(value, int):
+                params[key] = float(value)

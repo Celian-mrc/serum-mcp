@@ -46,11 +46,12 @@ def _sub_plain_params(container: dict[str, Any], key: str) -> Any:
 
 def extract_spec(data: dict[str, Any]) -> PresetSpec:
     """Best-effort reconstruction of a :class:`PresetSpec` from raw preset data."""
+    _reverse_sub_shapes = {v: k for k, v in schema.SIMPLE_SUB_SHAPES.items()}
+
     oscillators = []
     for i in range(5):
         container = data.get(f"Oscillator{i}", {}) or {}
         pp = container.get("plainParams")
-        wt_pp = _sub_plain_params(container, f"WTOsc{i}")
         # kParamEnable's default is slot-dependent: only Osc A (index 0)
         # defaults to on. schema.OSCILLATOR_PARAMS records the common case
         # (off); override for slot 0 explicitly rather than baking a
@@ -58,16 +59,28 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         enabled = pp.get("kParamEnable") if isinstance(pp, dict) else None
         if enabled is None:
             enabled = i == 0
-        oscillators.append(
-            OscillatorSpec(
-                enabled=bool(enabled),
-                octave=_resolve(pp, "kParamOctave", schema.OSCILLATOR_PARAMS),
-                volume=_resolve(pp, "kParamVolume", schema.OSCILLATOR_PARAMS),
-                pan=_resolve(pp, "kParamPan", schema.OSCILLATOR_PARAMS),
-                table_position=_resolve(wt_pp, "kParamTablePos", schema.WTOSC_PARAMS),
-                warp_amount=_resolve(wt_pp, "kParamWarp", schema.WTOSC_PARAMS),
-            )
+
+        kwargs: dict[str, Any] = dict(
+            enabled=bool(enabled),
+            octave=_resolve(pp, "kParamOctave", schema.OSCILLATOR_PARAMS),
+            volume=_resolve(pp, "kParamVolume", schema.OSCILLATOR_PARAMS),
+            pan=_resolve(pp, "kParamPan", schema.OSCILLATOR_PARAMS),
+            unison=_resolve(pp, "kParamUnison", schema.OSCILLATOR_PARAMS),
+            detune=_resolve(pp, "kParamDetune", schema.OSCILLATOR_PARAMS),
         )
+        if i in (0, 1, 2):
+            wt_pp = _sub_plain_params(container, f"WTOsc{i}")
+            kwargs["table_position"] = _resolve(wt_pp, "kParamTablePos", schema.WTOSC_PARAMS)
+            kwargs["warp_amount"] = _resolve(wt_pp, "kParamWarp", schema.WTOSC_PARAMS)
+        elif i == 3:
+            noise_pp = _sub_plain_params(container, f"NoiseOsc{i}")
+            kwargs["noise_type"] = _resolve(noise_pp, "kParamNoiseType", schema.NOISEOSC_PARAMS)
+        elif i == 4:
+            sub_pp = _sub_plain_params(container, f"SubOsc{i}")
+            raw_shape = _resolve(sub_pp, "kParamShape", schema.SUBOSC_PARAMS)
+            kwargs["sub_shape"] = _reverse_sub_shapes.get(raw_shape, raw_shape)
+
+        oscillators.append(OscillatorSpec(**kwargs))
 
     filters = []
     for i in range(2):
