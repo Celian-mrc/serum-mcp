@@ -1,0 +1,29 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Reference clones used for research only, not part of this project
+.refs/
+
+# Claude Code local project state
+.claude/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage

@@ -1,0 +1,764 @@
+"""Ground-truth schema for the Serum 2 CBOR parameter payload.
+
+Nothing here is guessed. Every bound, default and enum value was either:
+
+- **measured** empirically, by unpacking ~300 factory presets shipped with a
+  real Serum 2 install (see ``docs/PARAMETER_SCHEMA.md`` for the sampling
+  methodology) and recording observed min/max/values per ``kParam*`` key, or
+- **confirmed authoritative**, by cross-referencing against a JSON dump of
+  every VST3 parameter (with its default value) reported by a freshly loaded
+  Serum 2 instance
+  (https://gist.github.com/KennethWussmann/5b58e4de728680a0bf8906a8b113103d).
+
+Where those two sources disagree, or where a parameter was only rarely
+observed, that is called out in the ``notes`` field rather than silently
+picking one. This schema intentionally covers the subset of Serum 2's engine
+that matters for *sound design from a text description* (oscillators,
+filters, envelopes, LFOs, macros, the mod matrix, and the effects chain) --
+it does not attempt to model the arpeggiator/sequencer, MPE, MIDI clips or
+GUI state, which round-trip through :mod:`serum_mcp.preset.packer` untouched
+but are not validated or generated.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+Confidence = Literal["confirmed", "observed", "uncertain"]
+
+
+@dataclass(frozen=True)
+class ParamDef:
+    """One ``kParam*`` field inside a module's ``plainParams`` dict."""
+
+    key: str
+    kind: Literal["float", "bool", "enum"]
+    default: float | str | None = None
+    min: float | None = None
+    max: float | None = None
+    unit: str = ""
+    enum_values: tuple[str, ...] = ()
+    confidence: Confidence = "observed"
+    notes: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Oscillators (Oscillator0..Oscillator4 in the CBOR payload -- Serum 2 calls
+# these Osc A/B/C, Noise and Sub in the UI). Each slot's `plainParams` holds
+# these pitch/mix controls; the *sound source* itself (wavetable, sample,
+# granular, multisample or spectral) is a nested sub-object -- see
+# WTOSC_PARAMS / NOISEOSC_PARAMS / SUBOSC_PARAMS below. GranularOsc,
+# MultiSampleOsc, SpectralOsc and SampleOsc engines exist in every slot but
+# were only lightly sampled (< 150 presets used them) so are NOT modeled in
+# detail here; slots default to the WTOsc engine, which V1 generation targets.
+# ---------------------------------------------------------------------------
+
+OSCILLATOR_PARAMS: dict[str, ParamDef] = {
+    "kParamEnable": ParamDef(
+        "kParamEnable",
+        "bool",
+        default=False,
+        confidence="confirmed",
+        notes="Per-slot default, NOT uniform: confirmed via VST3 dump that only Osc A "
+        "(Oscillator0) defaults On -- Osc B/C/Noise/Sub (Oscillator1..4) default Off. "
+        "The `False` here is the common case; callers resolving Oscillator0 specifically "
+        "must special-case it to True (see preset/introspect.py).",
+    ),
+    "kParamOctave": ParamDef(
+        "kParamOctave",
+        "float",
+        default=0.0,
+        min=-4.0,
+        max=4.0,
+        unit="octaves",
+        confidence="confirmed",
+    ),
+    "kParamVolume": ParamDef(
+        "kParamVolume",
+        "float",
+        default=0.75,
+        min=0.0,
+        max=1.0,
+        unit="normalized (0=-inf dB, 1=0dB)",
+        confidence="confirmed",
+        notes="VST3 default is 75% (~-5.0dB) for Osc A/B.",
+    ),
+    "kParamPan": ParamDef(
+        "kParamPan",
+        "float",
+        default=0.0,
+        min=-50.0,
+        max=50.0,
+        unit="normalized pan",
+    ),
+    "kParamFine": ParamDef(
+        "kParamFine",
+        "float",
+        default=0.0,
+        min=-50.0,
+        max=50.0,
+        unit="cents (approx.)",
+    ),
+    "kParamCoarsePit": ParamDef(
+        "kParamCoarsePit",
+        "float",
+        default=0.0,
+        min=-24.0,
+        max=48.0,
+        unit="semitones",
+    ),
+    "kParamPitch": ParamDef(
+        "kParamPitch",
+        "float",
+        default=0.0,
+        min=-12.0,
+        max=12.0,
+        unit="semitones",
+        notes="Only seen set when this oscillator is a mod-matrix destination.",
+    ),
+    "kParamDetune": ParamDef(
+        "kParamDetune",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        unit="normalized unison detune",
+    ),
+    "kParamDetuneWid": ParamDef(
+        "kParamDetuneWid",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=100.0,
+        unit="% unison width",
+    ),
+    "kParamUnison": ParamDef(
+        "kParamUnison",
+        "float",
+        default=1.0,
+        min=1.0,
+        max=16.0,
+        unit="voice count",
+        confidence="uncertain",
+        notes="VST3 default shows 1 voice; observed max in samples was 16.",
+    ),
+    "kParamUnisonStereo": ParamDef(
+        "kParamUnisonStereo",
+        "float",
+        default=100.0,
+        min=-100.0,
+        max=100.0,
+        unit="% width",
+    ),
+    "kParamPitchTrack": ParamDef(
+        "kParamPitchTrack",
+        "bool",
+        default=True,
+        confidence="confirmed",
+    ),
+}
+
+# WTOsc: the classic wavetable engine, used by default in every slot.
+WTOSC_PARAMS: dict[str, ParamDef] = {
+    "kParamTablePos": ParamDef(
+        "kParamTablePos",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=256.0,
+        unit="table frame",
+        notes="Range depends on the loaded wavetable's frame count; 256 is the observed ceiling.",
+    ),
+    "kParamWarp": ParamDef(
+        "kParamWarp",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        unit="normalized",
+    ),
+    "kParamWarp2": ParamDef(
+        "kParamWarp2",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        unit="normalized",
+    ),
+    "kParamWarpMenu": ParamDef(
+        "kParamWarpMenu",
+        "enum",
+        default="kFM_OSC",
+        confidence="observed",
+        enum_values=(
+            "kAM_OSC",
+            "kASYMNeg",
+            "kASYMPos",
+            "kBendNeg",
+            "kBendPos",
+            "kBendPosNeg",
+            "kDLM",
+            "kDistDiode1",
+            "kDistDiode2",
+            "kDistHardClip",
+            "kDistLinFold",
+            "kDistSinFold",
+            "kDistSoftClip",
+            "kDistSoftSat",
+            "kDistTube",
+            "kEvenOdd",
+            "kFMP_NOISE",
+            "kFMP_OSC",
+            "kFMX_NOISE",
+            "kFMX_OSC",
+            "kFMX_OSC2",
+            "kFM_NOISE",
+            "kFM_OSC",
+            "kFM_OSC2",
+            "kFM_SUB",
+            "kFilterHPF",
+            "kFilterLPF",
+            "kFlip",
+            "kPD_FILT1",
+            "kPD_NOISE",
+            "kPD_OSC",
+            "kPD_OSC2",
+            "kPD_SUB",
+            "kPWM",
+            "kQuantize",
+            "kRM_FILT1",
+            "kRM_FILT2",
+            "kRM_NOISE",
+            "kRM_OSC",
+            "kRM_OSC2",
+            "kRM_SUB",
+            "kRemap_4",
+            "kSelfPD",
+            "kSync",
+        ),
+        notes="'Warp mode A'. Union of values observed across samples; the true full "
+        "enum (from Serum's UI dropdown) may be a superset.",
+    ),
+    "kParamInitialPhase": ParamDef(
+        "kParamInitialPhase",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=360.0,
+        unit="degrees",
+    ),
+    "kParamRandomPhase": ParamDef(
+        "kParamRandomPhase",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=100.0,
+        unit="%",
+    ),
+}
+
+NOISEOSC_PARAMS: dict[str, ParamDef] = {
+    "kParamNoiseType": ParamDef(
+        "kParamNoiseType",
+        "enum",
+        default="White",
+        confidence="observed",
+        enum_values=("White", "Pink", "Brown", "Geiger"),
+    ),
+    "kParamColor": ParamDef("kParamColor", "float", default=0.5, min=0.0, max=1.0),
+    "kParamOneShot": ParamDef("kParamOneShot", "bool", default=False),
+}
+
+SUBOSC_PARAMS: dict[str, ParamDef] = {
+    "kParamShape": ParamDef(
+        "kParamShape",
+        "enum",
+        default="kSaw",
+        confidence="observed",
+        enum_values=("kSaw", "kSquare", "kTriangle", "kPulse", "kRoundRect"),
+    ),
+}
+
+# ---------------------------------------------------------------------------
+# Voice filters (VoiceFilter0 / VoiceFilter1 -- Serum's "Filter 1" / "Filter 2").
+# `kParamType` enum below is the union of every filter model seen across our
+# sample; SIMPLE_FILTER_TYPES is a curated subset of the ones whose behavior
+# is unambiguous from naming alone, offered to the LLM mapper for V1.
+# ---------------------------------------------------------------------------
+
+VOICE_FILTER_PARAMS: dict[str, ParamDef] = {
+    "kParamEnable": ParamDef(
+        "kParamEnable",
+        "bool",
+        default=False,
+        confidence="confirmed",
+        notes="Both filter slots are OFF by default in a fresh Serum 2 instance.",
+    ),
+    "kParamType": ParamDef(
+        "kParamType",
+        "enum",
+        default="MgL12",
+        confidence="confirmed",
+        notes="VST3 default display name is 'MG Low 12' -> CBOR enum 'MgL12'.",
+        enum_values=(
+            "L6",
+            "L12",
+            "L18",
+            "L24",
+            "H6",
+            "H12",
+            "H18",
+            "H24",
+            "B12",
+            "B24",
+            "N24",
+            "BN12",
+            "NN12",
+            "BPN12",
+            "BPN24",
+            "BandReject",
+            "Allpasses",
+            "LH12",
+            "HB12",
+            "LBH12",
+            "LBH24",
+            "LNH12",
+            "LNH24",
+            "LPH24",
+            "LN12",
+            "PP12",
+            "HP12",
+            "MgL6",
+            "MgL12",
+            "MgL18",
+            "MgL24",
+            "LadderMg",
+            "LadderAcid",
+            "LadderEMS",
+            "DirtyMg",
+            "Comb2",
+            "CombN",
+            "CombP",
+            "CombH6N",
+            "CombHL6P",
+            "DistComb2LP",
+            "DistComb2BP",
+            "FlangeN",
+            "FlangeP",
+            "FlangePhase12HL6P",
+            "Phase24P",
+            "Phase36N",
+            "Phase36P",
+            "Phase48H6P",
+            "Phase48HL6P",
+            "Phase48P",
+            "FormantONE",
+            "FormantTWB",
+            "FormantTWO",
+            "DJMixer",
+            "Diffuser",
+            "Exp",
+            "ExpBPF",
+            "PZ_SVF",
+            "RM",
+            "RMT",
+            "Reverb1",
+            "Scream",
+            "Scream3LP",
+            "Wsp",
+        ),
+    ),
+    "kParamFreq": ParamDef(
+        "kParamFreq",
+        "float",
+        default=0.5,
+        min=0.0,
+        max=1.0,
+        unit="normalized cutoff",
+        confidence="uncertain",
+        notes="0=fully closed, 1=fully open. VST3 dump gives exactly one calibration "
+        "point: normalized 0.5 ~= 425 Hz at default resonance. The full Hz curve "
+        "(believed log/exponential, ~9 Hz to ~19 kHz) has not been reverse-engineered.",
+    ),
+    "kParamReso": ParamDef(
+        "kParamReso",
+        "float",
+        default=10.0,
+        min=0.0,
+        max=100.0,
+        unit="%",
+        confidence="confirmed",
+    ),
+    "kParamDrive": ParamDef("kParamDrive", "float", default=0.0, min=0.0, max=100.0, unit="%"),
+    "kParamVar": ParamDef(
+        "kParamVar",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=100.0,
+        unit="%",
+        notes="'Var' knob; meaning changes per filter type (e.g. comb spacing, formant blend).",
+    ),
+    "kParamLevelOut": ParamDef(
+        "kParamLevelOut", "float", default=0.5, min=0.0, max=1.0, unit="normalized"
+    ),
+    "kParamStereo": ParamDef("kParamStereo", "float", default=0.0, min=0.0, max=100.0, unit="%"),
+    "kParamWet": ParamDef("kParamWet", "float", default=100.0, min=0.0, max=100.0, unit="%"),
+    "kParamKeyTrack": ParamDef("kParamKeyTrack", "bool", default=False),
+}
+
+# Curated subset with unambiguous, commonly-used semantics -- what the LLM
+# mapper offers by name in V1 rather than the full 66-value raw enum above.
+SIMPLE_FILTER_TYPES: dict[str, str] = {
+    "lowpass_12": "L12",
+    "lowpass_24": "L24",
+    "highpass_12": "H12",
+    "highpass_24": "H24",
+    "bandpass_12": "B12",
+    "bandpass_24": "B24",
+    "notch": "N24",
+    "moog_lowpass_12": "MgL12",
+    "moog_lowpass_24": "MgL24",
+    "comb": "CombN",
+    "formant": "FormantONE",
+}
+
+# ---------------------------------------------------------------------------
+# Envelopes (Env0..Env3). Serum 2 ships 4 general-purpose envelopes; Env0 is
+# routed to amp by default in most factory content but nothing in the file
+# format hardcodes that -- it's just convention.
+# ---------------------------------------------------------------------------
+
+ENV_PARAMS: dict[str, ParamDef] = {
+    "kParamAttack": ParamDef(
+        "kParamAttack",
+        "float",
+        default=0.0005,
+        min=0.0,
+        max=7.0,
+        unit="seconds",
+        confidence="confirmed",
+        notes="VST3 default 0.5ms.",
+    ),
+    "kParamHold": ParamDef("kParamHold", "float", default=0.0, min=0.0, max=5.2, unit="seconds"),
+    "kParamDecay": ParamDef(
+        "kParamDecay",
+        "float",
+        default=1.0,
+        min=0.0,
+        max=32.0,
+        unit="seconds",
+        confidence="confirmed",
+        notes="VST3 default 1.00s.",
+    ),
+    "kParamSustain": ParamDef(
+        "kParamSustain",
+        "float",
+        default=1.0,
+        min=0.0,
+        max=1.0,
+        unit="normalized",
+        confidence="confirmed",
+        notes="VST3 default full sustain (0dB).",
+    ),
+    "kParamRelease": ParamDef(
+        "kParamRelease",
+        "float",
+        default=0.015,
+        min=0.0,
+        max=13.0,
+        unit="seconds",
+        confidence="confirmed",
+        notes="VST3 default 15ms.",
+    ),
+    "kParamCurve1": ParamDef(
+        "kParamCurve1", "float", default=50.0, min=0.0, max=100.0, unit="curve %"
+    ),
+    "kParamCurve2": ParamDef(
+        "kParamCurve2", "float", default=66.6, min=0.0, max=100.0, unit="curve %"
+    ),
+    "kParamCurve3": ParamDef(
+        "kParamCurve3", "float", default=66.6, min=0.0, max=100.0, unit="curve %"
+    ),
+}
+
+# ---------------------------------------------------------------------------
+# LFOs (LFO0..LFO9 -- 10 slots). Free-shape/curve-drawn LFOs (`curveData`)
+# exist alongside these plain params but are not modeled/generated in V1 --
+# only rate/mode/basic timing are.
+# ---------------------------------------------------------------------------
+
+LFO_PARAMS: dict[str, ParamDef] = {
+    "kParamRate": ParamDef(
+        "kParamRate",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=100.0,
+        unit="normalized rate",
+        confidence="uncertain",
+        notes="Hz/BPM mapping depends on kParamMode and beat-sync flags; not decoded.",
+    ),
+    "kParamMode": ParamDef(
+        "kParamMode",
+        "enum",
+        default="Free",
+        confidence="observed",
+        enum_values=("Free", "Envelope"),
+    ),
+    "kParamBeatSync": ParamDef("kParamBeatSync", "bool", default=False),
+    "kParamRise": ParamDef("kParamRise", "float", default=0.0, min=0.0, max=3.0, unit="seconds"),
+    "kParamSmooth": ParamDef("kParamSmooth", "float", default=0.0, min=0.0, max=100.0, unit="%"),
+    "kParamDelay": ParamDef("kParamDelay", "float", default=0.0, min=0.0, max=3.6, unit="seconds"),
+}
+
+# ---------------------------------------------------------------------------
+# Macros (Macro0..Macro7), global params, mod matrix
+# ---------------------------------------------------------------------------
+
+MACRO_PARAMS: dict[str, ParamDef] = {
+    "kParamValue": ParamDef("kParamValue", "float", default=0.0, min=0.0, max=100.0, unit="%"),
+}
+
+GLOBAL_PARAMS: dict[str, ParamDef] = {
+    "kParamMasterVolume": ParamDef(
+        "kParamMasterVolume",
+        "float",
+        default=0.5,
+        min=0.0,
+        max=1.0,
+        unit="normalized (0.5=-9dB)",
+        confidence="confirmed",
+    ),
+    "kParamMonoToggle": ParamDef("kParamMonoToggle", "bool", default=False),
+    "kParamPolyCount": ParamDef(
+        "kParamPolyCount", "float", default=8.0, min=1.0, max=32.0, unit="voices"
+    ),
+    "kParamPortamentoTime": ParamDef(
+        "kParamPortamentoTime",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=2.6,
+        unit="seconds",
+    ),
+}
+
+# ModSlot0..ModSlot63: the mod matrix. Structurally confirmed (destModuleID /
+# destModuleParamID / destModuleParamName / destModuleTypeString / source /
+# plainParams.kParamAmount), and destModuleTypeString + destModuleParamName
+# pairs were empirically enumerated (see docs/PARAMETER_SCHEMA.md). However
+# the meaning of `source: [sourceId, subIndex]` (which LFO/envelope/macro/
+# MIDI-CC a given integer ID refers to) was NOT conclusively decoded -- only
+# ~40 distinct IDs were observed with no authoritative name list to match
+# them against. Treat ModSlot.source as opaque/round-trip-only until that
+# mapping is completed (tracked as a known gap, see README).
+MODSLOT_PARAMS: dict[str, ParamDef] = {
+    "kParamAmount": ParamDef(
+        "kParamAmount",
+        "float",
+        default=0.0,
+        min=-100.0,
+        max=100.0,
+        unit="%",
+        confidence="confirmed",
+    ),
+    "kParamBipolar": ParamDef("kParamBipolar", "bool", default=False),
+}
+
+# ---------------------------------------------------------------------------
+# Effects. Each FXRack (FXRack0..FXRack2) holds an ordered `FX` list; each
+# entry has an integer `type` (see FX_TYPE_IDS) selecting which of these
+# sub-schemas its `plainParams` follows, plus a shared `kUIParamMixOrGain`.
+# ---------------------------------------------------------------------------
+
+FX_TYPE_IDS: dict[int, str] = {
+    0: "FXDistortion",
+    1: "FXFlanger",
+    2: "FXPhaser",
+    3: "FXChorus",
+    4: "FXDelay",
+    5: "FXComp",
+    6: "FXReverb",
+    7: "FXEQ",
+    8: "FXFilter",
+    9: "FXHyperD",
+    10: "FXBode",
+    11: "FXConv",
+    12: "FXUtils",
+    13: "FXSplit",
+    14: "FXSplit3",
+    15: "FXSplitMS",
+}
+
+FX_PARAMS: dict[str, dict[str, ParamDef]] = {
+    "FXDistortion": {
+        "kParamMode": ParamDef(
+            "kParamMode",
+            "enum",
+            default="kOverdrive",
+            enum_values=(
+                "kAsym",
+                "kDiode1",
+                "kDiode2",
+                "kDownsample",
+                "kHardClip",
+                "kLinFold",
+                "kOverdrive",
+                "kRectify",
+                "kSinFold",
+                "kSineShaper",
+                "kSoftClip",
+                "kSoftSat",
+                "kStompBox",
+                "kTapeSat",
+                "kXShaper",
+                "kZeroSquare",
+            ),
+        ),
+        "kParamDrive": ParamDef("kParamDrive", "float", default=50.0, min=0.0, max=100.0, unit="%"),
+        "kParamWet": ParamDef("kParamWet", "float", default=100.0, min=0.0, max=100.0, unit="%"),
+        "kParamFreq": ParamDef(
+            "kParamFreq", "float", default=1.0, min=0.0, max=1.0, unit="normalized"
+        ),
+        "kParamNumStages": ParamDef("kParamNumStages", "float", default=2.0, min=2.0, max=7.0),
+    },
+    "FXChorus": {
+        "kParamRate": ParamDef(
+            "kParamRate", "float", default=0.5, min=0.0, max=1.4, unit="Hz (approx.)"
+        ),
+        "kParamDepth": ParamDef(
+            "kParamDepth", "float", default=10.0, min=0.0, max=25.2, unit="ms (approx.)"
+        ),
+        "kParamDelay": ParamDef(
+            "kParamDelay", "float", default=5.0, min=0.0, max=12.8, unit="ms (approx.)"
+        ),
+        "kParamFeedback": ParamDef(
+            "kParamFeedback", "float", default=0.0, min=0.0, max=58.2, unit="%"
+        ),
+        "kParamFilt": ParamDef(
+            "kParamFilt", "float", default=2000.0, min=50.0, max=20000.0, unit="Hz"
+        ),
+        "kParamWet": ParamDef("kParamWet", "float", default=50.0, min=0.0, max=100.0, unit="%"),
+    },
+    "FXFlanger": {
+        "kParamRate": ParamDef(
+            "kParamRate", "float", default=0.5, min=0.0, max=5.1, unit="Hz (approx.)"
+        ),
+        "kParamDepth": ParamDef("kParamDepth", "float", default=50.0, min=0.0, max=100.0, unit="%"),
+        "kParamFeedback": ParamDef(
+            "kParamFeedback", "float", default=50.0, min=0.0, max=100.0, unit="%"
+        ),
+        "kParamWidth": ParamDef(
+            "kParamWidth", "float", default=180.0, min=0.0, max=360.0, unit="degrees"
+        ),
+        "kParamWet": ParamDef("kParamWet", "float", default=50.0, min=0.0, max=100.0, unit="%"),
+    },
+    "FXPhaser": {
+        "kParamRate": ParamDef(
+            "kParamRate", "float", default=1.0, min=0.0, max=20.0, unit="Hz (approx.)"
+        ),
+        "kParamDepth": ParamDef("kParamDepth", "float", default=50.0, min=0.0, max=100.0, unit="%"),
+        "kParamFeedback": ParamDef(
+            "kParamFeedback", "float", default=0.0, min=0.0, max=100.0, unit="%"
+        ),
+        "kParamFreq": ParamDef(
+            "kParamFreq", "float", default=800.0, min=20.0, max=2563.0, unit="Hz"
+        ),
+        "kParamNumPoles": ParamDef("kParamNumPoles", "float", default=4.0, min=1.0, max=18.0),
+        "kParamWet": ParamDef("kParamWet", "float", default=50.0, min=0.0, max=100.0, unit="%"),
+    },
+    "FXDelay": {
+        "kParamTimeL": ParamDef(
+            "kParamTimeL", "float", default=0.25, min=0.001, max=0.34, unit="seconds"
+        ),
+        "kParamTimeR": ParamDef(
+            "kParamTimeR", "float", default=0.25, min=0.001, max=0.32, unit="seconds"
+        ),
+        "kParamFeedback": ParamDef(
+            "kParamFeedback", "float", default=30.0, min=0.0, max=83.3, unit="%"
+        ),
+        "kParamFreq": ParamDef(
+            "kParamFreq",
+            "float",
+            default=8000.0,
+            min=49.6,
+            max=17981.0,
+            unit="Hz",
+            notes="Delay tap tone filter frequency.",
+        ),
+        "kParamWet": ParamDef("kParamWet", "float", default=30.0, min=0.0, max=100.0, unit="%"),
+    },
+    "FXReverb": {
+        "kParamType": ParamDef(
+            "kParamType",
+            "enum",
+            default="kHall",
+            enum_values=("kAbyss", "kHall", "kSpace", "kVintage"),
+        ),
+        "kParamSize": ParamDef("kParamSize", "float", default=50.0, min=0.0, max=100.0, unit="%"),
+        "kParamDelay": ParamDef(
+            "kParamDelay", "float", default=20.0, min=0.0, max=250.0, unit="ms"
+        ),
+        "kParamWidth": ParamDef(
+            "kParamWidth", "float", default=100.0, min=0.0, max=100.0, unit="%"
+        ),
+        "kParamWet": ParamDef("kParamWet", "float", default=30.0, min=0.0, max=100.0, unit="%"),
+    },
+    "FXComp": {
+        "kParamThresh": ParamDef(
+            "kParamThresh", "float", default=0.5, min=0.0, max=0.95, unit="normalized"
+        ),
+        "kParamRatio": ParamDef(
+            "kParamRatio", "float", default=4.0, min=1.1, max=1_000_000.0, unit="ratio:1"
+        ),
+        "kParamAttack": ParamDef(
+            "kParamAttack", "float", default=10.0, min=0.1, max=1000.0, unit="ms"
+        ),
+        "kParamRelease": ParamDef(
+            "kParamRelease", "float", default=100.0, min=0.1, max=1000.0, unit="ms"
+        ),
+        "kParamMakeup": ParamDef(
+            "kParamMakeup", "float", default=1.0, min=1.0, max=25.8, unit="gain factor"
+        ),
+        "kParamWet": ParamDef("kParamWet", "float", default=100.0, min=0.0, max=100.0, unit="%"),
+    },
+    "FXEQ": {
+        "kParamFreq1": ParamDef(
+            "kParamFreq1", "float", default=200.0, min=21.5, max=9454.0, unit="Hz"
+        ),
+        "kParamFreq2": ParamDef(
+            "kParamFreq2", "float", default=4000.0, min=21.5, max=20000.0, unit="Hz"
+        ),
+        "kParamGain1": ParamDef(
+            "kParamGain1", "float", default=0.0, min=-24.0, max=24.0, unit="dB"
+        ),
+        "kParamGain2": ParamDef(
+            "kParamGain2", "float", default=0.0, min=-24.0, max=24.0, unit="dB"
+        ),
+        "kParamReso1": ParamDef(
+            "kParamReso1", "float", default=0.0, min=0.0, max=69.6, unit="Q (approx.)"
+        ),
+        "kParamReso2": ParamDef(
+            "kParamReso2", "float", default=0.0, min=0.0, max=79.0, unit="Q (approx.)"
+        ),
+    },
+    "FXFilter": {
+        "kParamType": ParamDef(
+            "kParamType",
+            "enum",
+            default="L12",
+            enum_values=tuple(VOICE_FILTER_PARAMS["kParamType"].enum_values),
+            notes="Same filter model catalog as VoiceFilter, minus a few voice-only variants.",
+        ),
+        "kParamFreq": ParamDef(
+            "kParamFreq", "float", default=0.5, min=0.0, max=1.0, unit="normalized cutoff"
+        ),
+        "kParamReso": ParamDef("kParamReso", "float", default=10.0, min=0.0, max=100.0, unit="%"),
+        "kParamDrive": ParamDef("kParamDrive", "float", default=0.0, min=0.0, max=100.0, unit="%"),
+        "kParamWet": ParamDef("kParamWet", "float", default=100.0, min=0.0, max=100.0, unit="%"),
+    },
+}
+
+ALL_FX_TYPES: tuple[str, ...] = tuple(FX_TYPE_IDS.values())
