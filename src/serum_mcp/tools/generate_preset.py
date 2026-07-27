@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from serum_mcp import config
-from serum_mcp.generation.llm_mapper import generate_spec
+from serum_mcp.generation.spec import PresetSpec
 from serum_mcp.preset.mapping import apply_spec
 from serum_mcp.preset.packer import SerumPreset, pack_file, unpack_file
 
@@ -19,13 +19,16 @@ def _slugify(name: str) -> str:
     return slug or "Untitled"
 
 
-def generate_preset(description: str) -> str:
-    """Generate a new Serum 2 preset from a natural-language description and
-    write it to the user's configured Serum presets folder.
+def generate_preset(spec: PresetSpec) -> str:
+    """Write a new Serum 2 preset, built from ``spec``, to the user's
+    configured Serum presets folder.
+
+    ``spec`` is merged onto ``fixtures/init_preset.SerumPreset``, so any
+    section left empty (e.g. no ``filters``) keeps that module's default,
+    inert state.
 
     Returns the absolute path of the written ``.SerumPreset`` file.
     """
-    spec = generate_spec(description)
     base = unpack_file(INIT_PRESET_PATH)
     data = apply_spec(base.data, spec)
 

@@ -31,6 +31,15 @@ def list_parameters() -> str:
         "macro": _dump(schema.MACRO_PARAMS),
         "global": _dump(schema.GLOBAL_PARAMS),
         "mod_matrix_slot": _dump(schema.MODSLOT_PARAMS),
+        "mod_source_ids": schema.MOD_SOURCE_IDS,
+        "mod_dest_targets": {
+            name: {
+                "dest_type": dest.dest_type,
+                "dest_id": dest.dest_id,
+                "param_name": dest.param_name,
+            }
+            for name, dest in schema.MOD_DEST_TARGETS.items()
+        },
         "fx_type_ids": schema.FX_TYPE_IDS,
         "fx_params": {name: _dump(defs) for name, defs in schema.FX_PARAMS.items()},
     }

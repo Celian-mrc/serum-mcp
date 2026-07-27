@@ -8,7 +8,8 @@
 
 ```
 You:    generate a dark, evolving pad with a slow chorus
-Claude: [calls generate_preset("a dark, evolving pad with a slow chorus")]
+Claude: [builds a PresetSpec from your description, calls
+         generate_preset(spec)]
         Wrote ~/Documents/Xfer/Serum 2 Presets/Presets/User/PD - Dark Evolving Chorus.SerumPreset
 
         Osc A: ON  octave=-1  volume=0.75  table_pos=42.0
@@ -60,17 +61,14 @@ kept in mind architecturally but not started.
 
 ## Install
 
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). No API key of
+any kind is required — see [How it works](#how-it-works) for why.
 
 ```bash
 git clone https://github.com/Celian-mrc/serum-mcp
 cd serum-mcp
 uv sync
 ```
-
-You'll need an [Anthropic API key](https://console.anthropic.com/) for the
-LLM-backed generation/editing tools (`list_parameters` and `describe_preset`
-work without one).
 
 ### Configure your Serum presets folder
 
@@ -80,7 +78,6 @@ subfolder. Then set:
 
 ```bash
 export SERUM_PRESETS_PATH="/path/to/Serum 2 Presets/Presets/User"
-export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
 If unset, `serum-mcp` falls back to a couple of known default install
@@ -102,8 +99,7 @@ Or add manually to `.claude/settings.json` / `~/.claude.json`:
       "command": "uv",
       "args": ["--directory", "/path/to/serum-mcp", "run", "serum-mcp"],
       "env": {
-        "SERUM_PRESETS_PATH": "/path/to/Serum 2 Presets/Presets/User",
-        "ANTHROPIC_API_KEY": "sk-ant-..."
+        "SERUM_PRESETS_PATH": "/path/to/Serum 2 Presets/Presets/User"
       }
     }
   }
@@ -122,8 +118,7 @@ Same shape, in Claude Desktop's `claude_desktop_config.json`
       "command": "uv",
       "args": ["--directory", "/path/to/serum-mcp", "run", "serum-mcp"],
       "env": {
-        "SERUM_PRESETS_PATH": "/path/to/Serum 2 Presets/Presets/User",
-        "ANTHROPIC_API_KEY": "sk-ant-..."
+        "SERUM_PRESETS_PATH": "/path/to/Serum 2 Presets/Presets/User"
       }
     }
   }
@@ -134,10 +129,15 @@ Same shape, in Claude Desktop's `claude_desktop_config.json`
 
 | Tool | Description |
 |---|---|
-| `generate_preset(description)` | Generate a new preset from a text description; writes it to your Serum presets folder. |
-| `edit_preset(preset_path, instruction)` | Apply a natural-language edit to an existing preset, in place. |
+| `generate_preset(spec)` | Build a new preset from a `PresetSpec` and write it to your Serum presets folder. |
+| `edit_preset(preset_path, spec)` | Apply a partial `PresetSpec` update to an existing preset, in place. |
 | `list_parameters()` | Full documented parameter schema (names, ranges, units, enum values, confidence) as JSON. |
 | `describe_preset(preset_path)` | Human-readable summary of a preset's current sound-shaping parameters. |
+
+You don't write `PresetSpec` JSON by hand — the calling model (Claude Code,
+Claude Desktop, ...) builds it from your natural-language request using the
+tool descriptions and `list_parameters()` as a guide, the same way it would
+construct arguments for any other MCP tool.
 
 ## How it works
 
@@ -145,17 +145,17 @@ Same shape, in Claude Desktop's `claude_desktop_config.json`
 Prompt (natural language)
         │
         ▼
-generate_preset / edit_preset  (MCP tool)
+The calling model (Claude Code / Claude Desktop) translates the request
+into a PresetSpec (generation/spec.py) itself -- no separate LLM call.
+This server has no model of its own to call.
         │
         ▼
-generation/llm_mapper.py  ── calls the Claude API with the parameter schema
-        │                    in context, constrained via tool-use to emit a
-        │                    PresetSpec (generation/spec.py) — friendly field
-        │                    names, ranges that mirror preset/schema.py exactly
+generate_preset(spec) / edit_preset(path, spec)   (MCP tool)
+        │
         ▼
 preset/mapping.py  ── merges the validated PresetSpec onto a base preset
         │              (fixtures/init_preset.SerumPreset for generation, the
-        │              existing file's own state for edits), re-validating
+        │              existing file's own state for edits), validating
         │              every value against preset/schema.py's ground-truth
         │              bounds before it touches anything
         ▼
@@ -165,12 +165,18 @@ preset/packer.py  ── encodes the result back into the real Serum 2 container
 Written to $SERUM_PRESETS_PATH as a real .SerumPreset file
 ```
 
-The LLM never emits raw binary or touches the file format directly — it
-only fills in the semantic `PresetSpec`, which is schema-validated twice
-(once by Pydantic on the way out of the LLM call, once against the raw
-parameter bounds on the way into the file). Everything in an existing
-preset that isn't part of this schema (arpeggiator, MIDI clips, GUI state,
-mod matrix routing, ...) round-trips through edits completely untouched.
+Deliberately **no LLM call happens inside this server.** An earlier design
+had `generate_preset` call the Claude API internally to turn free text into
+a `PresetSpec` — but every MCP tool call is already made *by* an LLM-driven
+client, so that second call was pure redundancy: an extra, separately-billed
+API request on top of whatever you already pay for Claude Code/Desktop, to
+do reasoning the calling model could do itself for free (from your
+perspective) as part of the same turn. `PresetSpec` is schema-validated
+twice regardless (once by Pydantic when the model calls the tool, once
+against the raw parameter bounds on the way into the file), so nothing about
+correctness was lost — only cost. Everything in an existing preset that
+isn't part of this schema (arpeggiator, MIDI clips, GUI state, unresolved
+mod matrix sources, ...) round-trips through edits completely untouched.
 
 Full parameter documentation, including exactly how each bound was verified
 (or wasn't): [`docs/PARAMETER_SCHEMA.md`](docs/PARAMETER_SCHEMA.md).
@@ -199,10 +205,10 @@ one-shot generation), and honesty about format coverage (see
 - **This can and likely will break** on future Serum updates that change the
   file format or parameter set. If it breaks for you, please open an issue —
   ideally with a preset exported from the new version.
-- Generated presets are only as good as the underlying LLM's sound-design
+- Generated presets are only as good as the calling model's sound-design
   judgment and this project's parameter coverage (currently: oscillators,
-  filters, envelopes, macros, and 9 of 16 effect types — see
-  [Known gaps](docs/PARAMETER_SCHEMA.md#5-known-gaps-and-open-questions)).
+  filters, envelopes, macros, LFO/macro mod routes, and 9 of 16 effect types
+  — see [Known gaps](docs/PARAMETER_SCHEMA.md#5-known-gaps-and-open-questions)).
 
 ## Roadmap
 

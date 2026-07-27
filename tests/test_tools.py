@@ -1,6 +1,7 @@
-"""Tests for the MCP tool functions, with the LLM call mocked out (these
-never hit the network / require an API key -- only :mod:`generation.llm_mapper`
-does that, and it's exercised separately/manually).
+"""Tests for the MCP tool functions. There's no LLM call anywhere in this
+package to mock out -- generate_preset/edit_preset take a structured
+PresetSpec directly (built by the calling model, e.g. Claude Code itself),
+so these tests just exercise the deterministic validate/merge/pack path.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from serum_mcp.tools import generate_preset as generate_preset_mod
 from serum_mcp.tools.list_parameters import list_parameters
 
 
-def _fake_bass_spec(**overrides) -> PresetSpec:
+def _bass_spec(**overrides) -> PresetSpec:
     defaults = dict(
         name="BA - Simple LP Bass",
         description="Simple bass with a warm low-pass filtered oscillator.",
@@ -36,10 +37,8 @@ def presets_dir(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_generate_preset_writes_valid_file(presets_dir, monkeypatch):
-    monkeypatch.setattr(generate_preset_mod, "generate_spec", lambda description: _fake_bass_spec())
-
-    path = generate_preset_mod.generate_preset("a simple bass with a low-pass filter")
+def test_generate_preset_writes_valid_file(presets_dir):
+    path = generate_preset_mod.generate_preset(_bass_spec())
 
     written = Path(path)
     assert written.exists()
@@ -49,23 +48,23 @@ def test_generate_preset_writes_valid_file(presets_dir, monkeypatch):
     assert preset.data["VoiceFilter0"]["plainParams"]["kParamType"] == "L24"
 
 
-def test_edit_preset_updates_in_place(presets_dir, monkeypatch):
-    monkeypatch.setattr(generate_preset_mod, "generate_spec", lambda description: _fake_bass_spec())
-    path = generate_preset_mod.generate_preset("a simple bass")
+def test_edit_preset_updates_in_place(presets_dir):
+    path = generate_preset_mod.generate_preset(_bass_spec())
 
-    def fake_edit_spec(instruction, *, current_spec=None, client=None):
-        updated = current_spec.model_copy(deep=True)
-        updated.filters[0].cutoff = 0.9
-        updated.name = "BA - Simple LP Bass (brighter)"
-        return updated
-
-    monkeypatch.setattr(edit_preset_mod, "generate_spec", fake_edit_spec)
-    edited_path = edit_preset_mod.edit_preset(path, "make it brighter")
+    # A partial spec: only the filter changes, everything else is left alone.
+    edit_spec = PresetSpec(
+        name="BA - Simple LP Bass (brighter)",
+        description="",
+        filters=[FilterSpec(enabled=True, type="lowpass_24", cutoff=0.9, resonance=15)],
+    )
+    edited_path = edit_preset_mod.edit_preset(path, edit_spec)
 
     assert edited_path == path
     preset = unpack_file(edited_path)
     assert preset.data["VoiceFilter0"]["plainParams"]["kParamFreq"] == 0.9
     assert preset.metadata["presetName"] == "BA - Simple LP Bass (brighter)"
+    # Untouched by the edit spec (empty oscillators list):
+    assert preset.data["Oscillator0"]["plainParams"]["kParamOctave"] == -1.0
 
 
 def test_describe_preset_mentions_key_sections():
@@ -83,4 +82,6 @@ def test_list_parameters_is_valid_json_with_expected_sections():
     assert "oscillator" in parsed
     assert "voice_filter" in parsed
     assert "fx_params" in parsed
+    assert "mod_source_ids" in parsed
+    assert "mod_dest_targets" in parsed
     assert "kParamFreq" in parsed["voice_filter"]

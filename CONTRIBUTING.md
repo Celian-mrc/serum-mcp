@@ -21,9 +21,11 @@ expand or correct our understanding of it are just as valuable as code.
   (`serum_mcp.preset.packer`) is Serum-2-shaped but not Serum-2-specific;
   a differently-schemad sibling package for another Xfer product is a
   reasonable extension.
-- **Improve generation quality.** Better prompt engineering in
-  `generation/llm_mapper.py`, more example-driven few-shot context, or a
-  richer semantic vocabulary in `generation/spec.py`.
+- **Improve generation quality.** This lives in `server.py`'s tool
+  instructions (the guidance the calling model reads before building a
+  `PresetSpec`) and in `generation/spec.py`'s semantic vocabulary — there's
+  no prompt-engineering-against-our-own-LLM-call to do, since this server
+  doesn't make one (see the README's "How it works").
 - **Bug reports.** Especially "this loads in Serum but sounds wrong" or
   "Serum rejected this file" — both are regressions in our understanding of
   the format, not just code bugs.
@@ -58,15 +60,14 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-No Serum installation or DAW is required to run the test suite — it works
-against the committed `fixtures/init_preset.SerumPreset` and synthetic
-payloads. If you do have Serum 2 installed and want to validate real
-presets, `serum_mcp.preset.packer.unpack_file` / `pack_file` work on any
+No Serum installation, DAW, or API key of any kind is required to run the
+test suite — there is no LLM call anywhere in this package (see the
+README's "How it works" for why: sound-design reasoning happens in the
+calling MCP client, not in this server). Tests work against the committed
+`fixtures/init_preset.SerumPreset` and synthetic payloads. If you do have
+Serum 2 installed and want to validate real presets,
+`serum_mcp.preset.packer.unpack_file` / `pack_file` work on any
 `.SerumPreset` on disk.
-
-Note: `generation/llm_mapper.py` calls the Anthropic API and requires
-`ANTHROPIC_API_KEY` to exercise end-to-end; it's intentionally excluded from
-the test suite's fast path (tools are tested with the LLM call mocked out).
 
 ## Pull requests
 
