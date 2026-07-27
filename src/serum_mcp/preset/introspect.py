@@ -18,6 +18,7 @@ from serum_mcp.generation.spec import (
     GlobalSpec,
     LfoSpec,
     MacroSpec,
+    ModRouteSpec,
     OscillatorSpec,
     PresetSpec,
 )
@@ -25,6 +26,10 @@ from serum_mcp.generation.spec import (
 from . import schema
 
 _REVERSE_FILTER_TYPES = {v: k for k, v in schema.SIMPLE_FILTER_TYPES.items()}
+_REVERSE_MOD_SOURCE_IDS = {v: k for k, v in schema.MOD_SOURCE_IDS.items()}
+_REVERSE_MOD_DEST_TARGETS = {
+    (d.dest_type, d.dest_id, d.param_name): name for name, d in schema.MOD_DEST_TARGETS.items()
+}
 
 
 def _resolve(plain_params: Any, key: str, param_defs: dict[str, schema.ParamDef]) -> Any:
@@ -123,6 +128,41 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         params = {k: v for k, v in pp.items() if k != "kParamWet"}
         fx_chain.append(FxUnitSpec(type=fx_name, wet=wet, params=params))
 
+    # Only routes whose source AND destination are both in our resolved
+    # vocabulary (see schema.MOD_SOURCE_IDS / MOD_DEST_TARGETS) round-trip
+    # here -- everything else (undecoded sources, unmodeled destinations)
+    # is silently skipped, since we can't name it safely. It still survives
+    # unchanged in the raw data (mapping.apply_spec never touches ModSlot
+    # keys it didn't create), it just won't show up in describe_preset or
+    # be visible to the LLM when editing.
+    mod_routes = []
+    for key, entry in data.items():
+        if not (isinstance(key, str) and key.startswith("ModSlot") and isinstance(entry, dict)):
+            continue
+        src = entry.get("source")
+        if not (isinstance(src, list) and len(src) == 2):
+            continue
+        source_name = _REVERSE_MOD_SOURCE_IDS.get(src[0])
+        if source_name is None:
+            continue
+        dest_key = (
+            entry.get("destModuleTypeString"),
+            entry.get("destModuleID"),
+            entry.get("destModuleParamName"),
+        )
+        dest_name = _REVERSE_MOD_DEST_TARGETS.get(dest_key)
+        if dest_name is None:
+            continue
+        pp = entry.get("plainParams", {}) or {}
+        mod_routes.append(
+            ModRouteSpec(
+                source=source_name,
+                destination=dest_name,
+                amount=pp.get("kParamAmount", 0.0),
+                bipolar=bool(pp.get("kParamBipolar", False)),
+            )
+        )
+
     global_pp = (data.get("Global0", {}) or {}).get("plainParams")
     global_spec = GlobalSpec(
         master_volume=_resolve(global_pp, "kParamMasterVolume", schema.GLOBAL_PARAMS),
@@ -138,5 +178,6 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         lfos=lfos,
         macros=macros,
         fx_chain=fx_chain,
+        mod_routes=mod_routes,
         **{"global": global_spec},
     )

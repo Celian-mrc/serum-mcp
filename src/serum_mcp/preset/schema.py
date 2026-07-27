@@ -547,13 +547,30 @@ GLOBAL_PARAMS: dict[str, ParamDef] = {
 
 # ModSlot0..ModSlot63: the mod matrix. Structurally confirmed (destModuleID /
 # destModuleParamID / destModuleParamName / destModuleTypeString / source /
-# plainParams.kParamAmount), and destModuleTypeString + destModuleParamName
-# pairs were empirically enumerated (see docs/PARAMETER_SCHEMA.md). However
-# the meaning of `source: [sourceId, subIndex]` (which LFO/envelope/macro/
-# MIDI-CC a given integer ID refers to) was NOT conclusively decoded -- only
-# ~40 distinct IDs were observed with no authoritative name list to match
-# them against. Treat ModSlot.source as opaque/round-trip-only until that
-# mapping is completed (tracked as a known gap, see README).
+# plainParams.kParamAmount). destModuleParamID is CONFIRMED per (type, param)
+# pair: sampling every ModSlot across all 626 factory presets, each
+# (destModuleTypeString, destModuleParamName) pair maps to exactly one
+# destModuleParamID with zero conflicting observations for the params we
+# target below (see MOD_DEST_TARGETS) -- these numeric IDs also match the
+# C++ enum declarations recovered from the plugin binary's debug strings
+# (e.g. Oscillator's `kParamEnable=0, kParamVolume, kParamPan, kParamOctave,
+# kParamPitch, kParamFine, kParamCoarsePit, ...`), which is independent
+# cross-validation, not just internal consistency.
+#
+# `source: [sourceId, subIndex]` is PARTIALLY decoded. Clustering all 626
+# presets' mod routes by source ID revealed two clean, high-confidence
+# blocks (see MOD_SOURCE_IDS below): ids 6-15 (LFO1-10) and ids 25-32
+# (Macro1-8), each a contiguous run matching Serum 2's known module count,
+# with an internally consistent usage/bipolar signature and a
+# monotonically-decreasing per-slot usage curve (slot 1 used most, matching
+# the "reach for the first knob" convention seen everywhere else in the
+# factory content). This is `observed`, not `confirmed` -- it was not
+# cross-checked against Xfer's own source or docs, only statistical
+# clustering. Envelope, Velocity, Mod Wheel, Aftertouch, Pitch Bend, Key
+# Track and Random/S&H sources remain UNRESOLVED: several candidate IDs
+# exist (1-5, 16-24, 34+) but did not cluster into an evidence-backed block.
+# See docs/PARAMETER_SCHEMA.md for the full methodology and numbers.
+# `subIndex` (source[1]) is not understood at all -- always written as 0.
 MODSLOT_PARAMS: dict[str, ParamDef] = {
     "kParamAmount": ParamDef(
         "kParamAmount",
@@ -566,6 +583,48 @@ MODSLOT_PARAMS: dict[str, ParamDef] = {
     ),
     "kParamBipolar": ParamDef("kParamBipolar", "bool", default=False),
 }
+
+# source name -> ModSlot.source[0]. subIndex (source[1]) is always 0 for
+# these two families in every sample observed.
+MOD_SOURCE_IDS: dict[str, int] = {
+    **{f"lfo{i}": 6 + i for i in range(10)},
+    **{f"macro{i}": 25 + i for i in range(8)},
+}
+
+
+@dataclass(frozen=True)
+class ModDestDef:
+    """A generatable mod-matrix destination: one confirmed
+    (destModuleTypeString, destModuleID, destModuleParamName,
+    destModuleParamID) tuple."""
+
+    dest_type: str
+    dest_id: int
+    param_name: str
+    param_id: int
+
+
+# destination name (e.g. "filter0.cutoff") -> ModDestDef. Curated to the
+# params confirmed above; the raw destModuleTypeString/destModuleParamName
+# vocabulary is larger (see docs/PARAMETER_SCHEMA.md) but not all of it has
+# a confirmed destModuleParamID yet.
+MOD_DEST_TARGETS: dict[str, ModDestDef] = {}
+for _i in range(5):
+    MOD_DEST_TARGETS[f"oscillator{_i}.volume"] = ModDestDef("Oscillator", _i, "kParamVolume", 1)
+    MOD_DEST_TARGETS[f"oscillator{_i}.pan"] = ModDestDef("Oscillator", _i, "kParamPan", 2)
+    MOD_DEST_TARGETS[f"oscillator{_i}.octave"] = ModDestDef("Oscillator", _i, "kParamOctave", 3)
+    MOD_DEST_TARGETS[f"oscillator{_i}.pitch"] = ModDestDef("Oscillator", _i, "kParamPitch", 4)
+    MOD_DEST_TARGETS[f"oscillator{_i}.fine"] = ModDestDef("Oscillator", _i, "kParamFine", 5)
+for _i in range(2):
+    MOD_DEST_TARGETS[f"filter{_i}.cutoff"] = ModDestDef("VoiceFilter", _i, "kParamFreq", 3)
+    MOD_DEST_TARGETS[f"filter{_i}.resonance"] = ModDestDef("VoiceFilter", _i, "kParamReso", 4)
+    MOD_DEST_TARGETS[f"filter{_i}.drive"] = ModDestDef("VoiceFilter", _i, "kParamDrive", 5)
+for _i in range(4):
+    MOD_DEST_TARGETS[f"env{_i}.attack"] = ModDestDef("Env", _i, "kParamAttack", 0)
+    MOD_DEST_TARGETS[f"env{_i}.decay"] = ModDestDef("Env", _i, "kParamDecay", 2)
+    MOD_DEST_TARGETS[f"env{_i}.sustain"] = ModDestDef("Env", _i, "kParamSustain", 3)
+    MOD_DEST_TARGETS[f"env{_i}.release"] = ModDestDef("Env", _i, "kParamRelease", 4)
+del _i
 
 # ---------------------------------------------------------------------------
 # Effects. Each FXRack (FXRack0..FXRack2) holds an ordered `FX` list; each

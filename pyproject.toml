@@ -25,8 +25,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/YOUR_GITHUB_USERNAME/serum-mcp"
-Issues = "https://github.com/YOUR_GITHUB_USERNAME/serum-mcp/issues"
+Homepage = "https://github.com/Celian-mrc/serum-mcp"
+Issues = "https://github.com/Celian-mrc/serum-mcp/issues"
 
 [project.scripts]
 serum-mcp = "serum_mcp.server:main"

@@ -8,6 +8,7 @@ from serum_mcp.generation.spec import (
     EnvelopeSpec,
     FilterSpec,
     FxUnitSpec,
+    ModRouteSpec,
     OscillatorSpec,
     PresetSpec,
 )
@@ -91,3 +92,61 @@ def test_extract_spec_matches_known_defaults(init_data):
     assert spec.oscillators[1].enabled is False
     assert spec.filters[0].enabled is False
     assert spec.envelopes[0].sustain == 1.0
+    assert spec.mod_routes == []
+
+
+def test_mod_route_round_trips_through_introspection(init_data):
+    spec = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[
+            ModRouteSpec(source="lfo0", destination="filter0.cutoff", amount=53.2, bipolar=True),
+            ModRouteSpec(source="macro2", destination="oscillator0.pan", amount=-25.0),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["ModSlot0"]["source"] == [6, 0]  # lfo0
+    assert data["ModSlot0"]["destModuleTypeString"] == "VoiceFilter"
+    assert data["ModSlot0"]["destModuleParamName"] == "kParamFreq"
+    assert data["ModSlot0"]["destModuleParamID"] == 3
+    assert data["ModSlot0"]["plainParams"]["kParamAmount"] == 53.2
+    assert data["ModSlot0"]["plainParams"]["kParamBipolar"] is True
+
+    assert data["ModSlot1"]["source"] == [27, 0]  # macro2
+
+    extracted = extract_spec(data)
+    routes = {r.destination: r for r in extracted.mod_routes}
+    assert routes["filter0.cutoff"].source == "lfo0"
+    assert routes["filter0.cutoff"].amount == 53.2
+    assert routes["oscillator0.pan"].source == "macro2"
+    assert routes["oscillator0.pan"].amount == -25.0
+
+
+def test_mod_routes_do_not_collide_with_existing_slots(init_data):
+    init_data["ModSlot0"] = {
+        "source": [99, 0],
+        "destModuleID": 0,
+        "destModuleParamID": 1,
+        "destModuleParamName": "kParamVolume",
+        "destModuleTypeString": "Oscillator",
+        "plainParams": {"kParamAmount": 10.0},
+    }
+    spec = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[ModRouteSpec(source="lfo1", destination="filter0.cutoff", amount=10.0)],
+    )
+    data = apply_spec(init_data, spec)
+    assert data["ModSlot0"]["source"] == [99, 0]  # untouched
+    assert data["ModSlot1"]["source"] == [7, 0]  # lfo1, placed in the next free slot
+
+
+def test_unknown_mod_source_rejected(init_data):
+    spec = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[ModRouteSpec(source="env0", destination="filter0.cutoff", amount=10.0)],
+    )
+    with pytest.raises(ValueError, match="unknown mod source"):
+        apply_spec(init_data, spec)

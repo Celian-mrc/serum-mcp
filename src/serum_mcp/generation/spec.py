@@ -69,6 +69,24 @@ class GlobalSpec(BaseModel):
     mono: bool = False
 
 
+class ModRouteSpec(BaseModel):
+    """One mod-matrix route: ``source`` modulates ``destination`` by ``amount``.
+
+    Only two source families are currently supported -- ``lfo0``..``lfo9``
+    and ``macro0``..``macro7`` -- and only the destinations enumerated in
+    ``preset.schema.MOD_DEST_TARGETS`` (oscillator volume/pan/octave/pitch/
+    fine, filter cutoff/resonance/drive, envelope attack/decay/sustain/
+    release). Other mod sources (envelopes, velocity, mod wheel, aftertouch,
+    ...) exist in Serum but their internal source IDs are not decoded yet --
+    see docs/PARAMETER_SCHEMA.md.
+    """
+
+    source: str = Field(description="'lfo0'..'lfo9' or 'macro0'..'macro7'")
+    destination: str = Field(description="e.g. 'filter0.cutoff', 'oscillator0.pitch', 'env0.decay'")
+    amount: float = Field(0.0, ge=-100.0, le=100.0)
+    bipolar: bool = False
+
+
 class PresetSpec(BaseModel):
     """The full target state for a generated or edited preset."""
 
@@ -95,6 +113,11 @@ class PresetSpec(BaseModel):
         default_factory=list,
         max_length=12,
         description="effects, in order, on FX rack 1",
+    )
+    mod_routes: list[ModRouteSpec] = Field(
+        default_factory=list,
+        max_length=16,
+        description="modulation matrix routes; see ModRouteSpec for supported sources/destinations",
     )
     global_: GlobalSpec = Field(default_factory=GlobalSpec, alias="global")
 

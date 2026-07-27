@@ -12,7 +12,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from serum_mcp.generation.spec import FxUnitSpec, PresetSpec
+from serum_mcp.generation.spec import FxUnitSpec, ModRouteSpec, PresetSpec
 
 from . import schema
 from .validator import validate_params
@@ -64,6 +64,46 @@ def _build_fx_entry(fx: FxUnitSpec) -> dict[str, Any]:
         "kUIParamMixOrGain": 0.0,
         fx_module_key: {"plainParams": plain_params},
     }
+
+
+def _build_modslot_entry(route: ModRouteSpec) -> dict[str, Any]:
+    if route.source not in schema.MOD_SOURCE_IDS:
+        raise ValueError(
+            f"unknown mod source {route.source!r}; expected one of {sorted(schema.MOD_SOURCE_IDS)}"
+        )
+    if route.destination not in schema.MOD_DEST_TARGETS:
+        raise ValueError(
+            f"unknown mod destination {route.destination!r}; "
+            f"expected one of {sorted(schema.MOD_DEST_TARGETS)}"
+        )
+    dest = schema.MOD_DEST_TARGETS[route.destination]
+    plain_params: dict[str, Any] = {"kParamAmount": route.amount}
+    if route.bipolar:
+        plain_params["kParamBipolar"] = True
+    validate_params("ModSlot", plain_params, schema.MODSLOT_PARAMS)
+
+    return {
+        "source": [schema.MOD_SOURCE_IDS[route.source], 0],
+        "destModuleID": dest.dest_id,
+        "destModuleParamID": dest.param_id,
+        "destModuleParamName": dest.param_name,
+        "destModuleTypeString": dest.dest_type,
+        "plainParams": plain_params,
+    }
+
+
+def _free_modslot_indices(data: dict[str, Any], count: int) -> list[int]:
+    used = {
+        int(k[len("ModSlot") :])
+        for k in data
+        if isinstance(k, str) and k.startswith("ModSlot") and k[len("ModSlot") :].isdigit()
+    }
+    free = [i for i in range(64) if i not in used]
+    if len(free) < count:
+        raise ValueError(
+            f"not enough free mod matrix slots: need {count}, only {len(free)} of 64 free"
+        )
+    return free[:count]
 
 
 def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
@@ -120,6 +160,11 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
     if spec.fx_chain:
         fx_rack = data.setdefault("FXRack0", {})
         fx_rack["FX"] = [_build_fx_entry(fx) for fx in spec.fx_chain]
+
+    if spec.mod_routes:
+        indices = _free_modslot_indices(data, len(spec.mod_routes))
+        for idx, route in zip(indices, spec.mod_routes, strict=True):
+            data[f"ModSlot{idx}"] = _build_modslot_entry(route)
 
     global_params = _plain_params(data, "Global0")
     global_params["kParamMasterVolume"] = spec.global_.master_volume

@@ -52,6 +52,15 @@ def describe_preset(preset_path: str) -> str:
         lines.append("FX chain: (empty)")
 
     lines.append("")
+    if spec.mod_routes:
+        lines.append("Mod matrix (recognized routes only):")
+        for route in spec.mod_routes:
+            bip = ", bipolar" if route.bipolar else ""
+            lines.append(f"  - {route.source} -> {route.destination}: {route.amount:+.0f}%{bip}")
+    else:
+        lines.append("Mod matrix: (no recognized routes)")
+
+    lines.append("")
     lines.append(
         f"Global: master_volume={spec.global_.master_volume:.2f}  "
         f"mono={'on' if spec.global_.mono else 'off'}"

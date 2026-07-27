@@ -16,7 +16,12 @@ import os
 
 import anthropic
 
-from serum_mcp.preset.schema import ALL_FX_TYPES, SIMPLE_FILTER_TYPES
+from serum_mcp.preset.schema import (
+    ALL_FX_TYPES,
+    MOD_DEST_TARGETS,
+    MOD_SOURCE_IDS,
+    SIMPLE_FILTER_TYPES,
+)
 
 from .spec import PresetSpec
 
@@ -42,6 +47,13 @@ Guidelines:
 - Keep `cutoff` in mind as 0.0 (fully closed) to 1.0 (fully open), not Hz.
 - envelope times are in seconds; macro/reso/wet/drive values are 0-100 percent \
   unless the field description says otherwise.
+- `mod_routes[].source` must be one of: {", ".join(sorted(MOD_SOURCE_IDS))}. \
+  `mod_routes[].destination` must be one of: {", ".join(sorted(MOD_DEST_TARGETS))}. \
+  Use this for things like "filter opens up over time" (an LFO or a slow-rate \
+  LFO to filter0.cutoff) or "vibrato" (an LFO to oscillator0.pitch with a small \
+  amount). Only these two source families and this destination list are \
+  supported -- do not invent other sources (e.g. envelopes, velocity, mod \
+  wheel) or destinations, they are not wired up yet.
 """
 
 

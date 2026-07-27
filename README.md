@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![CI](https://github.com/YOUR_GITHUB_USERNAME/serum-mcp/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
+[![CI](https://github.com/Celian-mrc/serum-mcp/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 
 **Generate, edit and save [Xfer Serum 2](https://xferrecords.com/products/serum-2) presets from a plain-English description — as an [MCP](https://modelcontextprotocol.io) server, so any MCP client (Claude Code, Claude Desktop, ...) can drive it directly.**
 
@@ -63,7 +63,7 @@ kept in mind architecturally but not started.
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/serum-mcp
+git clone https://github.com/Celian-mrc/serum-mcp
 cd serum-mcp
 uv sync
 ```

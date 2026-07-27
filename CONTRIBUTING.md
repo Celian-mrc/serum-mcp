@@ -7,10 +7,13 @@ expand or correct our understanding of it are just as valuable as code.
 ## Ways to help
 
 - **Fill in a documented gap.** `docs/PARAMETER_SCHEMA.md` §5 lists known
-  unknowns — the mod matrix `source` ID mapping, the filter cutoff Hz curve,
-  unmodeled oscillator engines (granular/multisample/spectral/sample),
-  LFO/envelope curve shapes, and 5 FX types without full param schemas. Any
-  of these, backed by evidence (see "Evidence standard" below), is welcome.
+  unknowns — the remaining mod matrix `source` IDs (Envelope/Velocity/Mod
+  Wheel/Aftertouch/Pitch Bend/Key Track/Random are still unresolved, though
+  LFO and Macro sources were decoded — see §6 for the method, which is
+  reusable), the filter cutoff Hz curve, unmodeled oscillator engines
+  (granular/multisample/spectral/sample), LFO/envelope curve shapes, and 5
+  FX types without full param schemas. Any of these, backed by evidence (see
+  "Evidence standard" below), is welcome.
 - **Add parameter coverage.** More of Serum 2's ~2,600 VST3 parameters could
   be mapped into `src/serum_mcp/preset/schema.py` and exposed through
   `generation/spec.py`.
@@ -47,7 +50,7 @@ flagging the uncertainty; a wrong `confirmed` claim is worse than an honest
 ## Development setup
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/serum-mcp
+git clone https://github.com/Celian-mrc/serum-mcp
 cd serum-mcp
 uv sync
 uv run pytest

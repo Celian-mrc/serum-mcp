@@ -68,6 +68,17 @@ Serum 1-era wavetable engine), tripled the FX rack count, expanded the mod
 matrix from 32 to 64 slots, and expanded LFOs from 8 to 10. Reusing the
 Serum 1 table as-is would have been actively misleading.
 
+A third technique, used specifically to resolve `destModuleParamID` (§6):
+**extracting printable strings from the installed Serum 2 plugin binary**
+(`Serum2.vst3\Contents\x86_64-win\Serum2.vst3`). The binary's debug/RTTI
+info includes literal C++ enum declarations (e.g. `kParamEnable=0,
+kParamVolume, kParamPan, kParamOctave, ...`), which is an independent
+confirmation source, not just internal consistency within our own samples.
+This only reads plaintext already embedded in a legally-owned, installed
+binary (the same category of technique the community used to find the
+container format in the first place) — no decompilation, no bypassing any
+protection.
+
 ## 3. Top-level module map
 
 A decompressed CBOR payload's top-level keys, as observed:
@@ -84,7 +95,7 @@ A decompressed CBOR payload's top-level keys, as observed:
 | `LFOPointModBus0`..`LFOPointModBus15` | point-editor LFO mod busses | No |
 | `Macro0`..`Macro7` | the 8 macro knobs | Yes |
 | `Global0` | master volume, mono, portamento, poly count, ... | Partially |
-| `ModSlot0`..`ModSlot63` | the 64-slot mod matrix | Structure only, see §6 |
+| `ModSlot0`..`ModSlot63` | the 64-slot mod matrix | Partially — all destinations + LFO/Macro sources, see §6 |
 | `FXRack0`..`FXRack2` | 3 independent effects racks, each an ordered `FX` list | FXRack0 only, in V1 |
 | `Arp0`, `ArpClip0`..`ArpClip11`, `arpBankDisplayName` | arpeggiator | No — round-trips untouched |
 | `MidiClip0`..`MidiClip11`, `ClipPlayer`, `ClipPlayer0`, `clipBankDisplayName` | MIDI clip player | No — round-trips untouched |
@@ -191,17 +202,20 @@ matrix encodes *which rack* an FX unit lives in: `0-11` for rack 0 slots,
 These are the honest uncertainties, ranked roughly by how much they'd
 improve generation quality if resolved:
 
-1. **Mod matrix `source` encoding is not decoded.** `ModSlot{n}.source` is a
-   `[sourceId, subIndex]` pair. We confirmed the matrix's *destination* side
-   completely (`destModuleTypeString` + `destModuleParamName` + `kParamAmount`
-   / `kParamBipolar`), but the *source* side — which integer ID means "LFO 3"
-   vs "Envelope 2" vs "Velocity" vs "Mod Wheel" — was not conclusively
-   matched to a name list. ~40 distinct source IDs were observed (source `1`
-   appears in nearly every sampled preset, suggesting it's a common default
-   like velocity or a template-inherited route, but this is a guess). Until
-   this is solved, `serum-mcp` treats `ModSlot` entries as structurally
-   understood but semantically opaque — it can round-trip existing mod
-   routes but the LLM mapper does not generate new ones in V1.
+1. **Mod matrix `source` encoding is partially decoded** (updated — see §6
+   for the full writeup). The *destination* side was already fully
+   confirmed. The *source* side (`[sourceId, subIndex]`) is now resolved for
+   two families — LFO1-10 (ids 6-15) and Macro1-8 (ids 25-32) — via
+   statistical clustering across all 626 factory presets, cross-checked
+   against `destModuleParamID` values recovered independently from the
+   Serum 2 plugin binary's own debug/RTTI strings. **Still unresolved**:
+   Envelope, Velocity, Mod Wheel, Aftertouch, Pitch Bend, Key Track and
+   Random/S&H sources — several candidate IDs exist (`1-5`, `16-24`, `34+`)
+   but none clustered into an evidence-backed block the way LFO/Macro did.
+   `subIndex` (`source[1]`) is unresolved for every source family (always 0
+   in every sample). `serum-mcp` now generates and reads back LFO/Macro mod
+   routes (`generation/spec.py::ModRouteSpec`); everything else still
+   round-trips opaquely.
 2. **Filter cutoff Hz curve** (§4, Filters) — only one calibration point.
 3. **Unmodeled oscillator engines** — Granular/MultiSample/Spectral/Sample.
    These are common enough (GranularOsc/MultiSampleOsc/SpectralOsc appeared
@@ -220,17 +234,19 @@ None of these block V1's stated goal (text description → valid, loadable
 `.SerumPreset` covering oscillators/filters/envelopes/macros/core FX) — they
 bound what V1 can *express*, not whether what it writes is valid.
 
-## 6. Mod matrix structure (confirmed parts)
+## 6. Mod matrix structure
 
-Each `ModSlot{n}` (`n` in `0..63`):
+Each `ModSlot{n}` (`n` in `0..63`, only slots actually in use are serialized
+— an unused slot is simply absent from the CBOR dict, there is no "off"
+value):
 
 ```jsonc
 {
-  "destModuleID": 0,               // which instance (see per-type ID ranges below)
+  "destModuleID": 0,               // which instance -- see ID ranges below
   "destModuleParamID": 3,          // internal numeric param index
   "destModuleParamName": "kParamFreq",
   "destModuleTypeString": "VoiceFilter",
-  "source": [4, 0],                // NOT decoded -- see gap #1 above
+  "source": [6, 0],                // [sourceId, subIndex] -- see below
   "plainParams": {
     "kParamAmount": 53.2,          // -100..100
     "kParamBipolar": 1.0           // optional, bool-ish
@@ -238,9 +254,62 @@ Each `ModSlot{n}` (`n` in `0..63`):
 }
 ```
 
+### Destination side (confirmed)
+
 `destModuleID` ranges observed per `destModuleTypeString` (confirms module
 instance counts independently of §3): `Oscillator` 0-4, `VoiceFilter` 0-1,
 `Env` 0-3, `Macro` 0-7, `LFO` 0-7 (0-9 expected, only 0-7 appeared in our
 200-preset mod-matrix sample), `Global`/`Arp`/`VoicePanel`/`RetriggerState` 0
 only, `RoutingSlot` 0-6, `LFOPointModBus` 0-14. FX destinations use the
 rack-encoded IDs described in §4.
+
+`destModuleParamID` is confirmed per `(destModuleTypeString,
+destModuleParamName)` pair: sampling every `ModSlot` across all 626 factory
+presets, every pair we checked mapped to exactly one ID with zero
+conflicting observations (e.g. `("Oscillator", "kParamVolume") -> 1` in
+1,842 samples, `("VoiceFilter", "kParamFreq") -> 3` in 1,516 samples). This
+was independently cross-validated against C++ enum declarations recovered
+from the Serum 2 plugin binary's own debug strings (`Contents/x86_64-win/
+Serum2.vst3`, extracted as printable ASCII/UTF-16 runs) — e.g. Oscillator's
+enum reads `kParamEnable=0, kParamVolume, kParamPan, kParamOctave,
+kParamPitch, kParamFine, kParamCoarsePit, ...`, which assigns `kParamVolume
+= 1`, matching the empirical result exactly. `schema.MOD_DEST_TARGETS`
+exposes the curated, generation-ready subset of this table (oscillator
+volume/pan/octave/pitch/fine; filter cutoff/resonance/drive; envelope
+attack/decay/sustain/release).
+
+### Source side (partially decoded)
+
+`source[0]` (the source ID) was decoded by clustering all mod routes across
+the same 626-preset sample by ID and looking for internally-consistent,
+correctly-sized blocks:
+
+| Source family | Source IDs | Evidence |
+|---|---|---|
+| LFO 1-10 | `6-15` | Contiguous 10-ID block. Consistent bipolar rate across the block (25-39% of routes bipolar — matches LFOs being a bipolar-capable source), and total usage strictly decreases from id 6 (895 routes, 447/626 presets) down to id 15 (18 routes, 15/626 presets) — matching the "reach for LFO1 first" convention visible everywhere else in the factory content (e.g. Macro 1 used far more than Macro 8). |
+| Macro 1-8 | `25-32` | Contiguous 8-ID block. Near-universal usage (544-586 of 626 presets per ID, i.e. 87-94%) — consistent with Serum's factory-content convention of wiring up all 8 macro knobs to something in almost every preset. Near-always unipolar (4-7% bipolar), consistent with macros being 0-100 knobs by convention. |
+
+Both are `observed`-confidence (statistical clustering, not cross-checked
+against Xfer's own source/docs the way the destination side was) but strong
+enough that `serum-mcp` generates and reads back routes for them (see
+`schema.MOD_SOURCE_IDS`, `generation/spec.py::ModRouteSpec`).
+
+**Unresolved**: ids `1-5` (low usage relative to Macro, low bipolar rate —
+plausibly Envelope 1-4 plus one more, but id 3 is used almost as often as
+the Macro block while ids 2/5 are used an order of magnitude less, which
+doesn't cleanly fit "4 envelopes used somewhat evenly"), ids `16-24`
+(scattered usage and bipolar rates, no clean block), and ids `34+` (rare,
+small samples, high noise). These are plausibly Velocity, Mod Wheel,
+Aftertouch, Pitch Bend, Key Track, and Random/S&H, based on their names
+appearing in the plugin binary's strings (`Velocity`, `Mod Wheel`,
+`Aftertouch`, `Pitch Bend`, `KeyTrack`, `Random` all appear as literal UI
+strings), but no enum declaration tying a specific string to a specific
+`ModSlot.source` integer was found. `subIndex` (`source[1]`) is unresolved
+for every source family — it's 0 in the overwhelming majority of samples;
+a handful of source IDs (notably 6-9) show varied non-zero subIndex values
+correlated with other valid source IDs (16-32ish), suggestive of some kind
+of chained/secondary modulation, but this wasn't pinned down further.
+
+If you can resolve any of this further — a MIDI Learn export, a Serum
+factory-default XML/plist, or just more presets that isolate a single
+source ID in an unambiguous way — see `CONTRIBUTING.md`.
