@@ -22,6 +22,7 @@ def list_parameters() -> str:
     result = {
         "oscillator": _dump(schema.OSCILLATOR_PARAMS),
         "wavetable_oscillator": _dump(schema.WTOSC_PARAMS),
+        "simple_warp_modes": schema.SIMPLE_WARP_MODES,
         "noise_oscillator": _dump(schema.NOISEOSC_PARAMS),
         "sub_oscillator": _dump(schema.SUBOSC_PARAMS),
         "simple_sub_shapes": schema.SIMPLE_SUB_SHAPES,

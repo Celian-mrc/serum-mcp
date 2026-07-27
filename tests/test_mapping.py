@@ -8,6 +8,7 @@ from serum_mcp.generation.spec import (
     EnvelopeSpec,
     FilterSpec,
     FxUnitSpec,
+    GlobalSpec,
     ModRouteSpec,
     OscillatorSpec,
     PresetSpec,
@@ -256,3 +257,52 @@ def test_no_int_leaks_into_any_plain_params(init_data):
                 walk(value)
 
     walk(data)
+
+
+def test_warp_mode_and_wtosc_mod_destinations(init_data):
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, warp_mode="sync", warp_amount=0.6)],
+        mod_routes=[
+            ModRouteSpec(
+                source="lfo0", destination="oscillator0.table_position", amount=40.0, bipolar=True
+            ),
+            ModRouteSpec(source="macro0", destination="oscillator0.warp_amount", amount=20.0),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    wtosc_params = data["Oscillator0"]["WTOsc0"]["plainParams"]
+    assert wtosc_params["kParamWarpMenu"] == "kSync"
+    assert wtosc_params["kParamWarp"] == 0.6
+
+    assert data["ModSlot0"]["destModuleTypeString"] == "WTOsc"
+    assert data["ModSlot0"]["destModuleParamName"] == "kParamTablePos"
+    assert data["ModSlot1"]["destModuleParamName"] == "kParamWarp"
+
+    extracted = extract_spec(data)
+    assert extracted.oscillators[0].warp_mode == "sync"
+    routes = {r.destination: r for r in extracted.mod_routes}
+    assert routes["oscillator0.table_position"].source == "lfo0"
+    assert routes["oscillator0.warp_amount"].source == "macro0"
+
+
+def test_filter_stereo_env_hold_global_portamento(init_data):
+    spec = PresetSpec(
+        name="X",
+        description="",
+        filters=[FilterSpec(enabled=True, stereo=40.0)],
+        envelopes=[EnvelopeSpec(attack=0.01, hold=0.2, decay=1, sustain=1, release=1)],
+        **{"global": GlobalSpec(portamento_time=0.3)},
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["VoiceFilter0"]["plainParams"]["kParamStereo"] == 40.0
+    assert data["Env0"]["plainParams"]["kParamHold"] == 0.2
+    assert data["Global0"]["plainParams"]["kParamPortamentoTime"] == 0.3
+
+    extracted = extract_spec(data)
+    assert extracted.filters[0].stereo == 40.0
+    assert extracted.envelopes[0].hold == 0.2
+    assert extracted.global_.portamento_time == 0.3

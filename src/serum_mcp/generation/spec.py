@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from serum_mcp.preset.schema import SIMPLE_FILTER_TYPES, SIMPLE_SUB_SHAPES
+from serum_mcp.preset.schema import SIMPLE_FILTER_TYPES, SIMPLE_SUB_SHAPES, SIMPLE_WARP_MODES
 
 FilterTypeName = str  # validated against SIMPLE_FILTER_TYPES keys in mapping.py
 
@@ -46,6 +46,10 @@ class OscillatorSpec(BaseModel):
         0.0, ge=0.0, le=256.0, description="wavetable frame position, slots 0-2 only"
     )
     warp_amount: float = Field(0.0, ge=0.0, le=1.0, description="slots 0-2 only")
+    warp_mode: str = Field(
+        "fm",
+        description=f"slots 0-2 only, one of: {', '.join(sorted(SIMPLE_WARP_MODES))}",
+    )
     noise_type: str = Field(
         "White", description="slot 3 (Noise) only, one of: White, Pink, Brown, Geiger"
     )
@@ -63,10 +67,12 @@ class FilterSpec(BaseModel):
     cutoff: float = Field(0.5, ge=0.0, le=1.0, description="0=closed, 1=fully open")
     resonance: float = Field(10.0, ge=0.0, le=100.0)
     drive: float = Field(0.0, ge=0.0, le=100.0)
+    stereo: float = Field(0.0, ge=0.0, le=100.0, description="stereo width/spread %")
 
 
 class EnvelopeSpec(BaseModel):
     attack: float = Field(0.0005, ge=0.0, le=7.0, description="seconds")
+    hold: float = Field(0.0, ge=0.0, le=5.2, description="seconds, full level before decay starts")
     decay: float = Field(1.0, ge=0.0, le=32.0, description="seconds")
     sustain: float = Field(1.0, ge=0.0, le=1.0)
     release: float = Field(0.015, ge=0.0, le=13.0, description="seconds")
@@ -91,6 +97,9 @@ class FxUnitSpec(BaseModel):
 class GlobalSpec(BaseModel):
     master_volume: float = Field(0.5, ge=0.0, le=1.0)
     mono: bool = False
+    portamento_time: float = Field(
+        0.0, ge=0.0, le=2.6, description="glide time between notes, seconds"
+    )
 
 
 class ModRouteSpec(BaseModel):

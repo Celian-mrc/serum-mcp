@@ -25,7 +25,9 @@ def describe_preset(preset_path: str) -> str:
         state = "ON " if osc.enabled else "off"
         common = f"octave={osc.octave:+.0f}  volume={osc.volume:.2f}  pan={osc.pan:+.0f}"
         if i in (0, 1, 2):
-            extra = f"table_pos={osc.table_position:.1f}"
+            extra = (
+                f"table_pos={osc.table_position:.1f}  warp={osc.warp_mode}({osc.warp_amount:.2f})"
+            )
             if osc.unison > 1:
                 extra += f"  unison={osc.unison:.0f}  detune={osc.detune:.2f}"
         elif i == 3:
@@ -37,15 +39,17 @@ def describe_preset(preset_path: str) -> str:
     lines.append("")
     for i, flt in enumerate(spec.filters, start=1):
         state = "ON " if flt.enabled else "off"
+        stereo = f"  stereo={flt.stereo:.0f}%" if flt.stereo else ""
         lines.append(
             f"Filter {i}: {state}  type={flt.type}  cutoff={flt.cutoff:.2f}  "
-            f"resonance={flt.resonance:.0f}%  drive={flt.drive:.0f}%"
+            f"resonance={flt.resonance:.0f}%  drive={flt.drive:.0f}%{stereo}"
         )
 
     lines.append("")
     for i, env in enumerate(spec.envelopes, start=1):
+        hold = f"  hold={env.hold * 1000:.1f}ms" if env.hold else ""
         lines.append(
-            f"Env {i}: attack={env.attack * 1000:.1f}ms  decay={env.decay:.2f}s  "
+            f"Env {i}: attack={env.attack * 1000:.1f}ms{hold}  decay={env.decay:.2f}s  "
             f"sustain={env.sustain:.2f}  release={env.release:.2f}s"
         )
 
@@ -67,9 +71,12 @@ def describe_preset(preset_path: str) -> str:
         lines.append("Mod matrix: (no recognized routes)")
 
     lines.append("")
+    porta = (
+        f"  portamento={spec.global_.portamento_time:.2f}s" if spec.global_.portamento_time else ""
+    )
     lines.append(
         f"Global: master_volume={spec.global_.master_volume:.2f}  "
-        f"mono={'on' if spec.global_.mono else 'off'}"
+        f"mono={'on' if spec.global_.mono else 'off'}{porta}"
     )
 
     return "\n".join(lines)

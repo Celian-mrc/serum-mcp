@@ -40,9 +40,11 @@ _FILTER_KEYS = {
     "cutoff": "kParamFreq",
     "resonance": "kParamReso",
     "drive": "kParamDrive",
+    "stereo": "kParamStereo",
 }
 _ENV_KEYS = {
     "attack": "kParamAttack",
+    "hold": "kParamHold",
     "decay": "kParamDecay",
     "sustain": "kParamSustain",
     "release": "kParamRelease",
@@ -137,6 +139,9 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             wtosc_params = _plain_params(osc_container, f"WTOsc{i}")
             for spec_key, param_key in _WTOSC_KEYS.items():
                 wtosc_params[param_key] = getattr(osc, spec_key)
+            wtosc_params["kParamWarpMenu"] = schema.SIMPLE_WARP_MODES.get(
+                osc.warp_mode, osc.warp_mode
+            )
             validate_params(f"WTOsc{i}", wtosc_params, schema.WTOSC_PARAMS)
         elif i == _NOISE_SLOT:
             noise_params = _plain_params(osc_container, f"NoiseOsc{i}")
@@ -188,6 +193,7 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
     global_params = _plain_params(data, "Global0")
     global_params["kParamMasterVolume"] = spec.global_.master_volume
     global_params["kParamMonoToggle"] = spec.global_.mono
+    global_params["kParamPortamentoTime"] = spec.global_.portamento_time
     validate_params("Global0", global_params, schema.GLOBAL_PARAMS)
 
     return data

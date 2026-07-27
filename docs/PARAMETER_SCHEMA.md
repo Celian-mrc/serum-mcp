@@ -163,9 +163,15 @@ keyed as `WTOsc{i}`, `GranularOsc{i}`, `MultiSampleOsc{i}`, `SampleOsc{i}`,
 `SpectralOsc{i}` inside `Oscillator{i}`. **Only `WTOsc` (the classic
 wavetable engine) is modeled** — it's the default engine and the one every
 factory bass/lead/pad preset we sampled that wasn't a multisample
-instrument used (`OscillatorSpec.table_position`/`warp_amount`). Granular,
-multisample, spectral and raw sample playback exist in the format and
-round-trip fine, but `serum-mcp` cannot currently generate or target them.
+instrument used (`OscillatorSpec.table_position`/`warp_amount`/`warp_mode`
+— the last picks the wavetable warping character via a curated subset of
+the raw `kParamWarpMenu` enum, `schema.SIMPLE_WARP_MODES`: FM/AM, sync,
+PWM, wavefolding/clipping distortion, quantize, and two built-in filter
+warps). `oscillator{i}.table_position` and `oscillator{i}.warp_amount`
+(slots 0-2) are also valid mod-matrix destinations — a classic use is an
+LFO scanning through the wavetable, or a macro morphing the warp amount.
+Granular, multisample, spectral and raw sample playback exist in the format
+and round-trip fine, but `serum-mcp` cannot currently generate or target them.
 
 **Slots 3 and 4 are not the same engine family** — this is structural, not
 a modeling gap: slot 3 is *always* `NoiseOsc3` (white/pink/brown/geiger
@@ -182,9 +188,11 @@ written into a `WTOsc` key Serum never produces there.
 (confirmed). The raw `kParamType` enum has 66 observed values (ladder, SVF,
 comb, phaser-as-filter, formant, "Scream" distortion-filter hybrids, etc.);
 `SIMPLE_FILTER_TYPES` in `schema.py` curates 11 of them with unambiguous
-names (`lowpass_12`, `lowpass_24`, `highpass_12`, ...) for the LLM mapper to
-target in V1. The raw enum remains fully valid for `edit_preset` /
-`list_parameters` consumers who want the rest.
+names (`lowpass_12`, `lowpass_24`, `highpass_12`, ...) for generation to
+target (via `FilterSpec.type`). The raw enum remains fully valid for
+`edit_preset`/`list_parameters` consumers who want the rest. `FilterSpec`
+also generates `stereo` (`kParamStereo`, width/spread %) alongside
+cutoff/resonance/drive.
 
 `kParamFreq` (cutoff) is the biggest known gap: it's a normalized `0.0..1.0`
 value, and we have exactly **one** calibration point (`0.5 ≈ 425 Hz` at
@@ -197,7 +205,9 @@ points to fit the curve.
 
 4 slots (`Env0..3`), all identical schema. Env 1 (`Env0`) is *conventionally*
 the amp envelope in factory content, but nothing in the format enforces
-that — it's just how presets are usually built.
+that — it's just how presets are usually built. `EnvelopeSpec` generates
+`attack`/`hold`/`decay`/`sustain`/`release`; `hold` (a plateau at full level
+before decay starts) defaults to 0 and is rarely needed.
 
 ### LFOs
 
@@ -209,10 +219,11 @@ V1 (no natural-language mapping for "draw this LFO shape" yet).
 ### Macros & Global
 
 8 macros (`Macro0..7`, each `{name, plainParams.kParamValue}`). `Global0`
-covers master volume (confirmed default `0.5` = -9dB), mono toggle,
-portamento and voice count; a handful of rarer global params (tuning, MPE
-bend range, FX bus routing) are documented in `schema.py` but not yet wired
-into generation.
+covers master volume (confirmed default `0.5` = -9dB), mono toggle, and
+portamento time (`kParamPortamentoTime`, seconds — glide between notes),
+all generatable via `GlobalSpec`; a handful of rarer global params (voice
+count, tuning, MPE bend range, FX bus routing) are documented in
+`schema.py` but not yet wired into generation.
 
 ### Effects
 

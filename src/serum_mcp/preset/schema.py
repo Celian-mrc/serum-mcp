@@ -258,6 +258,24 @@ WTOSC_PARAMS: dict[str, ParamDef] = {
     ),
 }
 
+# Friendly names -> WTOSC_PARAMS["kParamWarpMenu"] enum values, curated to a
+# musically-distinct spread (FM/AM, sync, PWM, wavefolding/distortion
+# characters, built-in filtering, bit-quantize) rather than the full ~43
+# value raw enum.
+SIMPLE_WARP_MODES: dict[str, str] = {
+    "fm": "kFM_OSC",
+    "am": "kAM_OSC",
+    "sync": "kSync",
+    "pwm": "kPWM",
+    "bend": "kBendPos",
+    "fold": "kDistLinFold",
+    "soft_clip": "kDistSoftClip",
+    "hard_clip": "kDistHardClip",
+    "quantize": "kQuantize",
+    "filter_lpf": "kFilterLPF",
+    "filter_hpf": "kFilterHPF",
+}
+
 NOISEOSC_PARAMS: dict[str, ParamDef] = {
     "kParamNoiseType": ParamDef(
         "kParamNoiseType",
@@ -634,6 +652,15 @@ for _i in range(4):
     MOD_DEST_TARGETS[f"env{_i}.decay"] = ModDestDef("Env", _i, "kParamDecay", 2)
     MOD_DEST_TARGETS[f"env{_i}.sustain"] = ModDestDef("Env", _i, "kParamSustain", 3)
     MOD_DEST_TARGETS[f"env{_i}.release"] = ModDestDef("Env", _i, "kParamRelease", 4)
+for _i in range(3):
+    # Wavetable-engine-only destinations (slots 0-2). destModuleTypeString
+    # is "WTOsc" here, not "Oscillator" -- confirmed via the same
+    # destModuleParamID survey as everything else (kParamTablePos -> 6 in
+    # 512/526 samples, kParamWarp -> 0 in 562/562 samples).
+    MOD_DEST_TARGETS[f"oscillator{_i}.table_position"] = ModDestDef(
+        "WTOsc", _i, "kParamTablePos", 6
+    )
+    MOD_DEST_TARGETS[f"oscillator{_i}.warp_amount"] = ModDestDef("WTOsc", _i, "kParamWarp", 0)
 del _i
 
 # ---------------------------------------------------------------------------

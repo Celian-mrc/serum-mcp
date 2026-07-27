@@ -26,6 +26,7 @@ from serum_mcp.generation.spec import (
 from . import schema
 
 _REVERSE_FILTER_TYPES = {v: k for k, v in schema.SIMPLE_FILTER_TYPES.items()}
+_REVERSE_WARP_MODES = {v: k for k, v in schema.SIMPLE_WARP_MODES.items()}
 _REVERSE_MOD_SOURCE_IDS = {v: k for k, v in schema.MOD_SOURCE_IDS.items()}
 _REVERSE_MOD_DEST_TARGETS = {
     (d.dest_type, d.dest_id, d.param_name): name for name, d in schema.MOD_DEST_TARGETS.items()
@@ -72,6 +73,8 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             wt_pp = _sub_plain_params(container, f"WTOsc{i}")
             kwargs["table_position"] = _resolve(wt_pp, "kParamTablePos", schema.WTOSC_PARAMS)
             kwargs["warp_amount"] = _resolve(wt_pp, "kParamWarp", schema.WTOSC_PARAMS)
+            raw_warp_mode = _resolve(wt_pp, "kParamWarpMenu", schema.WTOSC_PARAMS)
+            kwargs["warp_mode"] = _REVERSE_WARP_MODES.get(raw_warp_mode, raw_warp_mode)
         elif i == 3:
             noise_pp = _sub_plain_params(container, f"NoiseOsc{i}")
             kwargs["noise_type"] = _resolve(noise_pp, "kParamNoiseType", schema.NOISEOSC_PARAMS)
@@ -93,6 +96,7 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                 cutoff=_resolve(pp, "kParamFreq", schema.VOICE_FILTER_PARAMS),
                 resonance=_resolve(pp, "kParamReso", schema.VOICE_FILTER_PARAMS),
                 drive=_resolve(pp, "kParamDrive", schema.VOICE_FILTER_PARAMS),
+                stereo=_resolve(pp, "kParamStereo", schema.VOICE_FILTER_PARAMS),
             )
         )
 
@@ -102,6 +106,7 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         envelopes.append(
             EnvelopeSpec(
                 attack=_resolve(pp, "kParamAttack", schema.ENV_PARAMS),
+                hold=_resolve(pp, "kParamHold", schema.ENV_PARAMS),
                 decay=_resolve(pp, "kParamDecay", schema.ENV_PARAMS),
                 sustain=_resolve(pp, "kParamSustain", schema.ENV_PARAMS),
                 release=_resolve(pp, "kParamRelease", schema.ENV_PARAMS),
@@ -180,6 +185,7 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
     global_spec = GlobalSpec(
         master_volume=_resolve(global_pp, "kParamMasterVolume", schema.GLOBAL_PARAMS),
         mono=bool(_resolve(global_pp, "kParamMonoToggle", schema.GLOBAL_PARAMS)),
+        portamento_time=_resolve(global_pp, "kParamPortamentoTime", schema.GLOBAL_PARAMS),
     )
 
     return PresetSpec(
