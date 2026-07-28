@@ -67,6 +67,7 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         kwargs: dict[str, Any] = dict(
             enabled=bool(enabled),
             octave=_resolve(pp, "kParamOctave", schema.OSCILLATOR_PARAMS),
+            semitone=_resolve(pp, "kParamPitch", schema.OSCILLATOR_PARAMS),
             volume=_resolve(pp, "kParamVolume", schema.OSCILLATOR_PARAMS),
             pan=_resolve(pp, "kParamPan", schema.OSCILLATOR_PARAMS),
             unison=_resolve(pp, "kParamUnison", schema.OSCILLATOR_PARAMS),

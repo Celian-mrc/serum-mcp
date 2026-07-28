@@ -434,6 +434,20 @@ def test_filter_stereo_env_hold_global_portamento(init_data):
     assert extracted.global_.portamento_time == 0.3
 
 
+def test_oscillator_semitone_round_trips(init_data):
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, semitone=-7.0)],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["Oscillator0"]["plainParams"]["kParamPitch"] == -7.0
+
+    extracted = extract_spec(data)
+    assert extracted.oscillators[0].semitone == -7.0
+
+
 def test_lfo_extras_and_poly_count(init_data):
     spec = PresetSpec(
         name="X",

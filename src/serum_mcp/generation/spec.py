@@ -38,6 +38,19 @@ class OscillatorSpec(BaseModel):
 
     enabled: bool = True
     octave: float = Field(0.0, ge=-4.0, le=4.0)
+    semitone: float = Field(
+        0.0,
+        ge=-12.0,
+        le=12.0,
+        description="static pitch offset in semitones, independent of octave -- exists "
+        "mainly to align two sample_playback_source layers to the same pitch class "
+        "without a full octave jump. Found live: SampleOsc has no configurable root "
+        "note, so a layered one-shot's actual sounding pitch is whatever its own "
+        "recorded content is; when combining pitched one-shots, check "
+        "analyze_sample_file's pitch_hz on each candidate first and use this field to "
+        "correct a mismatch (e.g. two layers a tritone apart) rather than assuming they "
+        "already agree.",
+    )
     volume: float = Field(0.75, ge=0.0, le=1.0, description="0=silent, 1=unity gain")
     pan: float = Field(0.0, ge=-50.0, le=50.0)
     unison: float = Field(

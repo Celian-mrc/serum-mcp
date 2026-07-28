@@ -25,6 +25,7 @@ _CUSTOM_SAMPLE_SUBDIR = ("User", "serum-mcp")
 
 _OSC_KEYS = {
     "octave": "kParamOctave",
+    "semitone": "kParamPitch",
     "volume": "kParamVolume",
     "pan": "kParamPan",
     "unison": "kParamUnison",

@@ -157,9 +157,14 @@ Every `ParamDef` carries a `confidence` field:
 is enabled by default** — this is a *per-slot* default, not a shared one
 (confirmed via the VST3 dump), which is why `preset/introspect.py`
 special-cases slot 0 rather than encoding it in the shared param table. The
-shared params (`kParamEnable`, `kParamOctave`, `kParamVolume`, `kParamPan`,
-`kParamUnison`, `kParamDetune`) apply to all 5 slots identically and are
-fully generatable via `OscillatorSpec`.
+shared params (`kParamEnable`, `kParamOctave`, `kParamPitch`, `kParamVolume`,
+`kParamPan`, `kParamUnison`, `kParamDetune`) apply to all 5 slots identically
+and are fully generatable via `OscillatorSpec`. `kParamPitch`
+(`OscillatorSpec.semitone`, ±12 semitones) is a static offset independent of
+`kParamOctave` — added specifically to align two `sample_playback_source`
+one-shots to the same pitch class, since `SampleOsc` has no configurable
+root note and each layer otherwise sounds at whatever pitch its own
+recorded content actually is.
 
 **Slots 0-2 (Osc A/B/C)** each have a sound source that's one of 5 engines,
 keyed as `WTOsc{i}`, `GranularOsc{i}`, `MultiSampleOsc{i}`, `SampleOsc{i}`,
