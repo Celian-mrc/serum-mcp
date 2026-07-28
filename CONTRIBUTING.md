@@ -70,6 +70,21 @@ Serum 2 installed and want to validate real presets,
 `serum_mcp.preset.packer.unpack_file` / `pack_file` work on any
 `.SerumPreset` on disk.
 
+**Before asking anyone to load a preset in real Serum**, run:
+
+```bash
+uv run python scripts/check_preset.py path/to/your.SerumPreset
+```
+
+It scans for the CBOR wire-type mismatches that have crashed FL Studio in
+this project's own history (native `bool`/`int` where Serum expects a
+float — see `docs/PARAMETER_SCHEMA.md`) and prints a summary of what's in
+the file. It does **not** replace an actual load in Serum — only that
+proves a preset really works — but it catches the specific failure class
+this project has already been bitten by twice, automatically. If you're
+using Claude Code, the `.claude/skills/test-in-serum/` skill wraps this
+into a full pre-test checklist.
+
 ## Pull requests
 
 - Keep PRs focused — one gap filled or one feature at a time.

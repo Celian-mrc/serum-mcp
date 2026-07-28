@@ -18,6 +18,7 @@ from serum_mcp.generation.spec import (
 from serum_mcp.preset.introspect import extract_spec
 from serum_mcp.preset.mapping import apply_spec
 from serum_mcp.preset.packer import SerumPreset, pack_bytes, unpack_bytes, unpack_file
+from serum_mcp.preset.safety import scan_wire_types
 from serum_mcp.preset.validator import ParamValidationError
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
@@ -254,20 +255,8 @@ def test_no_int_leaks_into_any_plain_params(init_data):
     )
     data = apply_spec(init_data, spec)
 
-    def walk(obj):
-        if isinstance(obj, dict):
-            if isinstance(obj.get("plainParams"), dict):
-                for key, value in obj["plainParams"].items():
-                    assert not (isinstance(value, int) and not isinstance(value, bool)), (
-                        f"{key}={value!r} is a raw int, not a float"
-                    )
-            for value in obj.values():
-                walk(value)
-        elif isinstance(obj, list):
-            for value in obj:
-                walk(value)
-
-    walk(data)
+    issues = scan_wire_types(data)
+    assert not issues, "\n".join(str(i) for i in issues)
 
 
 def test_warp_mode_and_wtosc_mod_destinations(init_data):

@@ -12,8 +12,11 @@ wheels/
 # Reference clones used for research only, not part of this project
 .refs/
 
-# Claude Code local project state
-.claude/
+# Claude Code local project state (settings.local.json, etc.) -- but keep
+# project skills, they're shared tooling worth versioning with the repo.
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 
 # Editors / OS
 .vscode/

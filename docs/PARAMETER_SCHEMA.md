@@ -57,7 +57,10 @@ natural bool/int → CBOR mapping is safe here. Note this is scoped to
 `plainParams` (`mpeEnabled`, `lockOversampling`, `lockTuning`) genuinely are
 native CBOR booleans in real presets, and `destModuleID`/`destModuleParamID`/
 `ModSlot.source`/FX `type` genuinely are native CBOR integers — don't "fix"
-those.
+those. `preset/safety.py::scan_wire_types` (`scripts/check_preset.py`)
+independently re-scans a packed preset's output for exactly this class of
+issue, as a belt-and-suspenders check that doesn't trust every code path
+went through `validate_params` correctly.
 
 ## 2. Methodology
 
