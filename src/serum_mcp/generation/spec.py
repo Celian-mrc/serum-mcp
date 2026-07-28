@@ -51,7 +51,22 @@ class OscillatorSpec(BaseModel):
         "default",
         description=f"slots 0-2 only, one of: {', '.join(sorted(SIMPLE_WAVETABLES))}. "
         "Different oscillators can (and often should) use different wavetables -- "
-        "using the same one for every slot limits timbral variety.",
+        "using the same one for every slot limits timbral variety. Ignored if "
+        "custom_harmonics is set.",
+    )
+    custom_harmonics: list[list[float]] | None = Field(
+        None,
+        description="slots 0-2 only. If set, SYNTHESIZES a brand-new wavetable instead of "
+        "using `wavetable`/`table_position`: each inner list is one frame's harmonic "
+        "amplitude series (index 0 = fundamental, index 1 = 2nd harmonic, index 2 = 3rd, "
+        "...), amplitudes roughly 0..1 (auto-normalized, don't worry about exact scale), "
+        "additively synthesized via inverse FFT into a 2048-sample single-cycle waveform "
+        "per frame. 1-256 frames; multiple frames create a wavetable that morphs in "
+        "timbre as table_position scans through it -- e.g. start with just [1.0] (pure "
+        "sine) and progressively add harmonics in later frames for a tone that gets "
+        "brighter as table_position increases. Use this when the user wants a genuinely "
+        "custom/unusual timbre that none of the curated `wavetable` options cover, not "
+        "for routine sound design (the curated tables are cheaper and pre-validated).",
     )
     table_position: float = Field(
         0.0, ge=0.0, le=256.0, description="wavetable frame position, slots 0-2 only"

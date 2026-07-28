@@ -12,10 +12,14 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from serum_mcp.generation.spec import FxUnitSpec, ModRouteSpec, PresetSpec
+from serum_mcp import config
+from serum_mcp.generation.spec import FxUnitSpec, ModRouteSpec, OscillatorSpec, PresetSpec
 
-from . import schema
+from . import schema, wavetable
 from .validator import validate_params
+
+_CUSTOM_WAVETABLE_SUBDIR = ("User", "serum-mcp")
+_MAX_CUSTOM_WAVETABLE_FRAMES = 256
 
 _OSC_KEYS = {
     "octave": "kParamOctave",
@@ -65,6 +69,35 @@ def _plain_params(container: dict[str, Any], key: str) -> dict[str, Any]:
     if not isinstance(sub.get("plainParams"), dict):
         sub["plainParams"] = {}
     return sub["plainParams"]
+
+
+def _resolve_wavetable(osc: OscillatorSpec) -> schema.WavetableDef:
+    """Resolve an oscillator's wavetable: either a curated factory table
+    (schema.SIMPLE_WAVETABLES) or, if ``custom_harmonics`` is set, a
+    freshly-synthesized one written to Serum's Tables/User folder."""
+    if osc.custom_harmonics:
+        frames_harmonics = osc.custom_harmonics
+        if len(frames_harmonics) > _MAX_CUSTOM_WAVETABLE_FRAMES:
+            raise ValueError(
+                f"custom_harmonics has {len(frames_harmonics)} frames; "
+                f"max is {_MAX_CUSTOM_WAVETABLE_FRAMES}"
+            )
+        filename = wavetable.wavetable_filename(frames_harmonics)
+        dest = config.get_tables_dir().joinpath(*_CUSTOM_WAVETABLE_SUBDIR, filename)
+        if not dest.exists():
+            frames = [wavetable.synthesize_frame(h) for h in frames_harmonics]
+            wavetable.write_wavetable_wav(dest, frames)
+        relative_path = "/".join((*_CUSTOM_WAVETABLE_SUBDIR, filename))
+        num_frames = len(frames_harmonics) * wavetable.FRAME_SIZE
+        return schema.WavetableDef(relative_path, num_frames, wavetable.SAMPLE_RATE, 1)
+
+    wt_def = schema.SIMPLE_WAVETABLES.get(osc.wavetable)
+    if wt_def is None:
+        raise ValueError(
+            f"unknown wavetable {osc.wavetable!r}; "
+            f"expected one of {sorted(schema.SIMPLE_WAVETABLES)}"
+        )
+    return wt_def
 
 
 def _build_fx_entry(fx: FxUnitSpec) -> dict[str, Any]:
@@ -177,12 +210,7 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
 
         if i in _WTOSC_SLOTS:
             wt_key = f"WTOsc{i}"
-            wt_def = schema.SIMPLE_WAVETABLES.get(osc.wavetable)
-            if wt_def is None:
-                raise ValueError(
-                    f"unknown wavetable {osc.wavetable!r}; "
-                    f"expected one of {sorted(schema.SIMPLE_WAVETABLES)}"
-                )
+            wt_def = _resolve_wavetable(osc)
             wtosc_container = osc_container.setdefault(wt_key, {})
             # File metadata, not a plainParams knob -- must match the
             # referenced .wav exactly or Serum may misread the table (same

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from serum_mcp import config
 from serum_mcp.generation.spec import (
     EnvelopeSpec,
     FilterSpec,
@@ -25,6 +26,15 @@ FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
 @pytest.fixture
 def init_data():
     return unpack_file(FIXTURES_DIR / "init_preset.SerumPreset").data
+
+
+@pytest.fixture
+def tables_dir(tmp_path, monkeypatch):
+    """Redirect config.get_tables_dir() to a throwaway directory so tests
+    that synthesize custom wavetables don't write into the user's real
+    Serum Tables folder."""
+    monkeypatch.setenv(config.TABLES_ENV_VAR, str(tmp_path))
+    return tmp_path
 
 
 def test_simple_bass_end_to_end(init_data):
@@ -463,4 +473,61 @@ def test_unknown_wavetable_rejected(init_data):
         oscillators=[OscillatorSpec(enabled=True, wavetable="not_a_real_table")],
     )
     with pytest.raises(ValueError, match="unknown wavetable"):
+        apply_spec(init_data, spec)
+
+
+def test_custom_harmonics_synthesizes_and_writes_a_wavetable(init_data, tables_dir):
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(
+                enabled=True,
+                custom_harmonics=[[1.0], [1.0, 0.5, 0.0, 0.25], [1.0, 0.7, 0.5, 0.35, 0.25, 0.2]],
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    wt0 = data["Oscillator0"]["WTOsc0"]
+    assert wt0["numFrames"] == 3 * 2048
+    assert wt0["sampleRate"] == 44100
+    assert wt0["numChannels"] == 1
+    assert wt0["relativePathToWT"].startswith("User/serum-mcp/wt_")
+    assert wt0["relativePathToWT"].endswith(".wav")
+
+    written_file = tables_dir / wt0["relativePathToWT"]
+    assert written_file.exists()
+    assert written_file.read_bytes()[:4] == b"RIFF"
+
+    extracted = extract_spec(data)
+    assert extracted.oscillators[0].wavetable == wt0["relativePathToWT"]
+
+
+def test_custom_harmonics_deterministic_filename_reused(init_data, tables_dir):
+    """Identical harmonic content should reuse the same file rather than
+    writing a duplicate every time."""
+    harmonics = [[1.0, 0.3]]
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, custom_harmonics=harmonics)],
+    )
+    data1 = apply_spec(init_data, spec)
+    path1 = data1["Oscillator0"]["WTOsc0"]["relativePathToWT"]
+
+    data2 = apply_spec(init_data, spec)
+    path2 = data2["Oscillator0"]["WTOsc0"]["relativePathToWT"]
+
+    assert path1 == path2
+    assert len(list((tables_dir / "User" / "serum-mcp").iterdir())) == 1
+
+
+def test_custom_harmonics_too_many_frames_rejected(init_data, tables_dir):
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, custom_harmonics=[[1.0]] * 300)],
+    )
+    with pytest.raises(ValueError, match="max is 256"):
         apply_spec(init_data, spec)

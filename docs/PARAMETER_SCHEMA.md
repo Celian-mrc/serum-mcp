@@ -193,6 +193,11 @@ fixed ~0-256 slot count independent of a table's raw `numFrames` (observed
 consistently across tables whose `numFrames` ranges from 4,096 to 524,288),
 so switching wavetables doesn't require rescaling `table_position`.
 
+Beyond selecting a curated factory table, `OscillatorSpec.custom_harmonics`
+can *synthesize a brand-new wavetable* from a harmonic amplitude series —
+see §7 for the wavetable `.wav` file format itself (also reverse-engineered
+this session, separately from the CBOR preset format).
+
 **Slots 3 and 4 are not the same engine family** — this is structural, not
 a modeling gap: slot 3 is *always* `NoiseOsc3` (white/pink/brown/geiger
 noise, `OscillatorSpec.noise_type`) and slot 4 is *always* `SubOsc4` (a
@@ -428,3 +433,55 @@ the overwhelming majority of samples; a handful of source IDs (notably 6-9,
 inside the LFO block) show varied non-zero subIndex values correlated with
 other valid source IDs (16-32ish), suggestive of some kind of chained/
 secondary modulation, but this wasn't pinned down further either.
+
+## 7. Wavetable file format
+
+Separate from the CBOR preset format (§1), Serum's wavetable `.wav` files
+are their own undocumented format — decoded this session because
+`serum-mcp` needed to write new ones (`OscillatorSpec.custom_harmonics`,
+`preset/wavetable.py`), not just reference existing factory tables. Nobody
+had already cracked this one publicly the way the CBOR container had been.
+
+Found by inspecting several real factory `.wav` tables byte-for-byte:
+
+- Standard RIFF/WAVE container: `"RIFF" <size> "WAVE"`.
+- A `JUNK` chunk (28 zero bytes) before `fmt ` — present in every factory
+  file inspected; reproduced for structural fidelity, though RIFF readers
+  are supposed to skip unknown/`JUNK` chunks regardless.
+- `fmt ` chunk: **IEEE float** (format tag `3`, not integer PCM — Python's
+  stdlib `wave` module can't even open these), mono, 44100 Hz, 32-bit.
+- A non-standard **`clm ` chunk** containing the literal ASCII text
+  `<!>2048 01000000 wavetable (www.xferrecords.com)`. Confirmed byte-for-
+  byte identical across every factory table checked regardless of that
+  table's actual frame count (7, 9, 24, and 112 frames observed) — it's a
+  fixed format marker, not per-file metadata. `2048` is the frame size in
+  samples: every table's total sample count divided evenly by 2048 with
+  zero remainder in every file checked.
+- `data` chunk: raw little-endian float32 samples, `2048 * num_frames`
+  samples total. Each consecutive 2048-sample block is one single-cycle
+  waveform frame; Serum's wavetable position control (`kParamTablePos`,
+  §4 Oscillators) scans through these frames as a value from `0.0` to
+  roughly `num_frames`-ish (empirically the control tops out around `256`
+  regardless of a table's actual frame count, see §4 — consistent with
+  Serum normalizing the position control to a fixed range independent of
+  the loaded table's real frame count).
+
+This is `observed`-confidence, not `confirmed` — inferred from consistent
+structure across multiple real files (the same evidence bar used everywhere
+else undocumented-format claims are made in this project), not validated
+against Xfer's own source. `preset/wavetable.py::write_wavetable_wav`
+reproduces this exact byte layout; `synthesize_frame` builds one frame from
+a harmonic amplitude series via inverse real FFT (`numpy.fft.irfft`),
+peak-normalized to avoid clipping. Generated tables are written to
+`Tables/User/serum-mcp/` under Serum's Tables folder (a sibling of
+`Presets/`, resolved by `config.get_tables_dir()` — override with
+`SERUM_TABLES_PATH` the same way `SERUM_PRESETS_PATH` overrides the presets
+folder), named by a content hash of the harmonic data so identical
+definitions reuse one file instead of duplicating it.
+
+**Known gap**: phase is not exposed — `synthesize_frame` treats every
+harmonic amplitude as a real-valued (cosine-phase) FFT bin, so all
+generated tables currently use one fixed phase relationship between
+harmonics. Real-world waveform character (e.g. the audible difference
+between a cosine-phase and sine-phase harmonic stack) that depends on
+relative phase isn't reachable yet.

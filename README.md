@@ -84,6 +84,12 @@ If unset, `serum-mcp` falls back to a couple of known default install
 locations (see `src/serum_mcp/config.py`) before failing with a clear error
 — it never silently guesses or hardcodes a path.
 
+If you ask for a custom-synthesized wavetable (`custom_harmonics`, see [How
+it works](#how-it-works)), `serum-mcp` also needs Serum's **Tables** folder
+(a sibling of `Presets/`) to write the generated `.wav` into. It's derived
+automatically from `SERUM_PRESETS_PATH`; override with `SERUM_TABLES_PATH`
+if your install doesn't follow the standard layout.
+
 ### Add to Claude Code
 
 ```bash
