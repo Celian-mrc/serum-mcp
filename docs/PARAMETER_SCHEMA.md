@@ -441,15 +441,52 @@ set it explicitly at all. `kParamGate` can exceed 100% (observed up to
 (`kParamLaunchQuantize`, note-level velocity/retrig/chance humanization
 params) are cataloged in `schema.py` but not exposed via `ArpSpec` yet.
 
-**Confirmed live** (2026-07-28, real Serum 2 in FL Studio 21): the two
-original `_ArpTest/` presets (`up_down` and `chord` shapes, algorithmic
-mode) both loaded and arpeggiated correctly on a held chord. `Pattern`-mode
-generation is verified via the CBOR wire-type scanner and the round-trip
-stress test above, but **not yet confirmed live** the way algorithmic mode
-is — treat with the same caution as any newly-added, not-yet-live-tested
-generation feature until confirmed. The exact meaning of `kParamRate`, the
-`UpDown`/`DownUp`/`UpAndDown`/`DownAndUp` distinction, and Pattern mode's
-attribute-vector index 6 remain unverified specifics either way.
+**Confirmed live** (2026-07-29, real Serum 2 in FL Studio 21), both modes:
+the original `_ArpTest/` presets (`up_down` and `chord` shapes, algorithmic
+mode) loaded and arpeggiated correctly on a held chord. `Pattern` mode took
+7 rounds of live testing to get right — worth recording the actual
+debugging path since it's a real methodology lesson, not just a result:
+
+1. First attempt (all fields as initially guessed) failed silently: loaded
+   fine, played only a single continuous note, chords included.
+2. Grafting a real, confirmed-working Factory preset's ArpClip0 (`ARP -
+   Acid101`) onto our own generation pipeline worked, isolating the bug to
+   what values we generate, not the base pipeline.
+3. Two guessed fixes (kParamDotted/kParamTriplets never written at 0.0;
+   dropping `regionEndBeats`, which a working real example omits) were
+   both plausible from the evidence at the time, applied together, and
+   **did not fix it** -- still stuck on one note.
+4. A proper 3-way isolated diagnostic (swap ONLY the notes, ONLY the
+   plainParams, or ONLY the attributes vector between our generated data
+   and Acid101's real data, keeping everything else from the known-working
+   side) found: our note values were fine, our attributes vector was fine,
+   but Acid101's plainParams were required -- narrowing the real cause to
+   *something* in kParamRate/kParamGate/kParamNoteRetrig/kParamWrapRange/
+   kParamWrapTranspose collectively, still not one field.
+5. Adding just kParamNoteRetrig (the most plausible-*sounding* name) was
+   tried next and **did not fix it either** -- still stuck.
+6. A genuinely single-variable isolation (two presets, each swapping in
+   Acid101's real value for exactly one of kParamRate or kParamGate,
+   nothing else) finally found it: kParamRate's value alone was the cause.
+   kParamGate made no difference.
+
+**Actual root cause**: `kParamRate`'s default of 0.25 froze a real
+generated Pattern-mode clip on its first note; raising it to ~0.5 (a real
+Factory preset's value) fixed it with every other field held identical.
+kParamNoteRetrig/kParamWrapRange/kParamWrapTranspose were never
+individually proven necessary -- they're still written (present in every
+real working example, never observed to cause harm) but their `schema.py`
+notes say so honestly rather than repeating the disproven claim that they
+were "the fix." The lesson worth keeping: when multiple fields differ
+between a working and a broken example, changing several plausible-looking
+ones at once and testing live doesn't actually tell you which one mattered
+-- only a true single-variable swap does, and steps 3 and 5 above cost two
+extra full live-test round-trips by skipping that discipline.
+
+The exact meaning of `kParamRate` beyond "must not be too low for
+`Pattern`", the `UpDown`/`DownUp`/`UpAndDown`/`DownAndUp` distinction, and
+Pattern mode's attribute-vector index 6 remain unverified specifics either
+way.
 
 ## 5. Known gaps and open questions
 
