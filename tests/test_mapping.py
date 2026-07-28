@@ -38,6 +38,70 @@ def tables_dir(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.fixture
+def samples_dir(tmp_path, monkeypatch):
+    """Redirect config.get_samples_dir() to a throwaway directory so tests
+    that copy one-shots for SampleOsc playback don't write into the user's
+    real Serum Samples folder."""
+    dest = tmp_path / "Samples"
+    dest.mkdir()
+    monkeypatch.setenv(config.SAMPLES_ENV_VAR, str(dest))
+    return dest
+
+
+def _write_wav_fixture(path: Path, *, num_samples: int = 4410, sample_rate: int = 44100) -> None:
+    """Minimal real WAV file for sample_playback_source tests -- 16-bit PCM
+    mono, small enough to keep tests fast."""
+    import struct as _struct
+
+    import numpy as _np
+
+    t = _np.linspace(0, 1, num_samples, endpoint=False)
+    tone = (0.5 * _np.sin(2 * _np.pi * 440 * t) * 32767).astype("<i2")
+    data = tone.tobytes()
+    fmt_chunk = _struct.pack("<HHIIHH", 1, 1, sample_rate, sample_rate * 2, 2, 16)
+    body = bytearray()
+    body += b"fmt " + _struct.pack("<I", len(fmt_chunk)) + fmt_chunk
+    body += b"data" + _struct.pack("<I", len(data)) + data
+    riff = bytearray(b"RIFF")
+    riff += _struct.pack("<I", 4 + len(body))
+    riff += b"WAVE"
+    riff += body
+    path.write_bytes(bytes(riff))
+
+
+def _write_stereo_wav_fixture(
+    path: Path,
+    *,
+    left_amp: float = 0.8,
+    right_amp: float = 0.4,
+    num_samples: int = 4410,
+    sample_rate: int = 44100,
+) -> None:
+    """A stereo WAV fixture with a deliberate left/right level imbalance,
+    for sample_center_pan tests."""
+    import struct as _struct
+
+    import numpy as _np
+
+    t = _np.linspace(0, 1, num_samples, endpoint=False)
+    left = (left_amp * _np.sin(2 * _np.pi * 440 * t) * 32767).astype("<i2")
+    right = (right_amp * _np.sin(2 * _np.pi * 440 * t) * 32767).astype("<i2")
+    interleaved = _np.empty(num_samples * 2, dtype="<i2")
+    interleaved[0::2] = left
+    interleaved[1::2] = right
+    data = interleaved.tobytes()
+    fmt_chunk = _struct.pack("<HHIIHH", 1, 2, sample_rate, sample_rate * 4, 4, 16)
+    body = bytearray()
+    body += b"fmt " + _struct.pack("<I", len(fmt_chunk)) + fmt_chunk
+    body += b"data" + _struct.pack("<I", len(data)) + data
+    riff = bytearray(b"RIFF")
+    riff += _struct.pack("<I", 4 + len(body))
+    riff += b"WAVE"
+    riff += body
+    path.write_bytes(bytes(riff))
+
+
 def test_simple_bass_end_to_end(init_data):
     spec = PresetSpec(
         name="BA - Test Bass",
@@ -177,6 +241,68 @@ def test_mod_routes_do_not_collide_with_existing_slots(init_data):
     data = apply_spec(init_data, spec)
     assert data["ModSlot0"]["source"] == [99, 0]  # untouched
     assert data["ModSlot1"]["source"] == [7, 0]  # lfo1, placed in the next free slot
+
+
+def test_editing_a_mod_route_updates_it_in_place(init_data):
+    """Regression test found live: editing an already-generated preset's
+    route (same source+destination, new amount) must overwrite the
+    existing ModSlot, not accumulate a second, additive one in a different
+    free slot."""
+    spec1 = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[
+            ModRouteSpec(source="lfo0", destination="filter0.cutoff", amount=15.0, bipolar=True)
+        ],
+    )
+    data = apply_spec(init_data, spec1)
+
+    spec2 = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[
+            ModRouteSpec(source="lfo0", destination="filter0.cutoff", amount=4.0, bipolar=True)
+        ],
+    )
+    data = apply_spec(data, spec2)
+
+    mod_slots = [
+        (k, v)
+        for k, v in data.items()
+        if isinstance(k, str) and k.startswith("ModSlot") and isinstance(v, dict)
+    ]
+    routes_to_filter_cutoff = [
+        v
+        for _, v in mod_slots
+        if v.get("destModuleTypeString") == "VoiceFilter"
+        and v.get("destModuleParamName") == "kParamFreq"
+    ]
+    assert len(routes_to_filter_cutoff) == 1
+    assert routes_to_filter_cutoff[0]["plainParams"]["kParamAmount"] == 4.0
+
+
+def test_editing_one_route_does_not_disturb_a_different_existing_route(init_data):
+    spec1 = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[
+            ModRouteSpec(source="lfo0", destination="filter0.cutoff", amount=15.0),
+            ModRouteSpec(source="lfo1", destination="oscillator0.pan", amount=20.0),
+        ],
+    )
+    data = apply_spec(init_data, spec1)
+
+    spec2 = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[ModRouteSpec(source="lfo0", destination="filter0.cutoff", amount=4.0)],
+    )
+    data = apply_spec(data, spec2)
+
+    extracted = extract_spec(data)
+    routes = {r.destination: r for r in extracted.mod_routes}
+    assert routes["filter0.cutoff"].amount == 4.0
+    assert routes["oscillator0.pan"].amount == 20.0  # untouched by the second edit
 
 
 def test_unknown_mod_source_rejected(init_data):
@@ -520,3 +646,254 @@ def test_custom_harmonics_too_many_frames_rejected(init_data, tables_dir):
     )
     with pytest.raises(ValueError, match="max is 256"):
         apply_spec(init_data, spec)
+
+
+def test_default_wt_oscillator_writes_kparamtype_wt(init_data, tables_dir):
+    """Every WT-engine oscillator must explicitly declare kOsc_WT now (not
+    just rely on it being the implicit default), so a later partial edit
+    that switches this slot to SampleOsc and back can't leave a stale
+    engine selector behind."""
+    spec = PresetSpec(name="X", description="", oscillators=[OscillatorSpec(enabled=True)])
+    data = apply_spec(init_data, spec)
+    assert data["Oscillator0"]["plainParams"]["kParamType"] == "kOsc_WT"
+
+
+def test_sample_playback_source_writes_sampleosc_and_engine_selector(
+    init_data, tables_dir, samples_dir, tmp_path
+):
+    source = tmp_path / "kick.wav"
+    _write_wav_fixture(source)
+
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(
+                enabled=True,
+                sample_playback_source=str(source),
+                warp_amount=0.4,
+                warp_mode="soft_clip",
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    osc0 = data["Oscillator0"]
+    assert osc0["plainParams"]["kParamType"] == "kOsc_Sample"
+    # No loop requested -- must not appear at all (absence == one-shot,
+    # per the factory-preset survey; there's no observed "off" enum value).
+    assert "kParamLoopMode" not in osc0["plainParams"]
+
+    sample0 = osc0["SampleOsc0"]
+    assert sample0["numChannels"] == 1
+    assert sample0["sampleRate"] == 44100
+    assert sample0["numFrames"] == 4410
+    assert sample0["samplePathRelative"].startswith("User/serum-mcp/smp_")
+    assert sample0["samplePathRelative"].endswith(".wav")
+    assert sample0["plainParams"]["kParamWarp"] == 0.4
+    assert sample0["plainParams"]["kParamWarpMenu"] == "kDistSoftClip"
+
+    written_file = samples_dir / sample0["samplePathRelative"]
+    assert written_file.exists()
+    assert written_file.read_bytes() == source.read_bytes()
+
+    # WTOsc0 must be left alone (still the base fixture's inert sentinel),
+    # not populated alongside the now-inactive-engine data.
+    assert osc0["WTOsc0"] == init_data["Oscillator0"]["WTOsc0"]
+
+
+def test_sample_playback_source_centers_imbalanced_stereo_by_default(
+    init_data, tables_dir, samples_dir, tmp_path
+):
+    source = tmp_path / "guitar.wav"
+    _write_stereo_wav_fixture(source, left_amp=0.8, right_amp=0.4)
+
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, sample_playback_source=str(source))],
+    )
+    data = apply_spec(init_data, spec)
+
+    sample0 = data["Oscillator0"]["SampleOsc0"]
+    written_file = samples_dir / sample0["samplePathRelative"]
+    assert written_file.exists()
+    # Re-encoded/corrected, not a verbatim copy of the imbalanced source.
+    assert written_file.read_bytes() != source.read_bytes()
+
+
+def test_sample_playback_source_center_pan_false_copies_verbatim(
+    init_data, tables_dir, samples_dir, tmp_path
+):
+    source = tmp_path / "guitar.wav"
+    _write_stereo_wav_fixture(source, left_amp=0.8, right_amp=0.4)
+
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(
+                enabled=True, sample_playback_source=str(source), sample_center_pan=False
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    sample0 = data["Oscillator0"]["SampleOsc0"]
+    written_file = samples_dir / sample0["samplePathRelative"]
+    assert written_file.read_bytes() == source.read_bytes()
+
+
+def test_sample_playback_source_dedup_reuses_copy(init_data, tables_dir, samples_dir, tmp_path):
+    source = tmp_path / "kick.wav"
+    _write_wav_fixture(source)
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, sample_playback_source=str(source))],
+    )
+
+    data1 = apply_spec(init_data, spec)
+    data2 = apply_spec(init_data, spec)
+
+    path1 = data1["Oscillator0"]["SampleOsc0"]["samplePathRelative"]
+    path2 = data2["Oscillator0"]["SampleOsc0"]["samplePathRelative"]
+    assert path1 == path2
+    assert len(list((samples_dir / "User" / "serum-mcp").iterdir())) == 1
+
+
+def test_sample_playback_source_loop_forward_writes_loop_params(
+    init_data, tables_dir, samples_dir, tmp_path
+):
+    source = tmp_path / "pad.wav"
+    _write_wav_fixture(source)
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(
+                enabled=True,
+                sample_playback_source=str(source),
+                sample_loop="forward",
+                sample_loop_start=10.0,
+                sample_loop_end=90.0,
+                sample_loop_crossfade=5.0,
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+    pp = data["Oscillator0"]["plainParams"]
+    assert pp["kParamLoopMode"] == "kForward"
+    assert pp["kParamLoopStart"] == 10.0
+    assert pp["kParamLoopEnd"] == 90.0
+    assert pp["kParamLoopCrossfade"] == 5.0
+
+
+def test_sample_playback_source_missing_file_rejected(init_data, tables_dir, samples_dir):
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, sample_playback_source="/no/such/file.wav")],
+    )
+    with pytest.raises(ValueError, match="does not exist"):
+        apply_spec(init_data, spec)
+
+
+def test_sample_playback_source_rejects_unsupported_extension(
+    init_data, tables_dir, samples_dir, tmp_path
+):
+    source = tmp_path / "kick.flac"
+    source.write_bytes(b"fLaC not a real flac but has the right extension")
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, sample_playback_source=str(source))],
+    )
+    with pytest.raises(ValueError, match="unsupported extension"):
+        apply_spec(init_data, spec)
+
+
+def test_sample_playback_source_takes_priority_over_wavetable_fields(
+    init_data, tables_dir, samples_dir, tmp_path
+):
+    """sample_playback_source + custom_harmonics/wavetable both set at once
+    must use the sample engine and never touch the wavetable-synthesis path
+    (which would otherwise raise/write unnecessarily)."""
+    source = tmp_path / "kick.wav"
+    _write_wav_fixture(source)
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(
+                enabled=True,
+                sample_playback_source=str(source),
+                wavetable="acid",
+                custom_harmonics=[[1.0]],
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+    assert data["Oscillator0"]["plainParams"]["kParamType"] == "kOsc_Sample"
+    assert "SampleOsc0" in data["Oscillator0"]
+
+
+def test_sample_playback_source_round_trips_through_introspection(
+    init_data, tables_dir, samples_dir, tmp_path
+):
+    source = tmp_path / "kick.wav"
+    _write_wav_fixture(source)
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(
+                enabled=True,
+                sample_playback_source=str(source),
+                warp_amount=0.4,
+                warp_mode="soft_clip",
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    extracted = extract_spec(data)
+    osc0 = extracted.oscillators[0]
+    assert osc0.sample_playback_source is not None
+    written_path = Path(osc0.sample_playback_source)
+    assert written_path.is_file()
+    assert written_path.read_bytes() == source.read_bytes()
+    assert osc0.warp_amount == 0.4
+    assert osc0.warp_mode == "soft_clip"
+    assert osc0.sample_loop == "off"
+    # WT-only field must not leak a stale/misleading value.
+    assert osc0.wavetable == "default"
+
+
+def test_sample_playback_source_loop_round_trips_through_introspection(
+    init_data, tables_dir, samples_dir, tmp_path
+):
+    source = tmp_path / "pad.wav"
+    _write_wav_fixture(source)
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(
+                enabled=True,
+                sample_playback_source=str(source),
+                sample_loop="ping_pong",
+                sample_loop_start=15.0,
+                sample_loop_end=85.0,
+                sample_loop_crossfade=8.0,
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    extracted = extract_spec(data)
+    osc0 = extracted.oscillators[0]
+    assert osc0.sample_loop == "ping_pong"
+    assert osc0.sample_loop_start == 15.0
+    assert osc0.sample_loop_end == 85.0
+    assert osc0.sample_loop_crossfade == 8.0

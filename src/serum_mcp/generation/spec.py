@@ -27,10 +27,13 @@ FilterTypeName = str  # validated against SIMPLE_FILTER_TYPES keys in mapping.py
 
 class OscillatorSpec(BaseModel):
     """Shared fields apply to all 5 oscillator slots (A/B/C/Noise/Sub).
-    ``table_position``/``warp_amount`` only affect slots 0-2 (the wavetable
-    engine); ``noise_type`` only affects slot 3; ``sub_shape`` only affects
-    slot 4 -- mapping.py ignores the fields that don't apply to a given slot
-    rather than writing them somewhere Serum doesn't expect.
+    ``table_position``/``warp_amount`` only affect slots 0-2; ``noise_type``
+    only affects slot 3; ``sub_shape`` only affects slot 4 -- mapping.py
+    ignores the fields that don't apply to a given slot rather than writing
+    them somewhere Serum doesn't expect. Slots 0-2 pick one of two sound-
+    source engines: the wavetable engine (``wavetable``/``custom_harmonics``/
+    ``sample_source``) or, if ``sample_playback_source`` is set, the sample-
+    playback engine -- never both at once.
     """
 
     enabled: bool = True
@@ -52,7 +55,10 @@ class OscillatorSpec(BaseModel):
         description=f"slots 0-2 only, one of: {', '.join(sorted(SIMPLE_WAVETABLES))}. "
         "Different oscillators can (and often should) use different wavetables -- "
         "using the same one for every slot limits timbral variety. Ignored if "
-        "custom_harmonics is set.",
+        "custom_harmonics, sample_source, or sample_playback_source is set. IMPORTANT: "
+        "'flute' is nearly silent at the default table_position=0.0 (its frame 0 peaks "
+        "at 0.004 vs a table average of 0.81, found live) -- always pair it with "
+        "table_position around 130-150.",
     )
     custom_harmonics: list[list[float]] | None = Field(
         None,
@@ -67,6 +73,90 @@ class OscillatorSpec(BaseModel):
         "brighter as table_position increases. Use this when the user wants a genuinely "
         "custom/unusual timbre that none of the curated `wavetable` options cover, not "
         "for routine sound design (the curated tables are cheaper and pre-validated).",
+    )
+    sample_source: str | None = Field(
+        None,
+        description="slots 0-2 only. If set, SYNTHESIZES a wavetable by slicing a "
+        "user-provided audio file (absolute path to a WAV: 16/24/32-bit PCM or 32-bit "
+        "float, any sample rate/channel count) into `sample_frames` evenly-spaced "
+        "2048-sample frames that table_position scans through -- turns a one-shot (drum "
+        "hit, vocal chop, foley) into an evolving/morphable synth texture derived from "
+        "its own timbre. This is NOT faithful one-shot playback -- expect a synthesized, "
+        "often buzzy/looped character built from slices of the source audio, not a clean "
+        "reproduction of the original transient. Use ONLY when the user wants that "
+        "synthesized/morphing character; if they want the one-shot to still sound "
+        "recognizably like itself, use `sample_playback_source` instead. Ignored if "
+        "sample_playback_source is set.",
+    )
+    sample_playback_source: str | None = Field(
+        None,
+        description="slots 0-2 only. If set, uses Serum's SAMPLE-PLAYBACK engine "
+        "(SampleOsc) instead of the wavetable engine: an absolute path to a WAV file "
+        "that gets copied into Serum's Samples library and played back preserving its "
+        "own recorded character -- unlike sample_source (above), which resynthesizes a "
+        "wavetable and loses the original transient/timbre. Use this when the user wants "
+        "to recognizably keep a one-shot/sample (drum hit, vocal chop, foley) and shape "
+        "it with Serum's filter/envelope/FX, alone or layered with other oscillators, "
+        "rather than turn it into a synthesized texture. Takes priority over "
+        "wavetable/custom_harmonics/sample_source if set. warp_amount/warp_mode still "
+        "apply (this engine shares WTOsc's warp system) but table_position does not -- "
+        "there's no scannable frame position, the file plays back as one continuous "
+        "sample. Only .wav is supported (not .flac/.mp3/.aiff -- convert first). "
+        "Confirmed live: the sample plays back at its originally-recorded pitch/speed "
+        "when C5 is played -- that's the fixed reference note this engine uses (not "
+        "configurable), so octave/detune/fine are the only way to shift it if the user "
+        "wants a different reference. Pitch and duration are coupled with no way to "
+        "decouple them (classic 'resampling' behavior, not time-stretching) -- a note "
+        "played higher reads through the sample faster (shorter), lower reads slower "
+        "(longer). This matters for melodic use across a wide note range (a one-shot "
+        "used as a melody instrument will have a different length at each pitch); "
+        "sample_loop sustains the *looped* portion regardless of pitch but not the "
+        "initial attack/transient, which still speeds up or slows down with the note.",
+    )
+    sample_center_pan: bool = Field(
+        True,
+        description="slots 0-2 only, sample_playback_source only. Real one-shot "
+        "recordings often have a measurable left/right level imbalance (an off-center "
+        "mic placement in the original recording, not anything Serum or this project "
+        "adds) -- when true (the default), a stereo file's channels are gain-balanced "
+        "to the same RMS before being copied in, correcting that bias without altering "
+        "either channel's actual waveform/content (not summed to mono, stereo width "
+        "survives). Set false to preserve the file exactly as recorded.",
+    )
+    sample_loop: str = Field(
+        "off",
+        description="slots 0-2 only, sample_playback_source only. One of: 'off' (play "
+        "through once, true one-shot -- default, use for drum hits/percussive "
+        "material), 'forward' (loop sample_loop_start..sample_loop_end forward, for "
+        "sustaining a pad/drone from a one-shot), 'ping_pong' (loop back and forth), "
+        "'tailed' (play through once then loop the tail region -- keeps a one-shot's "
+        "attack intact while sustaining its tail indefinitely).",
+    )
+    sample_loop_start: float = Field(
+        0.0,
+        ge=0.0,
+        le=100.0,
+        description="% into the sample where the loop region starts, sample_loop != 'off' only",
+    )
+    sample_loop_end: float = Field(
+        100.0,
+        ge=0.0,
+        le=100.0,
+        description="% into the sample where the loop region ends, sample_loop != 'off' only",
+    )
+    sample_loop_crossfade: float = Field(
+        0.0,
+        ge=0.0,
+        le=100.0,
+        description="% crossfade at the loop point, sample_loop != 'off' only",
+    )
+    sample_frames: int = Field(
+        16,
+        ge=1,
+        le=256,
+        description="number of frames to slice sample_source into, slots 0-2 only. "
+        "Frame 0 is the sample's start (e.g. a drum hit's transient); the last frame is "
+        "its tail. More frames = finer morphing resolution as table_position scans.",
     )
     table_position: float = Field(
         0.0, ge=0.0, le=256.0, description="wavetable frame position, slots 0-2 only"
@@ -93,7 +183,16 @@ class FilterSpec(BaseModel):
     cutoff: float = Field(0.5, ge=0.0, le=1.0, description="0=closed, 1=fully open")
     resonance: float = Field(10.0, ge=0.0, le=100.0)
     drive: float = Field(0.0, ge=0.0, le=100.0)
-    stereo: float = Field(0.0, ge=0.0, le=100.0, description="stereo width/spread %")
+    stereo: float = Field(
+        50.0,
+        ge=0.0,
+        le=100.0,
+        description="stereo width/spread %. 50 is centered/neutral -- confirmed live "
+        "(2026-07-28, real Serum 2) that 0 is NOT neutral despite being this field's "
+        "prior default: it introduces an audible, meter-visible hard-left bias on "
+        "VoiceFilter's per-channel processing. Values away from 50 in either direction "
+        "shift the balance.",
+    )
 
 
 class EnvelopeSpec(BaseModel):

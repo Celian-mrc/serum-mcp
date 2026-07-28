@@ -84,11 +84,38 @@ If unset, `serum-mcp` falls back to a couple of known default install
 locations (see `src/serum_mcp/config.py`) before failing with a clear error
 — it never silently guesses or hardcodes a path.
 
-If you ask for a custom-synthesized wavetable (`custom_harmonics`, see [How
-it works](#how-it-works)), `serum-mcp` also needs Serum's **Tables** folder
+If you ask for a custom-synthesized wavetable (`custom_harmonics`) or a
+wavetable sliced from one of your own audio files (`sample_source`, e.g.
+"turn this drum one-shot into a wavetable" — see [How it
+works](#how-it-works)), `serum-mcp` also needs Serum's **Tables** folder
 (a sibling of `Presets/`) to write the generated `.wav` into. It's derived
 automatically from `SERUM_PRESETS_PATH`; override with `SERUM_TABLES_PATH`
-if your install doesn't follow the standard layout.
+if your install doesn't follow the standard layout. Note `sample_source`
+slices the file into a wavetable, it does not play the sample back
+faithfully.
+
+If you instead ask to keep a one-shot/sample recognizable (`sample_playback_source`,
+e.g. "turn this drum hit into a preset" or "layer this vocal chop with a
+synth pad"), `serum-mcp` uses Serum's actual sample-playback engine
+(`SampleOsc`) and copies the file into Serum's **Samples** folder (also a
+sibling of `Presets/`, derived automatically or overridden via
+`SERUM_SAMPLES_PATH`). Only `.wav` is supported for this (confirmed working
+live, despite every factory preset referencing `.flac` instead — see
+`docs/PARAMETER_SCHEMA.md` §8). The sample plays back at its originally
+recorded pitch/speed when **C5** is played — a fixed reference note, not
+configurable. If the source file is stereo, its channels are gain-balanced
+by default (`sample_center_pan`) to correct any left/right level bias in
+the original recording (common — real one-shots are often mic'd slightly
+off-center) without altering either channel's actual content.
+
+Optionally, set `SAMPLE_BANK_PATH` to the root of your own one-shot/drumkit
+library (unrelated to Serum's own folders — this can point anywhere). With
+it set, `list_sample_files()` can be called with no arguments and defaults
+to browsing that folder, which lets the calling model proactively check
+whether you have a fitting one-shot for a request even if you didn't
+explicitly mention your sample bank. Not set by default, and nothing reads
+your filesystem unless you configure this or point the model at a
+directory yourself.
 
 ### Add to Claude Code
 
@@ -135,10 +162,12 @@ Same shape, in Claude Desktop's `claude_desktop_config.json`
 
 | Tool | Description |
 |---|---|
-| `generate_preset(spec)` | Build a new preset from a `PresetSpec` and write it to your Serum presets folder. |
+| `generate_preset(spec, subfolder=None)` | Build a new preset from a `PresetSpec` and write it to your Serum presets folder. `subfolder` (e.g. `"RAGE Bank"`) nests a themed set of presets together instead of writing them flat. |
 | `edit_preset(preset_path, spec)` | Apply a partial `PresetSpec` update to an existing preset. Renames the file if `spec.name` changes (Serum's browser displays the filename, not internal metadata). |
 | `list_parameters()` | Full documented parameter schema (names, ranges, units, enum values, confidence) as JSON. |
 | `describe_preset(preset_path)` | Human-readable summary of a preset's current sound-shaping parameters. |
+| `list_sample_files(directory=None)` | List audio files under a folder (e.g. a drumkit/sample bank) as JSON — path, name, size, and duration/sample rate/channels for `.wav` — so a specific file can be picked by name/folder context instead of guessed. Defaults to `SAMPLE_BANK_PATH` if `directory` is omitted. |
+| `analyze_sample_file(path)` | Lightweight acoustic descriptors for one `.wav` one-shot as JSON — brightness, tonal/noisy texture, a gated pitch estimate, attack/sustain shape — for when filenames within a sample-bank category aren't descriptive enough on their own. Also surfaces `embedded_metadata` (root note, sample-accurate loop points) when the sample pack's creator embedded RIFF `inst`/`smpl` tags — not universal, empty when absent. |
 
 You don't write `PresetSpec` JSON by hand — the calling model (Claude Code,
 Claude Desktop, ...) builds it from your natural-language request using the

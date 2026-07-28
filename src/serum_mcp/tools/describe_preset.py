@@ -25,10 +25,22 @@ def describe_preset(preset_path: str) -> str:
         state = "ON " if osc.enabled else "off"
         common = f"octave={osc.octave:+.0f}  volume={osc.volume:.2f}  pan={osc.pan:+.0f}"
         if i in (0, 1, 2):
-            extra = (
-                f"wavetable={osc.wavetable}  table_pos={osc.table_position:.1f}  "
-                f"warp={osc.warp_mode}({osc.warp_amount:.2f})"
-            )
+            if osc.sample_playback_source:
+                loop = (
+                    f"  loop={osc.sample_loop}"
+                    f"({osc.sample_loop_start:.0f}-{osc.sample_loop_end:.0f}%)"
+                    if osc.sample_loop != "off"
+                    else "  loop=off (one-shot)"
+                )
+                extra = (
+                    f"sample={osc.sample_playback_source}  "
+                    f"warp={osc.warp_mode}({osc.warp_amount:.2f}){loop}"
+                )
+            else:
+                extra = (
+                    f"wavetable={osc.wavetable}  table_pos={osc.table_position:.1f}  "
+                    f"warp={osc.warp_mode}({osc.warp_amount:.2f})"
+                )
             if osc.unison > 1:
                 extra += f"  unison={osc.unison:.0f}  detune={osc.detune:.2f}"
         elif i == 3:

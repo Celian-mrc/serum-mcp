@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from serum_mcp import config
 from serum_mcp.generation.spec import (
     EnvelopeSpec,
     FilterSpec,
@@ -28,6 +29,7 @@ from . import schema
 _REVERSE_FILTER_TYPES = {v: k for k, v in schema.SIMPLE_FILTER_TYPES.items()}
 _REVERSE_WARP_MODES = {v: k for k, v in schema.SIMPLE_WARP_MODES.items()}
 _REVERSE_WAVETABLES = {wt.relative_path: name for name, wt in schema.SIMPLE_WAVETABLES.items()}
+_REVERSE_SAMPLE_LOOP_MODES = {v: k for k, v in schema.SIMPLE_SAMPLE_LOOP_MODES.items()}
 _REVERSE_MOD_SOURCE_IDS = {v: k for k, v in schema.MOD_SOURCE_IDS.items()}
 _REVERSE_MOD_DEST_TARGETS = {
     (d.dest_type, d.dest_id, d.param_name): name for name, d in schema.MOD_DEST_TARGETS.items()
@@ -71,14 +73,53 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             detune=_resolve(pp, "kParamDetune", schema.OSCILLATOR_PARAMS),
         )
         if i in (0, 1, 2):
-            wt_container = container.get(f"WTOsc{i}") or {}
-            wt_pp = wt_container.get("plainParams")
-            kwargs["table_position"] = _resolve(wt_pp, "kParamTablePos", schema.WTOSC_PARAMS)
-            kwargs["warp_amount"] = _resolve(wt_pp, "kParamWarp", schema.WTOSC_PARAMS)
-            raw_warp_mode = _resolve(wt_pp, "kParamWarpMenu", schema.WTOSC_PARAMS)
-            kwargs["warp_mode"] = _REVERSE_WARP_MODES.get(raw_warp_mode, raw_warp_mode)
-            raw_path = wt_container.get("relativePathToWT")
-            kwargs["wavetable"] = _REVERSE_WAVETABLES.get(raw_path, raw_path or "default")
+            engine = _resolve(pp, "kParamType", schema.OSCILLATOR_PARAMS)
+            if engine == "kOsc_Sample":
+                sample_container = container.get(f"SampleOsc{i}") or {}
+                sample_pp = sample_container.get("plainParams")
+                kwargs["warp_amount"] = _resolve(sample_pp, "kParamWarp", schema.SAMPLEOSC_PARAMS)
+                raw_warp_mode = _resolve(sample_pp, "kParamWarpMenu", schema.SAMPLEOSC_PARAMS)
+                kwargs["warp_mode"] = _REVERSE_WARP_MODES.get(raw_warp_mode, raw_warp_mode)
+
+                raw_sample_path = sample_container.get("samplePathRelative")
+                if raw_sample_path:
+                    try:
+                        kwargs["sample_playback_source"] = str(
+                            config.get_samples_dir() / raw_sample_path
+                        )
+                    except config.SamplesFolderNotFoundError:
+                        # Introspection must still succeed even if the
+                        # Samples folder isn't configured/resolvable in the
+                        # current environment (e.g. describe_preset run
+                        # somewhere without SERUM_SAMPLES_PATH set) -- the
+                        # relative reference still round-trips in the raw
+                        # data either way, this just can't show it as a
+                        # ready-to-reuse absolute path.
+                        pass
+
+                raw_loop_mode = pp.get("kParamLoopMode") if isinstance(pp, dict) else None
+                if raw_loop_mode:
+                    kwargs["sample_loop"] = _REVERSE_SAMPLE_LOOP_MODES.get(
+                        raw_loop_mode, raw_loop_mode
+                    )
+                    kwargs["sample_loop_start"] = _resolve(
+                        pp, "kParamLoopStart", schema.OSCILLATOR_PARAMS
+                    )
+                    kwargs["sample_loop_end"] = _resolve(
+                        pp, "kParamLoopEnd", schema.OSCILLATOR_PARAMS
+                    )
+                    kwargs["sample_loop_crossfade"] = _resolve(
+                        pp, "kParamLoopCrossfade", schema.OSCILLATOR_PARAMS
+                    )
+            else:
+                wt_container = container.get(f"WTOsc{i}") or {}
+                wt_pp = wt_container.get("plainParams")
+                kwargs["table_position"] = _resolve(wt_pp, "kParamTablePos", schema.WTOSC_PARAMS)
+                kwargs["warp_amount"] = _resolve(wt_pp, "kParamWarp", schema.WTOSC_PARAMS)
+                raw_warp_mode = _resolve(wt_pp, "kParamWarpMenu", schema.WTOSC_PARAMS)
+                kwargs["warp_mode"] = _REVERSE_WARP_MODES.get(raw_warp_mode, raw_warp_mode)
+                raw_path = wt_container.get("relativePathToWT")
+                kwargs["wavetable"] = _REVERSE_WAVETABLES.get(raw_path, raw_path or "default")
         elif i == 3:
             noise_pp = _sub_plain_params(container, f"NoiseOsc{i}")
             kwargs["noise_type"] = _resolve(noise_pp, "kParamNoiseType", schema.NOISEOSC_PARAMS)

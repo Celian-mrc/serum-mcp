@@ -11,10 +11,15 @@ expand or correct our understanding of it are just as valuable as code.
   Wheel/Aftertouch/Pitch Bend/Key Track/Random are still unresolved, though
   LFO and Macro sources were decoded — see §6 for the method, which is
   reusable), the filter cutoff Hz curve, unmodeled oscillator engines
-  (granular/multisample/spectral/sample), LFO/envelope curve shapes, and the
-  3 band-splitter FX types (`FXSplit`/`FXSplit3`/`FXSplitMS`), which need a
-  recursive FX schema rather than a flat one. Any of these, backed by
-  evidence (see "Evidence standard" below), is welcome.
+  (granular/multisample/spectral — `SampleOsc` is now modeled, see §8),
+  LFO/envelope curve shapes, and the 3 band-splitter FX types
+  (`FXSplit`/`FXSplit3`/`FXSplitMS`), which need a recursive FX schema
+  rather than a flat one. Any of these, backed by evidence (see "Evidence
+  standard" below), is welcome. The newly-modeled `SampleOsc` engine (§8)
+  has been confirmed live (real `.wav` playback works despite every
+  factory reference being `.flac`; pitch reference note is `C5`) and
+  `introspect.py`/`describe_preset` now recognize it too — `.flac` support
+  remains the main open follow-up there.
 - **Add parameter coverage.** More of Serum 2's ~2,600 VST3 parameters could
   be mapped into `src/serum_mcp/preset/schema.py` and exposed through
   `generation/spec.py`.

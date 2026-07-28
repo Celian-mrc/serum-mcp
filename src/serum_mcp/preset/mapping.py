@@ -10,16 +10,18 @@ preset only perturbs what the instruction actually asked for.
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 from typing import Any
 
 from serum_mcp import config
 from serum_mcp.generation.spec import FxUnitSpec, ModRouteSpec, OscillatorSpec, PresetSpec
 
-from . import schema, wavetable
+from . import sample_library, schema, wavetable
 from .validator import validate_params
 
 _CUSTOM_WAVETABLE_SUBDIR = ("User", "serum-mcp")
 _MAX_CUSTOM_WAVETABLE_FRAMES = 256
+_CUSTOM_SAMPLE_SUBDIR = ("User", "serum-mcp")
 
 _OSC_KEYS = {
     "octave": "kParamOctave",
@@ -32,14 +34,20 @@ _WTOSC_KEYS = {
     "table_position": "kParamTablePos",
     "warp_amount": "kParamWarp",
 }
+_SAMPLEOSC_KEYS = {
+    "warp_amount": "kParamWarp",
+}
 # Which slot indices use which sound-source engine. Slots 0-2 (Osc A/B/C)
-# default to the wavetable engine; slot 3 is always Noise, slot 4 always
-# Sub -- real Serum presets never have a WTOsc3/WTOsc4 key, only
-# NoiseOsc3/SubOsc4, so table_position/warp_amount must not be written
-# there (see docs/PARAMETER_SCHEMA.md).
+# default to the wavetable engine (or the sample-playback engine, if
+# sample_playback_source is set); slot 3 is always Noise, slot 4 always
+# Sub -- real Serum presets never have a WTOsc3/WTOsc4/SampleOsc3/SampleOsc4
+# key, only NoiseOsc3/SubOsc4, so none of this must be written there (see
+# docs/PARAMETER_SCHEMA.md).
 _WTOSC_SLOTS = (0, 1, 2)
 _NOISE_SLOT = 3
 _SUB_SLOT = 4
+_ENGINE_TYPE_WT = "kOsc_WT"
+_ENGINE_TYPE_SAMPLE = "kOsc_Sample"
 _FILTER_KEYS = {
     "cutoff": "kParamFreq",
     "resonance": "kParamReso",
@@ -71,10 +79,53 @@ def _plain_params(container: dict[str, Any], key: str) -> dict[str, Any]:
     return sub["plainParams"]
 
 
+def _resolve_sample_playback(osc: OscillatorSpec) -> schema.SampleAudioDef:
+    """Resolve an oscillator's ``sample_playback_source`` into a
+    :class:`schema.SampleAudioDef`: copy the referenced WAV into Serum's
+    Samples/User/serum-mcp folder (if not already there) -- pan-balanced
+    per ``osc.sample_center_pan`` -- and read its header metadata, so
+    ``SampleOsc{i}`` plays the file back as recorded (just re-centered, if
+    requested) -- see ``preset/sample_library.py``."""
+    source_path = Path(osc.sample_playback_source)
+    if not source_path.is_file():
+        raise ValueError(f"sample_playback_source {osc.sample_playback_source!r} does not exist")
+    # Extension check first: copy_sample_to_library rejects unsupported
+    # formats (e.g. .flac) with a clear message, whereas read_wav_metadata
+    # would instead fail deep inside a RIFF parse with a confusing error.
+    dest = sample_library.copy_sample_to_library(
+        source_path,
+        config.get_samples_dir(),
+        _CUSTOM_SAMPLE_SUBDIR,
+        center_pan=osc.sample_center_pan,
+    )
+    channels, sample_rate, num_frames = sample_library.read_wav_metadata(source_path)
+    relative_path = "/".join((*_CUSTOM_SAMPLE_SUBDIR, dest.name))
+    return schema.SampleAudioDef(relative_path, num_frames, sample_rate, channels)
+
+
 def _resolve_wavetable(osc: OscillatorSpec) -> schema.WavetableDef:
-    """Resolve an oscillator's wavetable: either a curated factory table
-    (schema.SIMPLE_WAVETABLES) or, if ``custom_harmonics`` is set, a
-    freshly-synthesized one written to Serum's Tables/User folder."""
+    """Resolve an oscillator's wavetable: a curated factory table
+    (schema.SIMPLE_WAVETABLES), a table synthesized from ``custom_harmonics``,
+    or one sliced from a user audio file via ``sample_source`` -- in that
+    priority order -- written to Serum's Tables/User folder as needed."""
+    if osc.sample_source:
+        source_path = Path(osc.sample_source)
+        if not source_path.is_file():
+            raise ValueError(f"sample_source {osc.sample_source!r} does not exist")
+        if osc.sample_frames > _MAX_CUSTOM_WAVETABLE_FRAMES:
+            raise ValueError(
+                f"sample_frames is {osc.sample_frames}; max is {_MAX_CUSTOM_WAVETABLE_FRAMES}"
+            )
+        filename = wavetable.sample_wavetable_filename(source_path, osc.sample_frames)
+        dest = config.get_tables_dir().joinpath(*_CUSTOM_WAVETABLE_SUBDIR, filename)
+        if not dest.exists():
+            samples, sample_rate = wavetable.read_wav_mono(source_path)
+            frames = wavetable.slice_sample_to_frames(samples, sample_rate, osc.sample_frames)
+            wavetable.write_wavetable_wav(dest, frames)
+        relative_path = "/".join((*_CUSTOM_WAVETABLE_SUBDIR, filename))
+        num_frames = osc.sample_frames * wavetable.FRAME_SIZE
+        return schema.WavetableDef(relative_path, num_frames, wavetable.SAMPLE_RATE, 1)
+
     if osc.custom_harmonics:
         frames_harmonics = osc.custom_harmonics
         if len(frames_harmonics) > _MAX_CUSTOM_WAVETABLE_FRAMES:
@@ -156,11 +207,16 @@ def _resolve_mod_destination(destination: str, fx_chain: list[FxUnitSpec]) -> sc
     )
 
 
-def _build_modslot_entry(route: ModRouteSpec, fx_chain: list[FxUnitSpec]) -> dict[str, Any]:
+def _resolve_route_source(route: ModRouteSpec) -> int:
     if route.source not in schema.MOD_SOURCE_IDS:
         raise ValueError(
             f"unknown mod source {route.source!r}; expected one of {sorted(schema.MOD_SOURCE_IDS)}"
         )
+    return schema.MOD_SOURCE_IDS[route.source]
+
+
+def _build_modslot_entry(route: ModRouteSpec, fx_chain: list[FxUnitSpec]) -> dict[str, Any]:
+    source_id = _resolve_route_source(route)
     dest = _resolve_mod_destination(route.destination, fx_chain)
     plain_params: dict[str, Any] = {"kParamAmount": route.amount}
     if route.bipolar:
@@ -168,13 +224,58 @@ def _build_modslot_entry(route: ModRouteSpec, fx_chain: list[FxUnitSpec]) -> dic
     validate_params("ModSlot", plain_params, schema.MODSLOT_PARAMS)
 
     return {
-        "source": [schema.MOD_SOURCE_IDS[route.source], 0],
+        "source": [source_id, 0],
         "destModuleID": dest.dest_id,
         "destModuleParamID": dest.param_id,
         "destModuleParamName": dest.param_name,
         "destModuleTypeString": dest.dest_type,
         "plainParams": plain_params,
     }
+
+
+def _find_existing_modslot_index(
+    data: dict[str, Any], source_id: int, dest: schema.ModDestDef
+) -> int | None:
+    """Find a ModSlot already routing from ``source_id`` to ``dest``, so an
+    edit_preset call that updates that route's amount/bipolar overwrites it
+    in place instead of accumulating a second, additive route in a
+    different slot -- found live: editing a route's amount on an
+    already-generated preset left both the old and new route active,
+    silently doubling up the modulation."""
+    for key, entry in data.items():
+        if not (
+            isinstance(key, str) and key.startswith("ModSlot") and key[len("ModSlot") :].isdigit()
+        ):
+            continue
+        if not isinstance(entry, dict):
+            continue
+        src = entry.get("source")
+        if not (isinstance(src, list) and len(src) == 2 and src[0] == source_id):
+            continue
+        if (
+            entry.get("destModuleTypeString") == dest.dest_type
+            and entry.get("destModuleID") == dest.dest_id
+            and entry.get("destModuleParamName") == dest.param_name
+        ):
+            return int(key[len("ModSlot") :])
+    return None
+
+
+def _resolve_modslot_indices(
+    data: dict[str, Any], routes: list[ModRouteSpec], fx_chain: list[FxUnitSpec]
+) -> list[int]:
+    """Assign a ModSlot index to each route in ``routes``: reuse an
+    existing slot already routing the same (source, destination) pair if
+    one exists, otherwise allocate a free slot (see
+    ``_find_existing_modslot_index``)."""
+    assignments: list[int | None] = []
+    for route in routes:
+        source_id = _resolve_route_source(route)
+        dest = _resolve_mod_destination(route.destination, fx_chain)
+        assignments.append(_find_existing_modslot_index(data, source_id, dest))
+
+    free = iter(_free_modslot_indices(data, assignments.count(None)))
+    return [idx if idx is not None else next(free) for idx in assignments]
 
 
 def _free_modslot_indices(data: dict[str, Any], count: int) -> list[int]:
@@ -206,29 +307,70 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         osc_params["kParamEnable"] = osc.enabled
         for spec_key, param_key in _OSC_KEYS.items():
             osc_params[param_key] = getattr(osc, spec_key)
-        validate_params(f"Oscillator{i}", osc_params, schema.OSCILLATOR_PARAMS)
 
         if i in _WTOSC_SLOTS:
-            wt_key = f"WTOsc{i}"
-            wt_def = _resolve_wavetable(osc)
-            wtosc_container = osc_container.setdefault(wt_key, {})
-            # File metadata, not a plainParams knob -- must match the
-            # referenced .wav exactly or Serum may misread the table (same
-            # risk class as the CBOR bool/int wire-type bugs, see
-            # docs/PARAMETER_SCHEMA.md). Real ints, not floats -- confirmed
-            # against real Serum-saved presets.
-            wtosc_container["relativePathToWT"] = wt_def.relative_path
-            wtosc_container["numFrames"] = wt_def.num_frames
-            wtosc_container["sampleRate"] = wt_def.sample_rate
-            wtosc_container["numChannels"] = wt_def.num_channels
+            if osc.sample_playback_source:
+                # kParamType is written explicitly on every call (not just
+                # when switching TO sample playback) so a later partial edit
+                # that switches this slot back to WT can't leave a stale
+                # kOsc_Sample selector behind -- the same staleness risk
+                # class documented on schema.OSCILLATOR_PARAMS["kParamType"].
+                osc_params["kParamType"] = _ENGINE_TYPE_SAMPLE
 
-            wtosc_params = _plain_params(osc_container, wt_key)
-            for spec_key, param_key in _WTOSC_KEYS.items():
-                wtosc_params[param_key] = getattr(osc, spec_key)
-            wtosc_params["kParamWarpMenu"] = schema.SIMPLE_WARP_MODES.get(
-                osc.warp_mode, osc.warp_mode
-            )
-            validate_params(f"WTOsc{i}", wtosc_params, schema.WTOSC_PARAMS)
+                sample_key = f"SampleOsc{i}"
+                sample_def = _resolve_sample_playback(osc)
+                sample_container = osc_container.setdefault(sample_key, {})
+                # File metadata, not a plainParams knob -- must match the
+                # referenced audio file exactly or Serum may misread it (same
+                # risk class as the CBOR bool/int wire-type bugs, see
+                # docs/PARAMETER_SCHEMA.md).
+                sample_container["samplePathRelative"] = sample_def.relative_path
+                sample_container["numFrames"] = sample_def.num_frames
+                sample_container["sampleRate"] = sample_def.sample_rate
+                sample_container["numChannels"] = sample_def.num_channels
+
+                sample_params = _plain_params(osc_container, sample_key)
+                for spec_key, param_key in _SAMPLEOSC_KEYS.items():
+                    sample_params[param_key] = getattr(osc, spec_key)
+                sample_params["kParamWarpMenu"] = schema.SIMPLE_WARP_MODES.get(
+                    osc.warp_mode, osc.warp_mode
+                )
+                validate_params(sample_key, sample_params, schema.SAMPLEOSC_PARAMS)
+
+                if osc.sample_loop != "off":
+                    loop_mode = schema.SIMPLE_SAMPLE_LOOP_MODES.get(osc.sample_loop)
+                    if loop_mode is None:
+                        raise ValueError(
+                            f"unknown sample_loop {osc.sample_loop!r}; expected 'off' or "
+                            f"one of {sorted(schema.SIMPLE_SAMPLE_LOOP_MODES)}"
+                        )
+                    osc_params["kParamLoopMode"] = loop_mode
+                    osc_params["kParamLoopStart"] = osc.sample_loop_start
+                    osc_params["kParamLoopEnd"] = osc.sample_loop_end
+                    osc_params["kParamLoopCrossfade"] = osc.sample_loop_crossfade
+            else:
+                osc_params["kParamType"] = _ENGINE_TYPE_WT
+
+                wt_key = f"WTOsc{i}"
+                wt_def = _resolve_wavetable(osc)
+                wtosc_container = osc_container.setdefault(wt_key, {})
+                # File metadata, not a plainParams knob -- must match the
+                # referenced .wav exactly or Serum may misread the table (same
+                # risk class as the CBOR bool/int wire-type bugs, see
+                # docs/PARAMETER_SCHEMA.md). Real ints, not floats -- confirmed
+                # against real Serum-saved presets.
+                wtosc_container["relativePathToWT"] = wt_def.relative_path
+                wtosc_container["numFrames"] = wt_def.num_frames
+                wtosc_container["sampleRate"] = wt_def.sample_rate
+                wtosc_container["numChannels"] = wt_def.num_channels
+
+                wtosc_params = _plain_params(osc_container, wt_key)
+                for spec_key, param_key in _WTOSC_KEYS.items():
+                    wtosc_params[param_key] = getattr(osc, spec_key)
+                wtosc_params["kParamWarpMenu"] = schema.SIMPLE_WARP_MODES.get(
+                    osc.warp_mode, osc.warp_mode
+                )
+                validate_params(f"WTOsc{i}", wtosc_params, schema.WTOSC_PARAMS)
         elif i == _NOISE_SLOT:
             noise_params = _plain_params(osc_container, f"NoiseOsc{i}")
             noise_params["kParamNoiseType"] = osc.noise_type
@@ -237,6 +379,7 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             sub_params = _plain_params(osc_container, f"SubOsc{i}")
             sub_params["kParamShape"] = schema.SIMPLE_SUB_SHAPES.get(osc.sub_shape, osc.sub_shape)
             validate_params(f"SubOsc{i}", sub_params, schema.SUBOSC_PARAMS)
+        validate_params(f"Oscillator{i}", osc_params, schema.OSCILLATOR_PARAMS)
 
     for i, flt in enumerate(spec.filters):
         filter_params = _plain_params(data, f"VoiceFilter{i}")
@@ -272,7 +415,7 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         fx_rack["FX"] = [_build_fx_entry(fx) for fx in spec.fx_chain]
 
     if spec.mod_routes:
-        indices = _free_modslot_indices(data, len(spec.mod_routes))
+        indices = _resolve_modslot_indices(data, spec.mod_routes, spec.fx_chain)
         for idx, route in zip(indices, spec.mod_routes, strict=True):
             data[f"ModSlot{idx}"] = _build_modslot_entry(route, spec.fx_chain)
 

@@ -8,10 +8,54 @@ import pytest
 from serum_mcp.preset.wavetable import (
     FRAME_SIZE,
     SAMPLE_RATE,
+    read_wav_mono,
+    sample_wavetable_filename,
+    slice_sample_to_frames,
     synthesize_frame,
     wavetable_filename,
     write_wavetable_wav,
 )
+
+
+def _write_test_wav(
+    path,
+    samples: np.ndarray,
+    *,
+    sample_rate: int = 44100,
+    channels: int = 1,
+    bits_per_sample: int = 16,
+    float_format: bool = False,
+) -> None:
+    """Minimal standalone WAV writer for test fixtures -- deliberately
+    independent of write_wavetable_wav (which only ever produces float32
+    mono 44100 Hz Serum tables) so it can exercise the other formats
+    read_wav_mono needs to handle (16/24-bit PCM, stereo, other rates)."""
+    fmt_tag = 3 if float_format else 1
+    if float_format:
+        data = samples.astype("<f4").tobytes()
+    elif bits_per_sample == 16:
+        data = (np.clip(samples, -1.0, 1.0) * 32767.0).astype("<i2").tobytes()
+    elif bits_per_sample == 24:
+        ints = (np.clip(samples, -1.0, 1.0) * (2**23 - 1)).astype(np.int32)
+        # Pack each int32 sample down to its low 3 bytes, little-endian.
+        as_bytes = ints.astype("<i4").tobytes()
+        data = b"".join(as_bytes[i : i + 3] for i in range(0, len(as_bytes), 4))
+    else:
+        raise ValueError(f"unsupported test bits_per_sample {bits_per_sample}")
+
+    byte_rate = sample_rate * channels * bits_per_sample // 8
+    block_align = channels * bits_per_sample // 8
+    fmt_chunk = struct.pack(
+        "<HHIIHH", fmt_tag, channels, sample_rate, byte_rate, block_align, bits_per_sample
+    )
+    body = bytearray()
+    body += b"fmt " + struct.pack("<I", len(fmt_chunk)) + fmt_chunk
+    body += b"data" + struct.pack("<I", len(data)) + data
+    riff = bytearray(b"RIFF")
+    riff += struct.pack("<I", 4 + len(body))
+    riff += b"WAVE"
+    riff += body
+    path.write_bytes(bytes(riff))
 
 
 def test_synthesize_frame_pure_sine_has_expected_shape():
@@ -116,3 +160,117 @@ def test_wavetable_filename_deterministic_and_distinct():
     assert a == b
     assert a != c
     assert a.startswith("wt_") and a.endswith(".wav")
+
+
+def test_read_wav_mono_16bit(tmp_path):
+    t = np.linspace(0, 1, 4410, endpoint=False)
+    tone = (0.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float64)
+    path = tmp_path / "tone16.wav"
+    _write_test_wav(path, tone, sample_rate=44100, bits_per_sample=16)
+
+    samples, sr = read_wav_mono(path)
+    assert sr == 44100
+    assert len(samples) == len(tone)
+    assert samples.dtype == np.float32
+    np.testing.assert_allclose(samples, tone, atol=1e-3)
+
+
+def test_read_wav_mono_24bit(tmp_path):
+    t = np.linspace(0, 1, 2205, endpoint=False)
+    tone = (0.7 * np.sin(2 * np.pi * 220 * t)).astype(np.float64)
+    path = tmp_path / "tone24.wav"
+    _write_test_wav(path, tone, sample_rate=22050, bits_per_sample=24)
+
+    samples, sr = read_wav_mono(path)
+    assert sr == 22050
+    assert len(samples) == len(tone)
+    np.testing.assert_allclose(samples, tone, atol=1e-4)
+
+
+def test_read_wav_mono_float32(tmp_path):
+    tone = np.array([0.1, -0.2, 0.3, -0.4], dtype=np.float64)
+    path = tmp_path / "tonef32.wav"
+    _write_test_wav(path, tone, sample_rate=48000, bits_per_sample=32, float_format=True)
+
+    samples, sr = read_wav_mono(path)
+    assert sr == 48000
+    np.testing.assert_allclose(samples, tone, atol=1e-6)
+
+
+def test_read_wav_mono_downmixes_stereo(tmp_path):
+    # Interleaved L/R: constant +1.0 / -1.0 -> mono average is 0.0.
+    interleaved = np.array([1.0, -1.0] * 100, dtype=np.float64)
+    path = tmp_path / "stereo.wav"
+    _write_test_wav(path, interleaved, sample_rate=44100, channels=2, bits_per_sample=16)
+
+    samples, sr = read_wav_mono(path)
+    assert len(samples) == 100
+    np.testing.assert_allclose(samples, np.zeros(100), atol=1e-3)
+
+
+def test_read_wav_mono_rejects_non_riff(tmp_path):
+    path = tmp_path / "not_a_wav.wav"
+    path.write_bytes(b"not a riff file at all")
+    with pytest.raises(ValueError, match="not a RIFF/WAVE file"):
+        read_wav_mono(path)
+
+
+def test_slice_sample_to_frames_shape():
+    samples = np.linspace(-1.0, 1.0, FRAME_SIZE * 10).astype(np.float32)
+    frames = slice_sample_to_frames(samples, SAMPLE_RATE, num_frames=5)
+    assert len(frames) == 5
+    for frame in frames:
+        assert len(frame) == FRAME_SIZE
+        assert frame.dtype == np.float32
+
+
+def test_slice_sample_to_frames_pads_short_sample():
+    samples = np.array([0.5, -0.5, 0.5, -0.5], dtype=np.float32)
+    frames = slice_sample_to_frames(samples, SAMPLE_RATE, num_frames=1)
+    assert len(frames) == 1
+    assert len(frames[0]) == FRAME_SIZE
+
+
+def test_slice_sample_to_frames_normalizes_each_frame_independently():
+    # A quiet first half, loud second half -- each sliced frame should
+    # still reach close to the same peak after independent normalization,
+    # rather than the quiet frame staying quiet.
+    quiet = 0.01 * np.sin(np.linspace(0, 40 * np.pi, FRAME_SIZE))
+    loud = 0.9 * np.sin(np.linspace(0, 40 * np.pi, FRAME_SIZE))
+    samples = np.concatenate([quiet, loud]).astype(np.float32)
+    frames = slice_sample_to_frames(samples, SAMPLE_RATE, num_frames=2, frame_size=FRAME_SIZE)
+    peaks = [float(np.max(np.abs(f))) for f in frames]
+    assert peaks[0] == pytest.approx(0.9, abs=0.05)
+    assert peaks[1] == pytest.approx(0.9, abs=0.05)
+
+
+def test_slice_sample_to_frames_resamples_lower_rate_stretches_content():
+    # A source at half SAMPLE_RATE should be upsampled (stretched) so the
+    # same number of source cycles still fits, rather than truncated.
+    t = np.linspace(0, 1, 22050, endpoint=False)
+    tone = np.sin(2 * np.pi * 100 * t).astype(np.float32)
+    frames = slice_sample_to_frames(tone, 22050, num_frames=1)
+    assert len(frames[0]) == FRAME_SIZE
+
+
+def test_slice_sample_to_frames_rejects_zero_frames():
+    samples = np.zeros(FRAME_SIZE, dtype=np.float32)
+    with pytest.raises(ValueError, match="num_frames"):
+        slice_sample_to_frames(samples, SAMPLE_RATE, num_frames=0)
+
+
+def test_sample_wavetable_filename_deterministic_and_content_keyed(tmp_path):
+    path_a = tmp_path / "a.wav"
+    path_b = tmp_path / "b.wav"
+    _write_test_wav(path_a, np.array([0.1, 0.2], dtype=np.float64))
+    _write_test_wav(path_b, np.array([0.3, 0.4], dtype=np.float64))
+
+    name_a1 = sample_wavetable_filename(path_a, 16)
+    name_a2 = sample_wavetable_filename(path_a, 16)
+    name_a_diff_frames = sample_wavetable_filename(path_a, 32)
+    name_b = sample_wavetable_filename(path_b, 16)
+
+    assert name_a1 == name_a2
+    assert name_a1 != name_a_diff_frames
+    assert name_a1 != name_b
+    assert name_a1.startswith("wts_") and name_a1.endswith(".wav")

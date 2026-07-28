@@ -111,7 +111,7 @@ A decompressed CBOR payload's top-level keys, as observed:
 |---|---|---|
 | `Oscillator0`..`Oscillator4` | Osc A, B, C, Noise, Sub | Yes (core params) |
 | `Osc` | per-slot GUI state (zoom/markers) | No — GUI only |
-| `WTOsc`, `GranularOsc`, `MultiSampleOsc`, `SpectralOsc` | *type* placeholders (empty) — actual per-slot data lives nested inside `Oscillator{i}` as `WTOsc{i}` etc. | Partially (WTOsc only) |
+| `WTOsc`, `GranularOsc`, `MultiSampleOsc`, `SampleOsc`, `SpectralOsc` | *type* placeholders (empty) — actual per-slot data lives nested inside `Oscillator{i}` as `WTOsc{i}` etc. | Partially (WTOsc and SampleOsc) |
 | `VoiceFilter0`, `VoiceFilter1` | Filter 1, Filter 2 | Yes |
 | `Filter` | shared filter section UI mix knob | No |
 | `Env0`..`Env3` | the 4 envelopes | Yes |
@@ -163,18 +163,48 @@ fully generatable via `OscillatorSpec`.
 
 **Slots 0-2 (Osc A/B/C)** each have a sound source that's one of 5 engines,
 keyed as `WTOsc{i}`, `GranularOsc{i}`, `MultiSampleOsc{i}`, `SampleOsc{i}`,
-`SpectralOsc{i}` inside `Oscillator{i}`. **Only `WTOsc` (the classic
-wavetable engine) is modeled** — it's the default engine and the one every
-factory bass/lead/pad preset we sampled that wasn't a multisample
-instrument used (`OscillatorSpec.table_position`/`warp_amount`/`warp_mode`
-— the last picks the wavetable warping character via a curated subset of
-the raw `kParamWarpMenu` enum, `schema.SIMPLE_WARP_MODES`: FM/AM, sync,
-PWM, wavefolding/clipping distortion, quantize, and two built-in filter
-warps). `oscillator{i}.table_position` and `oscillator{i}.warp_amount`
-(slots 0-2) are also valid mod-matrix destinations — a classic use is an
-LFO scanning through the wavetable, or a macro morphing the warp amount.
-Granular, multisample, spectral and raw sample playback exist in the format
-and round-trip fine, but `serum-mcp` cannot currently generate or target them.
+`SpectralOsc{i}` inside `Oscillator{i}`, and selected by
+`Oscillator{i}.plainParams.kParamType` (`kOsc_WT`/`kOsc_Sample`/
+`kOsc_Granular`/`kOsc_MultiSample`/`kOsc_Spectral` — found via factory-preset
+survey, not the VST3 dump; see §8). **`WTOsc` and `SampleOsc` are both
+modeled**; Granular/MultiSample/Spectral exist in the format and round-trip
+fine but `serum-mcp` cannot currently generate or target them (`kOsc_WT` is
+the default/most common engine — the one every factory bass/lead/pad preset
+we sampled that wasn't a multisample instrument used;
+`OscillatorSpec.table_position`/`warp_amount`/`warp_mode` control it — the
+last picks the wavetable warping character via a curated subset of the raw
+`kParamWarpMenu` enum, `schema.SIMPLE_WARP_MODES`: FM/AM, sync, PWM,
+wavefolding/clipping distortion, quantize, and two built-in filter warps).
+`oscillator{i}.table_position` and `oscillator{i}.warp_amount` (slots 0-2)
+are also valid mod-matrix destinations — a classic use is an LFO scanning
+through the wavetable, or a macro morphing the warp amount. `SampleOsc` (true
+one-shot/sample playback, `OscillatorSpec.sample_playback_source`) is covered
+in §8, reverse-engineered separately and more recently than the rest of this
+section.
+
+**`kParamWarpMenu`'s `FM_*`/`RM_*`/`PD_*` values are cross-oscillator
+modulation, not self-contained distortion** (`observed`-confidence, found
+live — not in `SIMPLE_WARP_MODES`'s curated set, which only exposes
+self-contained warps like `fm`→`kFM_OSC` was assumed to be one of, before
+this). The naming (`kFM_OSC`, `kFM_OSC2`, `kFM_SUB`, `kFM_NOISE`, and the
+matching `kRM_*`/`kPD_*` families) means this oscillator is
+frequency-/ring-/phase-modulated *by* another module (`OSC`/`OSC2` = the
+other WT oscillator slots, `SUB`/`NOISE` = those slots directly) — not a
+self-modulating distortion the way `kSync`/`kDistLinFold`/`kPWM` etc. are.
+Confirmed by surveying 8 factory presets using these modes: every one kept
+the referenced modulator oscillator (`Sub`, or another WT oscillator slot)
+enabled alongside the modulated one. Practical consequence hit live: a
+preset with Osc A's `warp_mode` set to `fm` (`kFM_OSC`) sounded dramatically
+different with Osc B enabled vs. disabled — not just "Osc B's layer is
+missing" but Osc A's *own* timbre changing, because Osc A was being
+FM'd by Osc B the whole time. `SIMPLE_WARP_MODES`'s `fm`/`am` entries
+(`kFM_OSC`/`kAM_OSC`) inherit this — picking them for one oscillator makes
+its sound depend on a *different* oscillator's enabled state, which is easy
+to reach for by mistake if you want two independent layers rather than an
+intentional 2-operator FM/RM pair. The exact `OSC`/`OSC2` slot-index mapping
+(does `OSC` always mean "the next slot", with wraparound?) isn't nailed
+down — the survey confirms modulator-presence correlation, not the precise
+routing table.
 
 `OscillatorSpec.wavetable` (slots 0-2) selects *which* wavetable file the
 WTOsc engine loads — found missing via real-world use: every generated
@@ -196,10 +226,29 @@ fixed ~0-256 slot count independent of a table's raw `numFrames` (observed
 consistently across tables whose `numFrames` ranges from 4,096 to 524,288),
 so switching wavetables doesn't require rescaling `table_position`.
 
+**Known trap: `flute` is silent at the default `table_position=0.0`** (found
+live -- a generated preset using it was reported as "almost no sound, the
+waveform looks completely flat"). Measured directly from the `.wav` file:
+frame 0's peak amplitude is `0.0039` against a table-wide average of `0.81`
+across all 256 frames (peak amplitude hits ~1.0 around frame 134) -- this
+table is evidently designed to start near-silent and swell in as
+`table_position` increases (a reasonable design for an breathy/organic
+instrument table, less reasonable as a default when nothing else sets
+`table_position`). Checked all 12 curated tables the same way: every other
+one starts at or near full amplitude (frame 0 within ~86-101% of that
+table's mean peak) -- `flute` is the only outlier, not a systemic issue with
+defaulting `table_position` to 0. **Always set `table_position` to a
+non-zero value (e.g. ~130-150) when using `flute`.**
+
 Beyond selecting a curated factory table, `OscillatorSpec.custom_harmonics`
-can *synthesize a brand-new wavetable* from a harmonic amplitude series —
-see §7 for the wavetable `.wav` file format itself (also reverse-engineered
-this session, separately from the CBOR preset format).
+can *synthesize a brand-new wavetable* from a harmonic amplitude series, and
+`OscillatorSpec.sample_source` can build one by **slicing a user-provided
+audio file** (e.g. a one-shot drum/foley/vocal sample) into evenly-spaced
+frames — see §7 for the wavetable `.wav` file format itself and the slicing
+approach (both reverse-engineered/built this session, separately from the
+CBOR preset format). This is a different thing from true `SampleOsc`
+playback: the source audio becomes loop-buzzy wavetable material scanned by
+the WTOsc engine, not a faithfully reproduced one-shot.
 
 **Slots 3 and 4 are not the same engine family** — this is structural, not
 a modeling gap: slot 3 is *always* `NoiseOsc3` (white/pink/brown/geiger
@@ -221,6 +270,17 @@ target (via `FilterSpec.type`). The raw enum remains fully valid for
 `edit_preset`/`list_parameters` consumers who want the rest. `FilterSpec`
 also generates `stereo` (`kParamStereo`, width/spread %) alongside
 cutoff/resonance/drive.
+
+`kParamStereo`'s neutral/centered value is **50**, not 0 — confirmed live
+(2026-07-28, real Serum 2 in FL Studio 21) after a user reported a
+persistent, meter-visible hard-left bias on sample-based presets that traced
+back to this field defaulting to 0. Isolated A/B preset tests (bare
+oscillator vs. +filter with `stereo=0.0` vs. +filter with `stereo=50.0`)
+confirmed 0 introduces the bias and 50 is centered. Both `FilterSpec.stereo`
+(`spec.py`) and `kParamStereo`'s `ParamDef` default (`schema.py`) now read
+50; any preset generated before this fix with a filter enabled and `stereo`
+left unset was written with the old, wrong 0 default and should be
+regenerated.
 
 `kParamFreq` (cutoff) is the biggest known gap: it's a normalized `0.0..1.0`
 value, and we have exactly **one** calibration point (`0.5 ≈ 425 Hz` at
@@ -304,10 +364,14 @@ improve generation quality if resolved:
    routes (`generation/spec.py::ModRouteSpec`); everything else still
    round-trips opaquely.
 2. **Filter cutoff Hz curve** (§4, Filters) — only one calibration point.
-3. **Unmodeled oscillator engines** — Granular/MultiSample/Spectral/Sample.
-   These are common enough (GranularOsc/MultiSampleOsc/SpectralOsc appeared
-   in 5-15% of sampled presets each) that a V1.1 covering at least
-   MultiSampleOsc (used for realistic instrument patches) would be valuable.
+3. **Unmodeled oscillator engines** — Granular/MultiSample/Spectral remain
+   unmodeled (GranularOsc/MultiSampleOsc/SpectralOsc appeared in 3.6-15.8%
+   of the 1,878 slot-0-2 sample, see §8's table). `SampleOsc` (2.2% of
+   slots, true one-shot/sample playback) **is now modeled** — see §8 —
+   which was the highest-value item in this list as of this project's
+   earlier sessions; MultiSampleOsc (used for realistic multisampled
+   instrument patches, e.g. real pianos/guitars) is arguably the next most
+   valuable remaining gap.
 4. **LFO curve shapes** (`curveData`) and **free-drawn envelope curves** are
    unmodeled — Serum 2's point-based custom curve editor data.
 5. **3 of 16 FX types lack param schemas**: `FXSplit`/`FXSplit3`/`FXSplitMS`
@@ -323,6 +387,21 @@ None of these block V1's stated goal (text description → valid, loadable
 bound what V1 can *express*, not whether what it writes is valid.
 
 ## 6. Mod matrix structure
+
+**Editing an existing route must overwrite its slot, not add a new one**
+(found live, not by inspection): `apply_spec` used to always allocate a
+*free* `ModSlot` index for every entry in `spec.mod_routes`, with no check
+for whether a route with the same `(source, destination)` pair already
+existed elsewhere. Calling `edit_preset` a second time to change an
+existing route's `amount` therefore left the *old* route active in its
+original slot and added the *new* one in a different free slot — both
+firing simultaneously, silently doubling up the modulation (caught when a
+Reese bass's filter-cutoff LFO route, edited down from +15% to +4% to fix
+audible over-wobbling, kept wobbling just as hard — the file had two
+`ModSlot`s routing `lfo0 -> filter0.cutoff` at once). Fixed in
+`mapping.py`: `_resolve_modslot_indices` now looks for an existing slot
+matching the resolved `(source_id, dest)` first and reuses it, only
+falling back to a free slot for genuinely new routes.
 
 Each `ModSlot{n}` (`n` in `0..63`, only slots actually in use are serialized
 — an unused slot is simply absent from the CBOR dict, there is no "off"
@@ -518,3 +597,229 @@ generated tables currently use one fixed phase relationship between
 harmonics. Real-world waveform character (e.g. the audible difference
 between a cosine-phase and sine-phase harmonic stack) that depends on
 relative phase isn't reachable yet.
+
+### Sample-to-wavetable slicing
+
+`OscillatorSpec.sample_source` builds a wavetable the same way
+`custom_harmonics` does — writing a `.wav` to `Tables/User/serum-mcp/` via
+`write_wavetable_wav` and referencing it exactly like a curated factory
+table — but the frames come from **slicing a user-provided audio file**
+instead of additive synthesis. This predates `SampleOsc` being modeled (see
+§8) and remains useful in its own right: a synthesized, morphable texture
+derived from a sample is a different (not strictly worse) result than
+`SampleOsc` playback -- use this when the user wants that character,
+`sample_playback_source` (§8) when they want the sample to stay recognizable.
+
+`preset/wavetable.py::read_wav_mono` parses an arbitrary source file
+(16/24/32-bit PCM or 32-bit IEEE float, including `WAVE_FORMAT_EXTENSIBLE`
+headers common from modern DAW exports; downmixes multi-channel files by
+averaging) rather than requiring pre-converted Serum-table-shaped input.
+`slice_sample_to_frames` then:
+
+1. Resamples to 44100 Hz via linear interpolation if the source rate
+   differs (deliberately not audiophile-grade — every frame becomes a
+   short, intentionally loop-buzzy wavetable cycle regardless, so exact
+   resampling fidelity doesn't carry through to the audible result; avoids
+   adding a dependency like `scipy` for a difference that wouldn't be
+   perceptible here).
+2. Takes `num_frames` evenly-spaced 2048-sample windows across the
+   (resampled) waveform's duration — frame 0 at the very start (a drum
+   hit's transient, for example), the last frame at the tail.
+3. Applies a short (~64-sample) edge fade to each frame and independently
+   peak-normalizes it, so looping a non-periodic slice at pitch clicks less
+   and quiet tail frames aren't inaudible relative to a loud transient
+   frame.
+
+Not yet validated live in Serum as of this writing (`observed`-confidence
+at best, and only against the file-format layer — see
+`tests/test_wavetable.py`'s WAV-reading/slicing tests); the general
+approach (looping short raw-audio windows as wavetable frames) is a known
+technique used by other "sample to wavetable" tools, but this project's own
+specific slicing choices (frame spacing, fade length, per-frame
+normalization) haven't been ear-tested against a real preset yet.
+
+## 8. SampleOsc (true one-shot/sample playback)
+
+Reverse-engineered by scanning all 626 factory presets shipped with a real
+Serum 2 install for oscillator slots (0-2, 1,878 total) using each of the 5
+sound-source engines, using the same evidence standard as everywhere else in
+this document (real preset survey, not Xfer documentation, since `SampleOsc`
+isn't covered by the VST3 parameter dump this project otherwise
+cross-checks against):
+
+| Engine | Slots using it | % of 1,878 |
+|---|---|---|
+| `WTOsc` | 1,006 | 53.6% |
+| `MultiSampleOsc` | 297 | 15.8% |
+| `GranularOsc` | 76 | 4.0% |
+| `SpectralOsc` | 67 | 3.6% |
+| `SampleOsc` | 41 | 2.2% |
+
+(A slot counts as "using" an engine if that engine's nested `plainParams` is
+a real dict rather than the `"default"` sentinel string. This undercounts
+`SampleOsc` specifically -- see the `kParamType` paragraph below for why --
+the true count is somewhat higher than 41.)
+
+### Engine selection: `kParamType`
+
+Every `Oscillator{i}` (slots 0-2) carries `plainParams.kParamType`, one of
+`kOsc_WT` / `kOsc_Sample` / `kOsc_Granular` / `kOsc_MultiSample` /
+`kOsc_Spectral` -- this, not which nested engine sub-object happens to have
+non-default `plainParams`, is the authoritative switch (confirmed: an
+oscillator can have `kParamType = kOsc_Sample` with a fully populated
+`samplePathRelative`/`sampleRate`/`numChannels`/`numFrames` while its
+`SampleOsc{i}.plainParams` stays the `"default"` sentinel, because
+`kParamWarp`/`kParamWarpMenu` were never touched from their defaults -- this
+is why the slot-usage table above undercounts `SampleOsc`, since the initial
+survey used non-default `plainParams` as the detection signal before this
+was understood). Every WTOsc-engine preset `serum-mcp` has ever generated
+before this was discovered omitted `kParamType` entirely and loaded fine, so
+absence == `kOsc_WT` (the implicit default). `preset/mapping.py::apply_spec`
+now writes `kParamType` explicitly on every call regardless of which engine
+is active, rather than only when switching to `kOsc_Sample` -- otherwise a
+later partial edit that switches a slot's engine back to WT could leave a
+stale `kOsc_Sample` selector behind (the same partial-edit staleness class
+documented elsewhere in this project's commit history, e.g. the "apply_spec
+silently resetting global params on partial edits" fix).
+
+### `SampleOsc{i}` structure
+
+Example, from `Bass/Electric/BA - Fretless Bass.SerumPreset`, Osc B:
+
+```
+SampleOsc1:
+  samplePathRelative: "Factory/Bass/Round Comforting.flac"
+  sampleRate: 48000
+  numChannels: 1
+  numFrames: 159974
+  plainParams:
+    kParamWarp: 0.19736839830875397
+    kParamWarpMenu: kDistAsym
+```
+
+- `samplePathRelative`/`sampleRate`/`numChannels`/`numFrames` are file
+  metadata siblings of `plainParams`, exactly the same shape as `WTOsc{i}`'s
+  `relativePathToWT`/etc (§4) -- same risk of a metadata/file mismatch
+  causing Serum to misread the file if they're wrong.
+- `samplePathRelative` is relative to Serum's **`Samples`** folder, a
+  sibling of `Presets`/`Tables` under the same root (confirmed: resolved
+  `Factory/Bass/Round Comforting.flac` against a real install and the file
+  exists exactly there; also observed a `../Multisamples/...`-relative path
+  in another preset, which only resolves correctly if the base is
+  `Samples/`, confirming the sibling-folder relationship). `serum-mcp`
+  copies a user's file into `Samples/User/serum-mcp/`
+  (`config.get_samples_dir()`, overridable via `SERUM_SAMPLES_PATH` exactly
+  like `SERUM_TABLES_PATH`/`SERUM_PRESETS_PATH`) -- see
+  `preset/sample_library.py`.
+- `kParamWarp`/`kParamWarpMenu` (`SAMPLEOSC_PARAMS` in `schema.py`) use the
+  **same raw enum** as `WTOsc`'s `kParamWarpMenu` (confirmed: values
+  observed here -- `kDistSoftClip`, `kAM_OSC`, `kPD_FILT1`, `kFM_NOISE`,
+  `kFM_OSC2`, `kRM_OSC`, ... -- are all members of `WTOSC_PARAMS`'s
+  already-established enum). A second warp lane (`kParamWarp2`/
+  `kParamWarpMenu2`/`kParamWarpVar2`) was observed on ~10 of 41 slots but
+  isn't exposed via `OscillatorSpec` (v1 only drives the primary lane, same
+  scope decision as `WTOsc`).
+- **File format**: every `samplePathRelative` observed across the factory
+  survey (32 distinct references checked) was `.flac`. `serum-mcp` only
+  supports `.wav` (`preset/sample_library.py`'s `_SUPPORTED_EXTENSIONS`) --
+  **confirmed working live**: a `serum-mcp`-generated preset referencing a
+  `.wav` under `Samples/User/serum-mcp/` loaded and played correctly in a
+  real Serum 2 install (FL Studio 21), despite every factory reference
+  being `.flac`. `.flac` support remains a possible future addition (would
+  need a FLAC metadata parser this project doesn't have) but is no longer
+  blocking.
+- **Root-note/pitch reference: confirmed `C5`**. No explicit root-note
+  parameter was found in `SampleOsc{i}` or `Oscillator{i}`'s own
+  `plainParams` (beyond the already-shared `kParamOctave`/`kParamDetune`/
+  `kParamFine`), so this had to be confirmed by ear against a live preset:
+  a referenced sample plays back at its originally-recorded speed when
+  `C5` is played in the piano roll -- a fixed convention, not something
+  read from the file or configurable via a param. `OscillatorSpec.octave`/
+  `detune`/`fine` are the only ways to shift this if the user wants a
+  different reference note.
+- **Pitch and playback duration are coupled, with no way to decouple them**
+  (`observed`-confidence, inferred rather than exhaustively tested across
+  many notes -- but a direct consequence of the confirmed finding above,
+  and consistent with `SampleOsc` sharing `WTOsc`'s architecture). Like
+  `WTOsc` and like a classic "resampling"-mode sampler (as opposed to a
+  time-stretching one), `SampleOsc` controls pitch purely by changing
+  playback rate -- a higher note reads through the buffer faster (shorter
+  perceived duration), a lower note reads slower (longer). No
+  formant-preserving/time-stretch parameter exists anywhere in
+  `SampleOsc{i}`/`Oscillator{i}`'s `plainParams` (only the loop controls
+  below and the shared warp system) -- this is a genuine engine limitation,
+  not a `serum-mcp` gap, and can't be fixed from the preset-generation
+  side. Consequence for melodic use: a one-shot played across multiple
+  notes (e.g. a bell used for a melody) will have a different perceived
+  length at each pitch. Looping (`sample_loop`, below) mitigates this for
+  the *sustained* portion once the loop point is reached, but not for the
+  initial attack/transient, which still speeds up or slows down with
+  pitch.
+- **Real one-shot recordings often have a measurable left/right level
+  imbalance that has nothing to do with Serum or this project** -- found
+  live, then confirmed by direct measurement: a user reported presets
+  built from real samples sounding panned left despite `kParamPan` being
+  verified `0.0` (center) in every generated preset this session. Decoding
+  the actual source files' stereo channels and measuring RMS per channel
+  found the bias in the *recordings themselves* -- e.g. one guitar pluck
+  one-shot measured +4.3dB louder on the left channel, a bell one-shot
+  +2.3dB -- almost certainly an off-center mic placement when the sample
+  pack was originally recorded, not anything introduced downstream.
+  `preset/sample_library.py::copy_sample_to_library` now corrects this by
+  default (`OscillatorSpec.sample_center_pan`, default `True`): it decodes
+  a stereo file, and if the channels differ by more than 1dB RMS, applies
+  a linear per-channel gain that brings both to their geometric-mean
+  target level, then writes that as a new 16-bit PCM WAV (re-encoding, not
+  a byte-for-byte copy, only when correction is actually needed -- mono
+  files and already-balanced stereo files still copy verbatim). This is a
+  pure level rebalance, not a mono-sum or any other content-altering
+  operation -- each channel's actual waveform is scaled, not replaced, so
+  the recording's stereo width/character survives.
+
+### Loop parameters (on `Oscillator{i}`, not `SampleOsc{i}`)
+
+```
+Oscillator1.plainParams:
+  kParamLoopMode: kPingPong
+  kParamLoopStart: 77.98513174057007
+  kParamLoopEnd: 87.6865565776825
+  kParamLoopCrossfade: 34.99999940395355
+```
+
+- Observed `kParamLoopMode` values: `kPingPong` (9), `kForward` (8),
+  `kTailed` (5), out of 30 `SampleOsc`-engine slots with loop params
+  present at all -- the remaining ~8 slots had no `kParamLoopMode` key,
+  which is what `serum-mcp` treats as "off"/true one-shot (there's no
+  observed explicit "off" enum value; omitting the key is what turns
+  looping off, confirmed by cross-referencing against slots that are
+  clearly one-shot drum hits, e.g. `Kick Designer`).
+- `kParamLoopStart`/`kParamLoopEnd`: `0.16-100.0`/`17.6-99.4` observed, `%`
+  into the sample -- modeled as `0-100` in `schema.py`.
+- `kParamLoopCrossfade`: `0.5-63.2` observed; modeled with a `0-100` ceiling
+  like other `%`-unit params in this schema, but the true engine-enforced
+  bound isn't confirmed (`confidence="uncertain"`).
+- `OscillatorSpec.sample_loop` (`'off'`/`'forward'`/`'ping_pong'`/`'tailed'`)
+  plus `sample_loop_start`/`sample_loop_end`/`sample_loop_crossfade` expose
+  this. `off` is the default -- a true one-shot, the main use case this
+  engine was built for (drum hits, foley, vocal chops kept recognizable and
+  layered/processed like any other Serum oscillator).
+
+### What's still open
+
+The two things that could only be resolved by a live Serum test -- whether
+`.wav` works in `samplePathRelative` (yes), and the pitch-reference note
+(`C5`) -- are now both confirmed (see above; tested against a real Serum 2
+install in FL Studio 21, 2026-07-28). Remaining gaps:
+
+- `preset/introspect.py::extract_spec` and `describe_preset` **now recognize
+  `SampleOsc`/`kParamType`** (fixed after the cosmetic gap above was caught
+  live): a `sample_playback_source` oscillator round-trips its
+  `sample_playback_source` (reconstructed as an absolute path via
+  `config.get_samples_dir()`, gracefully omitted if that folder isn't
+  resolvable in the current environment), `warp_amount`/`warp_mode`, and
+  `sample_loop`/`sample_loop_start`/`sample_loop_end`/`sample_loop_crossfade`
+  -- `describe_preset` shows `sample=<path>` instead of a misleading
+  `wavetable=default` for these oscillators.
+- `.flac` support (would let `serum-mcp` reference Serum's own factory
+  sample library directly, or accept a wider range of user files without
+  requiring a WAV conversion first) remains unimplemented.

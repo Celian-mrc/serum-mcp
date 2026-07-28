@@ -48,6 +48,38 @@ def test_generate_preset_writes_valid_file(presets_dir):
     assert preset.data["VoiceFilter0"]["plainParams"]["kParamType"] == "L24"
 
 
+def test_generate_preset_with_subfolder_nests_the_file(presets_dir):
+    path = generate_preset_mod.generate_preset(_bass_spec(), subfolder="RAGE Bank")
+
+    written = Path(path)
+    assert written.exists()
+    assert written.parent == presets_dir / "RAGE Bank"
+
+
+def test_generate_preset_with_nested_subfolder(presets_dir):
+    path = generate_preset_mod.generate_preset(_bass_spec(), subfolder="RAGE Bank/Leads")
+
+    written = Path(path)
+    assert written.parent == presets_dir / "RAGE Bank" / "Leads"
+
+
+def test_generate_preset_subfolder_strips_path_traversal(presets_dir):
+    path = generate_preset_mod.generate_preset(_bass_spec(), subfolder="../../etc/../../RAGE Bank")
+
+    written = Path(path)
+    # Traversal segments collapse away entirely; only the real folder name
+    # survives, and the file must still land inside the presets folder.
+    assert presets_dir in written.parents
+    assert written.parent == presets_dir / "etc" / "RAGE Bank"
+
+
+def test_generate_preset_without_subfolder_still_writes_flat(presets_dir):
+    path = generate_preset_mod.generate_preset(_bass_spec(), subfolder=None)
+
+    written = Path(path)
+    assert written.parent == presets_dir
+
+
 def test_edit_preset_without_rename_keeps_same_path(presets_dir):
     path = generate_preset_mod.generate_preset(_bass_spec())
 

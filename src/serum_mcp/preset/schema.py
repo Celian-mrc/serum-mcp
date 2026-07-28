@@ -48,10 +48,10 @@ class ParamDef:
 # these Osc A/B/C, Noise and Sub in the UI). Each slot's `plainParams` holds
 # these pitch/mix controls; the *sound source* itself (wavetable, sample,
 # granular, multisample or spectral) is a nested sub-object -- see
-# WTOSC_PARAMS / NOISEOSC_PARAMS / SUBOSC_PARAMS below. GranularOsc,
-# MultiSampleOsc, SpectralOsc and SampleOsc engines exist in every slot but
-# were only lightly sampled (< 150 presets used them) so are NOT modeled in
-# detail here; slots default to the WTOsc engine, which V1 generation targets.
+# WTOSC_PARAMS / SAMPLEOSC_PARAMS / NOISEOSC_PARAMS / SUBOSC_PARAMS below.
+# GranularOsc/MultiSampleOsc/SpectralOsc were only lightly sampled (< 150
+# presets used them each) so are NOT modeled in detail; WTOsc and SampleOsc
+# are both modeled (selected via kParamType below), slots default to WTOsc.
 # ---------------------------------------------------------------------------
 
 OSCILLATOR_PARAMS: dict[str, ParamDef] = {
@@ -156,6 +156,67 @@ OSCILLATOR_PARAMS: dict[str, ParamDef] = {
         "bool",
         default=True,
         confidence="confirmed",
+    ),
+    "kParamType": ParamDef(
+        "kParamType",
+        "enum",
+        default="kOsc_WT",
+        confidence="observed",
+        enum_values=(
+            "kOsc_WT",
+            "kOsc_Sample",
+            "kOsc_Granular",
+            "kOsc_MultiSample",
+            "kOsc_Spectral",
+        ),
+        notes="Selects which of the 5 sound-source engines (see module docstring above) "
+        "this slot's nested Osc dict is actually driven by. Found via factory-preset "
+        "survey, not the VST3 dump. Absent from plainParams == kOsc_WT (every WTOsc "
+        "preset this project generates before this field existed omitted it and loaded "
+        "fine) -- serum-mcp now writes it explicitly every time regardless, so a later "
+        "partial edit that switches an oscillator's engine can't leave a stale value "
+        "behind (see docs/PARAMETER_SCHEMA.md's mapping.py partial-edit lesson).",
+    ),
+    "kParamLoopMode": ParamDef(
+        "kParamLoopMode",
+        "enum",
+        confidence="observed",
+        enum_values=("kForward", "kPingPong", "kTailed"),
+        notes="SampleOsc only. Absent from plainParams in every factory preset that "
+        "doesn't loop its sample (i.e. a true one-shot) -- there is no observed 'off' "
+        "enum value, omitting the key entirely is what turns looping off.",
+    ),
+    "kParamLoopStart": ParamDef(
+        "kParamLoopStart",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=100.0,
+        unit="% into the sample",
+        confidence="observed",
+        notes="SampleOsc only, only meaningful when kParamLoopMode is set.",
+    ),
+    "kParamLoopEnd": ParamDef(
+        "kParamLoopEnd",
+        "float",
+        default=100.0,
+        min=0.0,
+        max=100.0,
+        unit="% into the sample",
+        confidence="observed",
+        notes="SampleOsc only, only meaningful when kParamLoopMode is set.",
+    ),
+    "kParamLoopCrossfade": ParamDef(
+        "kParamLoopCrossfade",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=100.0,
+        unit="%",
+        confidence="uncertain",
+        notes="SampleOsc only. Observed range in factory presets was ~0.5-63%; the true "
+        "engine-enforced ceiling isn't confirmed, treating 100 as the bound like other "
+        "%-unit params in this schema.",
     ),
 }
 
@@ -321,6 +382,91 @@ SIMPLE_WAVETABLES: dict[str, WavetableDef] = {
     "flute": WavetableDef("S2 Tables/Digital/JF Flute.wav", 524288, 44100, 1),
 }
 
+# SampleOsc: true one-shot/sample playback engine, selected via
+# OSCILLATOR_PARAMS["kParamType"] = "kOsc_Sample". Reverse-engineered from 41
+# real factory-preset oscillator slots that use it (see docs/PARAMETER_SCHEMA.md)
+# -- there is no VST3-dump cross-check for this engine since the public dump
+# this project otherwise relies on doesn't cover it. Shares its warp system
+# (same kParamWarpMenu enum) with WTOSC_PARAMS above.
+SAMPLEOSC_PARAMS: dict[str, ParamDef] = {
+    "kParamWarp": ParamDef(
+        "kParamWarp",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        unit="normalized",
+        confidence="observed",
+    ),
+    "kParamWarp2": ParamDef(
+        "kParamWarp2",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        unit="normalized",
+        confidence="observed",
+        notes="Second warp lane; not currently exposed via OscillatorSpec.",
+    ),
+    "kParamWarpMenu": ParamDef(
+        "kParamWarpMenu",
+        "enum",
+        default="kFM_OSC",
+        confidence="observed",
+        enum_values=WTOSC_PARAMS["kParamWarpMenu"].enum_values,
+        notes="Same raw enum as WTOsc's kParamWarpMenu -- confirmed by cross-referencing "
+        "values observed here (kDistSoftClip, kAM_OSC, kPD_FILT1, kFM_NOISE, kFM_OSC2, "
+        "kRM_OSC, ...) against WTOSC_PARAMS's already-established enum_values.",
+    ),
+    "kParamWarpMenu2": ParamDef(
+        "kParamWarpMenu2",
+        "enum",
+        default="kFM_OSC",
+        confidence="observed",
+        enum_values=WTOSC_PARAMS["kParamWarpMenu"].enum_values,
+        notes="Second warp lane's mode; not currently exposed via OscillatorSpec.",
+    ),
+    "kParamWarpVar2": ParamDef(
+        "kParamWarpVar2",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        unit="normalized",
+        confidence="uncertain",
+        notes="Only 3 distinct values observed (~0.19-0.55); not currently exposed via "
+        "OscillatorSpec.",
+    ),
+}
+
+# Friendly names -> OSCILLATOR_PARAMS["kParamLoopMode"] enum values. "off"
+# (the default) isn't in this dict on purpose -- it means omitting
+# kParamLoopMode entirely, see that ParamDef's notes.
+SIMPLE_SAMPLE_LOOP_MODES: dict[str, str] = {
+    "forward": "kForward",
+    "ping_pong": "kPingPong",
+    "tailed": "kTailed",
+}
+
+
+@dataclass(frozen=True)
+class SampleAudioDef:
+    """A one-shot audio file copied into Serum's Samples library for the
+    SampleOsc engine (slots 0-2, ``OscillatorSpec.sample_playback_source``).
+
+    Structurally identical to :class:`WavetableDef` (same 4 fields Serum
+    needs to correctly read a referenced audio file) but kept as a separate
+    type since it's a semantically different engine/folder (``Samples/``,
+    not ``Tables/``) with its own risk of the same file-metadata-mismatch
+    class of bug documented on ``WavetableDef``.
+    """
+
+    relative_path: str
+    num_frames: int
+    sample_rate: int
+    num_channels: int
+
+
 NOISEOSC_PARAMS: dict[str, ParamDef] = {
     "kParamNoiseType": ParamDef(
         "kParamNoiseType",
@@ -476,7 +622,18 @@ VOICE_FILTER_PARAMS: dict[str, ParamDef] = {
     "kParamLevelOut": ParamDef(
         "kParamLevelOut", "float", default=0.5, min=0.0, max=1.0, unit="normalized"
     ),
-    "kParamStereo": ParamDef("kParamStereo", "float", default=0.0, min=0.0, max=100.0, unit="%"),
+    "kParamStereo": ParamDef(
+        "kParamStereo",
+        "float",
+        default=50.0,
+        min=0.0,
+        max=100.0,
+        unit="%",
+        confidence="confirmed",
+        notes="50 is centered/neutral, not 0 -- confirmed live (2026-07-28, real Serum 2) "
+        "via an isolated A/B test after 0 was found to cause an audible, meter-visible "
+        "hard-left bias whenever a VoiceFilter is enabled.",
+    ),
     "kParamWet": ParamDef("kParamWet", "float", default=100.0, min=0.0, max=100.0, unit="%"),
     "kParamKeyTrack": ParamDef("kParamKeyTrack", "bool", default=False),
 }
