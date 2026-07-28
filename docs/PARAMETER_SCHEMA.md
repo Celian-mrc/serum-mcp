@@ -375,6 +375,38 @@ matrix encodes *which rack* an FX unit lives in: `0-11` for rack 0 slots,
 
 ## 5. Known gaps and open questions
 
+**Edit round-trip stress test (2026-07-28)**: `extract_spec` then `apply_spec`
+was run against all 844 real `.SerumPreset` files installed on a real
+machine — all 626 official Xfer Factory presets plus 6 third-party banks
+(Unmute's "Places" 180-preset pack, PNL, RAGE x2, Starcore, plus this
+project's own 21 Savage Bank), as a stand-in for "can `edit_preset` handle
+real-world content, not just our own fixtures." Found and fixed, across
+several passes: two `"default"`-sentinel-string crashes (FX and mod-route
+`plainParams`, same class as the earlier `VoiceFilter` one), `FXSplit`/
+`FXSplit3`/`FXSplitMS` crashing `extract_spec` entirely (see §4), roughly 30
+undersized min/max bounds and incomplete enum catalogs (kParamRelease,
+kParamAttack, kParamRise, kParamPortamentoTime, kParamCoarsePit, kParamFine,
+several FX params, and the `VoiceFilter`/`FXFilter` filter-type and
+`WTOsc`/`SampleOsc` warp-mode enums — all corrected with the real observed
+value in the `notes` field), a `Path.__truediv__` bug where a leading-slash
+raw wavetable reference (e.g. `"/Analog/Basic Shapes.wav"`, genuine Factory
+data) silently resolved to the wrong location, `validate_params`'s
+`allow_unknown` not being applied at 10 of 12 call sites (letting real,
+uncatalogued-but-legitimate params from third-party content block an edit
+that never touched them), and the bool-kind check rejecting an
+already-CBOR-safe float pass-through value. Also added a fast path
+(`_unchanged_sample_reference`) so an oscillator whose `sample_playback_source`
+hasn't actually changed skips re-copying/re-validating its file — needed
+because Serum's own Factory sample library is almost entirely `.flac`,
+which this project can't ingest (no FLAC decoder), and without the fast
+path *any* edit touching a later oscillator in the list would fail trying
+to re-process an untouched `.flac` reference just to preserve position.
+
+Result: 0 real bugs left across all 844 presets. The only remaining
+failures (68, all in the Unmute bank) are genuinely missing external
+files — that pack's custom wavetables were never installed alongside its
+presets on this machine, not a bug in this project.
+
 These are the honest uncertainties, ranked roughly by how much they'd
 improve generation quality if resolved:
 

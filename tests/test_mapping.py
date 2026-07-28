@@ -652,6 +652,66 @@ def test_unknown_wavetable_rejected(init_data):
         apply_spec(init_data, spec)
 
 
+def _write_minimal_wav(path: Path, num_samples: int = 2048) -> None:
+    """A minimal valid mono 16-bit PCM WAV, just enough for
+    sample_library.read_wav_metadata to read a real header from."""
+    import struct as _struct
+
+    data = b"\x00\x00" * num_samples
+    fmt_chunk = _struct.pack("<HHIIHH", 1, 1, 44100, 44100 * 2, 2, 16)
+    body = bytearray()
+    body += b"fmt " + _struct.pack("<I", len(fmt_chunk)) + fmt_chunk
+    body += b"data" + _struct.pack("<I", len(data)) + data
+    riff = bytearray(b"RIFF")
+    riff += _struct.pack("<I", 4 + len(body))
+    riff += b"WAVE"
+    riff += body
+    path.write_bytes(bytes(riff))
+
+
+def test_noncurated_wavetable_falls_back_to_reading_the_real_file(init_data, tables_dir):
+    """Found live editing real Factory/third-party presets: a non-curated
+    table (e.g. a genuine Serum 2 factory table not in SIMPLE_WAVETABLES)
+    used to always raise "unknown wavetable", even though the file is real
+    -- 56% of a real 844-preset sample referenced at least one. Falls back
+    to reading the actual file's header instead of assuming a typo."""
+    nested = tables_dir / "Analog"
+    nested.mkdir(parents=True, exist_ok=True)
+    _write_minimal_wav(nested / "Custom Table.wav")
+
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, wavetable="Analog/Custom Table.wav")],
+    )
+    data = apply_spec(init_data, spec)
+    assert data["Oscillator0"]["WTOsc0"]["relativePathToWT"] == "Analog/Custom Table.wav"
+    assert data["Oscillator0"]["WTOsc0"]["numFrames"] == 2048
+
+
+def test_noncurated_wavetable_leading_slash_path_resolves_correctly(init_data, tables_dir):
+    """Found live in real Factory CBOR data: some tables are referenced with
+    a LEADING slash (e.g. "/Analog/Basic Shapes.wav", confirmed in
+    Factory/Bass/808/808 - Drill.SerumPreset -- genuine Serum data, not
+    malformed). pathlib's `/` operator treats a leading-slash right operand
+    as anchored to the drive root and silently discards the left side --
+    `Path("C:/Tables") / "/Analog/x.wav"` resolves to "C:/Analog/x.wav", not
+    "C:/Tables/Analog/x.wav" -- so a naive join always reported "file not
+    found" for these."""
+    nested = tables_dir / "Analog"
+    nested.mkdir(parents=True, exist_ok=True)
+    _write_minimal_wav(nested / "Basic Shapes.wav")
+
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, wavetable="/Analog/Basic Shapes.wav")],
+    )
+    data = apply_spec(init_data, spec)
+    assert data["Oscillator0"]["WTOsc0"]["relativePathToWT"] == "/Analog/Basic Shapes.wav"
+    assert data["Oscillator0"]["WTOsc0"]["numFrames"] == 2048
+
+
 def test_custom_harmonics_synthesizes_and_writes_a_wavetable(init_data, tables_dir):
     spec = PresetSpec(
         name="X",
@@ -872,6 +932,47 @@ def test_sample_playback_source_rejects_unsupported_extension(
     )
     with pytest.raises(ValueError, match="unsupported extension"):
         apply_spec(init_data, spec)
+
+
+def test_sample_playback_source_unchanged_reference_skips_reprocessing(
+    init_data, tables_dir, samples_dir
+):
+    """Found live editing real Factory content: Serum's own factory sample
+    library is almost entirely .flac, which copy_sample_to_library can't
+    ingest (no FLAC decoder in this project). extract_spec reconstructs
+    sample_playback_source as an absolute path built from the preset's own
+    existing samplePathRelative -- so ANY apply_spec call that includes an
+    oscillator whose sample reference hasn't actually changed (e.g. just to
+    preserve a later oscillator's list position during an edit) must not
+    try to re-copy/re-validate that file. A .flac reference that's already
+    the existing SampleOsc0 content must round-trip untouched instead of
+    raising "unsupported extension"."""
+    existing_relative = "Factory/Bass/Clean 808.flac"
+    absolute = samples_dir / existing_relative
+    data = copy.deepcopy(init_data)
+    data["Oscillator0"] = {
+        "plainParams": {"kParamType": "kOsc_Sample"},
+        "SampleOsc0": {
+            "samplePathRelative": existing_relative,
+            "numFrames": 44100,
+            "sampleRate": 44100,
+            "numChannels": 1,
+            "plainParams": {"kParamWarp": 0.0, "kParamWarpMenu": "kFM_OSC"},
+        },
+    }
+
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, sample_playback_source=str(absolute))],
+    )
+    new_data = apply_spec(data, spec)
+
+    sample_osc = new_data["Oscillator0"]["SampleOsc0"]
+    assert sample_osc["samplePathRelative"] == existing_relative
+    assert sample_osc["numFrames"] == 44100
+    assert sample_osc["sampleRate"] == 44100
+    assert sample_osc["numChannels"] == 1
 
 
 def test_sample_playback_source_takes_priority_over_wavetable_fields(

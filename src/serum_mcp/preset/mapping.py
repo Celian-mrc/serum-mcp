@@ -73,11 +73,73 @@ _LFO_KEYS = {
 
 def _plain_params(container: dict[str, Any], key: str) -> dict[str, Any]:
     """Return ``container[key]["plainParams"]`` as a real dict, replacing the
-    sentinel string ``"default"`` Serum uses for untouched modules with {}."""
+    sentinel string ``"default"`` Serum uses for untouched modules with {}.
+
+    Callers write specific fields onto this dict (e.g. ``kParamFreq``) but
+    don't replace it outright -- so on an edit_preset call against a
+    third-party/Factory preset, whatever this module's plainParams already
+    had survives alongside the new fields. That's the point (unrelated
+    settings must round-trip unchanged), but it also means the merged dict
+    can contain real, legitimate params this project hasn't catalogued in
+    `schema.py` yet -- found live editing real Factory content (a WTOsc
+    with `kParamXfadeMode`, not in `WTOSC_PARAMS`). Every `validate_params`
+    call on a dict returned from here should therefore pass
+    ``allow_unknown=True``: those extra keys are pre-existing, already-valid
+    Serum-authored data we're not touching, not something we generated and
+    need to catch a typo in (that protection still applies in full to every
+    key this module's own code actually writes, since validate_params still
+    checks those against the schema like normal, and to sites that build a
+    fresh dict from scratch, e.g. `_build_fx_entry`/`_build_modslot_entry`,
+    which should stay strict).
+    """
     sub = container.setdefault(key, {})
     if not isinstance(sub.get("plainParams"), dict):
         sub["plainParams"] = {}
     return sub["plainParams"]
+
+
+def _unchanged_sample_reference(
+    sample_container: dict[str, Any], osc: OscillatorSpec
+) -> schema.SampleAudioDef | None:
+    """If ``osc.sample_playback_source`` already points at exactly the file
+    this SampleOsc container currently references, return its existing
+    metadata instead of re-resolving from scratch. Exists specifically for
+    editing real Factory/third-party content: extract_spec reconstructs
+    sample_playback_source as an absolute path built from the preset's own
+    samplePathRelative, and Serum's own factory sample library is almost
+    entirely .flac -- a format copy_sample_to_library can't ingest (no FLAC
+    decoder in this project). Without this fast path, ANY edit_preset call
+    that includes an unchanged SampleOsc oscillator in its spec (needed
+    just to preserve a later oscillator's list position, or because the
+    edit round-tripped the whole preset through extract_spec) would fail
+    trying to re-copy a file it doesn't actually need to touch -- found
+    live, 75 of 844 real presets hit exactly this. Only tried for a real
+    audio file whose extension copy_sample_to_library actually supports;
+    a genuinely new/different reference still goes through the normal
+    resolve-and-copy path below, .flac included -- this isn't a general
+    FLAC workaround, just a no-op when nothing actually needs to change."""
+    existing_relative = sample_container.get("samplePathRelative")
+    if not existing_relative:
+        return None
+    try:
+        samples_dir = config.get_samples_dir()
+    except config.SamplesFolderNotFoundError:
+        return None
+    existing_absolute = (samples_dir / existing_relative).resolve()
+    try:
+        incoming_absolute = Path(osc.sample_playback_source).resolve()
+    except (OSError, ValueError):
+        return None
+    if existing_absolute != incoming_absolute:
+        return None
+    num_frames = sample_container.get("numFrames")
+    sample_rate = sample_container.get("sampleRate")
+    num_channels = sample_container.get("numChannels")
+    if not (isinstance(num_frames, int | float) and sample_rate and num_channels):
+        return None
+    return schema.SampleAudioDef(
+        existing_relative, int(num_frames), int(sample_rate), int(num_channels)
+    )
 
 
 def _resolve_sample_playback(osc: OscillatorSpec) -> schema.SampleAudioDef:
@@ -144,12 +206,38 @@ def _resolve_wavetable(osc: OscillatorSpec) -> schema.WavetableDef:
         return schema.WavetableDef(relative_path, num_frames, wavetable.SAMPLE_RATE, 1)
 
     wt_def = schema.SIMPLE_WAVETABLES.get(osc.wavetable)
-    if wt_def is None:
-        raise ValueError(
-            f"unknown wavetable {osc.wavetable!r}; "
-            f"expected one of {sorted(schema.SIMPLE_WAVETABLES)}"
-        )
-    return wt_def
+    if wt_def is not None:
+        return wt_def
+
+    # Not one of the curated names -- found live editing real third-party/
+    # Factory presets (up to 56% of a real 844-preset sample): extract_spec
+    # reports a non-curated table as its raw relativePathToWT (e.g. "S2
+    # Tables/Analog/Saw Drift 303.wav", a real Serum 2 factory table, not
+    # anything exotic), and re-submitting that value unchanged -- needed
+    # just to preserve a LATER oscillator's position in the list, even when
+    # that earlier oscillator isn't the one actually being edited -- used to
+    # always fail here. Try it as a real relative path under Tables/ instead
+    # of assuming it's a typo'd curated name: this is the same "read the
+    # real file's header" approach sample_library.read_wav_metadata already
+    # uses for sample_playback_source, just against Tables/ instead of
+    # Samples/.
+    # Some real Factory tables are referenced with a LEADING slash (e.g.
+    # "/Analog/Basic Shapes.wav", confirmed live in Factory\Bass\808\808 -
+    # Drill.SerumPreset's raw CBOR -- genuine Serum data, not a bug in this
+    # file). pathlib's `/` operator treats a leading-slash right operand as
+    # anchored to the drive root and silently DISCARDS the left side --
+    # `Path("C:/Tables") / "/Analog/x.wav"` produces "C:/Analog/x.wav", not
+    # "C:/Tables/Analog/x.wav" -- so the naive join below would resolve to
+    # the wrong location and always report "file not found" for these.
+    candidate = config.get_tables_dir() / osc.wavetable.lstrip("/\\")
+    if candidate.is_file():
+        channels, sample_rate, num_frames = sample_library.read_wav_metadata(candidate)
+        return schema.WavetableDef(osc.wavetable, num_frames, sample_rate, channels)
+
+    raise ValueError(
+        f"unknown wavetable {osc.wavetable!r}: not one of the curated names "
+        f"({sorted(schema.SIMPLE_WAVETABLES)}), and no file found at {candidate} either"
+    )
 
 
 def _build_fx_entry(fx: FxUnitSpec) -> dict[str, Any]:
@@ -163,7 +251,15 @@ def _build_fx_entry(fx: FxUnitSpec) -> dict[str, Any]:
     if "kParamWet" in fx_schema:
         plain_params["kParamWet"] = fx.wet
     plain_params.update(fx.params)
-    validate_params(fx_module_key, plain_params, fx_schema)
+    # allow_unknown=True: fx.params often isn't calling-model-authored from
+    # scratch -- the normal edit_preset flow for fx_chain (whole-list
+    # replace, no per-unit patch) is read the current chain via
+    # extract_spec/describe_preset, tweak one thing, resubmit the lot, so
+    # fx.params can legitimately carry real, uncatalogued params straight
+    # through from a third-party file's plainParams (found live: FXEQ's
+    # kParamType1, FXDelay's kParamBW, neither in FX_PARAMS). Same reasoning
+    # as _plain_params's docstring.
+    validate_params(fx_module_key, plain_params, fx_schema, allow_unknown=True)
 
     type_id = next(i for i, name in schema.FX_TYPE_IDS.items() if name == fx_module_key)
     return {
@@ -222,7 +318,7 @@ def _build_modslot_entry(route: ModRouteSpec, fx_chain: list[FxUnitSpec]) -> dic
     plain_params: dict[str, Any] = {"kParamAmount": route.amount}
     if route.bipolar:
         plain_params["kParamBipolar"] = True
-    validate_params("ModSlot", plain_params, schema.MODSLOT_PARAMS)
+    validate_params("ModSlot", plain_params, schema.MODSLOT_PARAMS, allow_unknown=True)
 
     return {
         "source": [source_id, 0],
@@ -319,8 +415,10 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                 osc_params["kParamType"] = _ENGINE_TYPE_SAMPLE
 
                 sample_key = f"SampleOsc{i}"
-                sample_def = _resolve_sample_playback(osc)
                 sample_container = osc_container.setdefault(sample_key, {})
+                sample_def = _unchanged_sample_reference(
+                    sample_container, osc
+                ) or _resolve_sample_playback(osc)
                 # File metadata, not a plainParams knob -- must match the
                 # referenced audio file exactly or Serum may misread it (same
                 # risk class as the CBOR bool/int wire-type bugs, see
@@ -336,7 +434,7 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                 sample_params["kParamWarpMenu"] = schema.SIMPLE_WARP_MODES.get(
                     osc.warp_mode, osc.warp_mode
                 )
-                validate_params(sample_key, sample_params, schema.SAMPLEOSC_PARAMS)
+                validate_params(sample_key, sample_params, schema.SAMPLEOSC_PARAMS, allow_unknown=True)
 
                 if osc.sample_loop != "off":
                     loop_mode = schema.SIMPLE_SAMPLE_LOOP_MODES.get(osc.sample_loop)
@@ -371,16 +469,16 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                 wtosc_params["kParamWarpMenu"] = schema.SIMPLE_WARP_MODES.get(
                     osc.warp_mode, osc.warp_mode
                 )
-                validate_params(f"WTOsc{i}", wtosc_params, schema.WTOSC_PARAMS)
+                validate_params(f"WTOsc{i}", wtosc_params, schema.WTOSC_PARAMS, allow_unknown=True)
         elif i == _NOISE_SLOT:
             noise_params = _plain_params(osc_container, f"NoiseOsc{i}")
             noise_params["kParamNoiseType"] = osc.noise_type
-            validate_params(f"NoiseOsc{i}", noise_params, schema.NOISEOSC_PARAMS)
+            validate_params(f"NoiseOsc{i}", noise_params, schema.NOISEOSC_PARAMS, allow_unknown=True)
         elif i == _SUB_SLOT:
             sub_params = _plain_params(osc_container, f"SubOsc{i}")
             sub_params["kParamShape"] = schema.SIMPLE_SUB_SHAPES.get(osc.sub_shape, osc.sub_shape)
-            validate_params(f"SubOsc{i}", sub_params, schema.SUBOSC_PARAMS)
-        validate_params(f"Oscillator{i}", osc_params, schema.OSCILLATOR_PARAMS)
+            validate_params(f"SubOsc{i}", sub_params, schema.SUBOSC_PARAMS, allow_unknown=True)
+        validate_params(f"Oscillator{i}", osc_params, schema.OSCILLATOR_PARAMS, allow_unknown=True)
 
     for i, flt in enumerate(spec.filters):
         filter_params = _plain_params(data, f"VoiceFilter{i}")
@@ -388,20 +486,22 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         filter_params["kParamType"] = schema.SIMPLE_FILTER_TYPES.get(flt.type, flt.type)
         for spec_key, param_key in _FILTER_KEYS.items():
             filter_params[param_key] = getattr(flt, spec_key)
-        validate_params(f"VoiceFilter{i}", filter_params, schema.VOICE_FILTER_PARAMS)
+        validate_params(
+            f"VoiceFilter{i}", filter_params, schema.VOICE_FILTER_PARAMS, allow_unknown=True
+        )
 
     for i, env in enumerate(spec.envelopes):
         env_params = _plain_params(data, f"Env{i}")
         for spec_key, param_key in _ENV_KEYS.items():
             env_params[param_key] = getattr(env, spec_key)
-        validate_params(f"Env{i}", env_params, schema.ENV_PARAMS)
+        validate_params(f"Env{i}", env_params, schema.ENV_PARAMS, allow_unknown=True)
 
     for i, lfo in enumerate(spec.lfos):
         lfo_params = _plain_params(data, f"LFO{i}")
         for spec_key, param_key in _LFO_KEYS.items():
             lfo_params[param_key] = getattr(lfo, spec_key)
         lfo_params["kParamMode"] = lfo.mode
-        validate_params(f"LFO{i}", lfo_params, schema.LFO_PARAMS)
+        validate_params(f"LFO{i}", lfo_params, schema.LFO_PARAMS, allow_unknown=True)
 
     for i, macro in enumerate(spec.macros):
         macro_container = data.setdefault(f"Macro{i}", {})
@@ -409,7 +509,7 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             macro_container["name"] = macro.name
         macro_params = _plain_params(data, f"Macro{i}")
         macro_params["kParamValue"] = macro.value
-        validate_params(f"Macro{i}", macro_params, schema.MACRO_PARAMS)
+        validate_params(f"Macro{i}", macro_params, schema.MACRO_PARAMS, allow_unknown=True)
 
     if spec.fx_chain:
         fx_rack = data.setdefault("FXRack0", {})
@@ -433,6 +533,6 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         global_params["kParamMonoToggle"] = spec.global_.mono
         global_params["kParamPortamentoTime"] = spec.global_.portamento_time
         global_params["kParamPolyCount"] = spec.global_.poly_count
-        validate_params("Global0", global_params, schema.GLOBAL_PARAMS)
+        validate_params("Global0", global_params, schema.GLOBAL_PARAMS, allow_unknown=True)
 
     return data

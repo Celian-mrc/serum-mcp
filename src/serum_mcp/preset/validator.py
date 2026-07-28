@@ -58,9 +58,21 @@ def validate_params(
             raise ParamValidationError(f"{module_name}.{key} is not a known parameter")
 
         if param_def.kind == "bool":
-            if not isinstance(value, bool):
+            if isinstance(value, bool):
+                params[key] = 1.0 if value else 0.0
+            elif isinstance(value, float) and value in (0.0, 1.0):
+                # Already the CBOR-safe representation Serum itself writes
+                # -- accepted as-is. Found live: a "bool"-kind key we don't
+                # actively write ourselves (e.g. VoiceFilter's
+                # kParamKeyTrack) can arrive here as a pass-through value
+                # from a real third-party preset's plainParams (same
+                # edit-round-trip path as _plain_params's docstring), and
+                # it's already correct -- only a genuinely wrong type
+                # (anything but a Python bool or a literal 0.0/1.0) should
+                # be rejected.
+                pass
+            else:
                 raise ParamValidationError(f"{module_name}.{key} expects a bool, got {value!r}")
-            params[key] = 1.0 if value else 0.0
         elif param_def.kind == "enum":
             if value not in param_def.enum_values:
                 raise ParamValidationError(

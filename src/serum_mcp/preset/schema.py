@@ -96,17 +96,21 @@ OSCILLATOR_PARAMS: dict[str, ParamDef] = {
         "kParamFine",
         "float",
         default=0.0,
-        min=-50.0,
-        max=50.0,
+        min=-80.0,
+        max=80.0,
         unit="cents (approx.)",
+        notes="Bounds widened from +/-50 after finding real presets with fine=67.2, -63.0, "
+        "and 76.2.",
     ),
     "kParamCoarsePit": ParamDef(
         "kParamCoarsePit",
         "float",
         default=0.0,
-        min=-24.0,
-        max=48.0,
+        min=-72.0,
+        max=72.0,
         unit="semitones",
+        notes="Bounds widened from -24/48 after finding real presets with coarsePit=-64.0 "
+        "and 60.26.",
     ),
     "kParamPitch": ParamDef(
         "kParamPitch",
@@ -181,10 +185,12 @@ OSCILLATOR_PARAMS: dict[str, ParamDef] = {
         "kParamLoopMode",
         "enum",
         confidence="observed",
-        enum_values=("kForward", "kPingPong", "kTailed"),
+        enum_values=("kForward", "kPingPong", "kTailed", "kReverse"),
         notes="SampleOsc only. Absent from plainParams in every factory preset that "
         "doesn't loop its sample (i.e. a true one-shot) -- there is no observed 'off' "
-        "enum value, omitting the key entirely is what turns looping off.",
+        "enum value, omitting the key entirely is what turns looping off. kReverse "
+        "found live in real Factory content, not yet exposed via SIMPLE_SAMPLE_LOOP_MODES/"
+        "OscillatorSpec.sample_loop.",
     ),
     "kParamLoopStart": ParamDef(
         "kParamLoopStart",
@@ -254,26 +260,35 @@ WTOSC_PARAMS: dict[str, ParamDef] = {
         confidence="observed",
         enum_values=(
             "kAM_OSC",
+            "kAM_SUB",
             "kASYMNeg",
             "kASYMPos",
+            "kASYMPosNeg",
             "kBendNeg",
             "kBendPos",
             "kBendPosNeg",
             "kDLM",
+            "kDistAsym",
             "kDistDiode1",
             "kDistDiode2",
             "kDistHardClip",
             "kDistLinFold",
+            "kDistSineShaper",
             "kDistSinFold",
             "kDistSoftClip",
             "kDistSoftSat",
+            "kDistStompBox",
+            "kDistTapeSat",
             "kDistTube",
+            "kDistZeroSquare",
             "kEvenOdd",
             "kFMP_NOISE",
             "kFMP_OSC",
             "kFMX_NOISE",
             "kFMX_OSC",
             "kFMX_OSC2",
+            "kFM_FILT1",
+            "kFM_FILT2",
             "kFM_NOISE",
             "kFM_OSC",
             "kFM_OSC2",
@@ -298,8 +313,10 @@ WTOSC_PARAMS: dict[str, ParamDef] = {
             "kSelfPD",
             "kSync",
         ),
-        notes="'Warp mode A'. Union of values observed across samples; the true full "
-        "enum (from Serum's UI dropdown) may be a superset.",
+        notes="'Warp mode A'. Union of values observed across samples (expanded again "
+        "after checking real Factory/third-party content: kAM_SUB, kASYMPosNeg, "
+        "kDistAsym, kDistStompBox, kDistTapeSat, kDistZeroSquare, kFM_FILT1). The true "
+        "full enum (from Serum's UI dropdown) may still be a superset.",
     ),
     "kParamInitialPhase": ParamDef(
         "kParamInitialPhase",
@@ -586,6 +603,44 @@ VOICE_FILTER_PARAMS: dict[str, ParamDef] = {
             "Scream",
             "Scream3LP",
             "Wsp",
+            # Found live checking real Factory/third-party content (not in the
+            # original 66-value VST3-dump survey):
+            "ADD_BASS",
+            "BEQ12",
+            "BP12",
+            "CombHL6N",
+            "CombL6N",
+            "Combs",
+            "DistComb1BP",
+            "DistComb1LP",
+            "FlangeH6P",
+            "FlangeL6P",
+            "HEQ12",
+            "HN12",
+            "LB12",
+            "N12",
+            "P12",
+            # More found checking FXFilter usage specifically (shares this
+            # same enum -- see FX_PARAMS["FXFilter"]["kParamType"] below):
+            "FlangeHL6N",
+            "HEQ6",
+            "LPH12",
+            "PN12",
+            "Phase12N",
+            "Phase12P",
+            "SNH1",
+            "ZDF_A",
+            # Third pass, found via a full edit round-trip stress test across
+            # 844 real presets (Factory + several third-party banks):
+            "Scream3BP",
+            "Phase48HL6N",
+            "Phase48N",
+            "FlangeHL6P",
+            "Phase24N",
+            "FlangeL6N",
+            "SNH2",
+            "CombH6P",
+            "LEQ12",
         ),
     ),
     "kParamFreq": ParamDef(
@@ -934,6 +989,7 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
                 "kStompBox",
                 "kTapeSat",
                 "kXShaper",
+                "kXShaperAsym",
                 "kZeroSquare",
             ),
         ),
@@ -942,20 +998,26 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
         "kParamFreq": ParamDef(
             "kParamFreq", "float", default=1.0, min=0.0, max=1.0, unit="normalized"
         ),
-        "kParamNumStages": ParamDef("kParamNumStages", "float", default=2.0, min=2.0, max=7.0),
+        "kParamNumStages": ParamDef(
+            "kParamNumStages", "float", default=2.0, min=2.0, max=16.0,
+            notes="Max corrected from 7.0 after finding a real preset with numStages=16.0.",
+        ),
     },
     "FXChorus": {
         "kParamRate": ParamDef(
-            "kParamRate", "float", default=0.5, min=0.0, max=1.4, unit="Hz (approx.)"
+            "kParamRate", "float", default=0.5, min=0.0, max=20.0, unit="Hz (approx.)",
+            notes="Max corrected from 1.4 after finding a real Factory preset with rate=20.0.",
         ),
         "kParamDepth": ParamDef(
-            "kParamDepth", "float", default=10.0, min=0.0, max=25.2, unit="ms (approx.)"
+            "kParamDepth", "float", default=10.0, min=0.0, max=26.0, unit="ms (approx.)"
         ),
         "kParamDelay": ParamDef(
-            "kParamDelay", "float", default=5.0, min=0.0, max=12.8, unit="ms (approx.)"
+            "kParamDelay", "float", default=5.0, min=0.0, max=20.0, unit="ms (approx.)",
+            notes="Max corrected from 12.8 after finding real presets with delay up to 18.0.",
         ),
         "kParamFeedback": ParamDef(
-            "kParamFeedback", "float", default=0.0, min=0.0, max=58.2, unit="%"
+            "kParamFeedback", "float", default=0.0, min=0.0, max=75.0, unit="%",
+            notes="Max corrected from 58.2 after finding a real preset with feedback=71.9.",
         ),
         "kParamFilt": ParamDef(
             "kParamFilt", "float", default=2000.0, min=50.0, max=20000.0, unit="Hz"
@@ -964,7 +1026,8 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
     },
     "FXFlanger": {
         "kParamRate": ParamDef(
-            "kParamRate", "float", default=0.5, min=0.0, max=5.1, unit="Hz (approx.)"
+            "kParamRate", "float", default=0.5, min=0.0, max=10.0, unit="Hz (approx.)",
+            notes="Max corrected from 5.1 after finding a real preset with rate=9.3.",
         ),
         "kParamDepth": ParamDef("kParamDepth", "float", default=50.0, min=0.0, max=100.0, unit="%"),
         "kParamFeedback": ParamDef(
@@ -984,7 +1047,8 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
             "kParamFeedback", "float", default=0.0, min=0.0, max=100.0, unit="%"
         ),
         "kParamFreq": ParamDef(
-            "kParamFreq", "float", default=800.0, min=20.0, max=2563.0, unit="Hz"
+            "kParamFreq", "float", default=800.0, min=20.0, max=20000.0, unit="Hz",
+            notes="Max corrected from 2563.0 after finding real presets with freq up to 18000.0.",
         ),
         "kParamNumPoles": ParamDef("kParamNumPoles", "float", default=4.0, min=1.0, max=18.0),
         "kParamWet": ParamDef("kParamWet", "float", default=50.0, min=0.0, max=100.0, unit="%"),
@@ -997,16 +1061,18 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
             "kParamTimeR", "float", default=0.25, min=0.001, max=0.32, unit="seconds"
         ),
         "kParamFeedback": ParamDef(
-            "kParamFeedback", "float", default=30.0, min=0.0, max=83.3, unit="%"
+            "kParamFeedback", "float", default=30.0, min=0.0, max=90.0, unit="%",
+            notes="Max corrected from 83.3 after finding a real preset with feedback=89.5.",
         ),
         "kParamFreq": ParamDef(
             "kParamFreq",
             "float",
             default=8000.0,
-            min=49.6,
+            min=49.5,
             max=17981.0,
             unit="Hz",
-            notes="Delay tap tone filter frequency.",
+            notes="Delay tap tone filter frequency. Min nudged from 49.6 to 49.5 after "
+            "finding a real preset with freq=49.56.",
         ),
         "kParamWet": ParamDef("kParamWet", "float", default=30.0, min=0.0, max=100.0, unit="%"),
     },
@@ -1028,10 +1094,17 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
     },
     "FXComp": {
         "kParamThresh": ParamDef(
-            "kParamThresh", "float", default=0.5, min=0.0, max=0.95, unit="normalized"
+            "kParamThresh", "float", default=0.5, min=0.0, max=1.0, unit="normalized"
         ),
         "kParamRatio": ParamDef(
-            "kParamRatio", "float", default=4.0, min=1.1, max=1_000_000.0, unit="ratio:1"
+            "kParamRatio",
+            "float",
+            default=4.0,
+            min=1.0,
+            max=1_000_000.0,
+            unit="ratio:1",
+            notes="Min corrected from 1.1 to 1.0 after finding real Factory presets with "
+            "ratio=1.0 (no compression, ratio matrix's neutral position) in the raw CBOR.",
         ),
         "kParamAttack": ParamDef(
             "kParamAttack", "float", default=10.0, min=0.1, max=1000.0, unit="ms"
@@ -1040,13 +1113,15 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
             "kParamRelease", "float", default=100.0, min=0.1, max=1000.0, unit="ms"
         ),
         "kParamMakeup": ParamDef(
-            "kParamMakeup", "float", default=1.0, min=1.0, max=25.8, unit="gain factor"
+            "kParamMakeup", "float", default=1.0, min=1.0, max=32.0, unit="gain factor",
+            notes="Max corrected from 25.8 after finding a real preset with makeup=31.0.",
         ),
         "kParamWet": ParamDef("kParamWet", "float", default=100.0, min=0.0, max=100.0, unit="%"),
     },
     "FXEQ": {
         "kParamFreq1": ParamDef(
-            "kParamFreq1", "float", default=200.0, min=21.5, max=9454.0, unit="Hz"
+            "kParamFreq1", "float", default=200.0, min=21.5, max=10000.0, unit="Hz",
+            notes="Max corrected from 9454.0 after finding a real preset with freq1=10000.0.",
         ),
         "kParamFreq2": ParamDef(
             "kParamFreq2", "float", default=4000.0, min=21.5, max=20000.0, unit="Hz"
@@ -1058,10 +1133,12 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
             "kParamGain2", "float", default=0.0, min=-24.0, max=24.0, unit="dB"
         ),
         "kParamReso1": ParamDef(
-            "kParamReso1", "float", default=0.0, min=0.0, max=69.6, unit="Q (approx.)"
+            "kParamReso1", "float", default=0.0, min=0.0, max=100.0, unit="Q (approx.)",
+            notes="Max corrected from 69.6 after finding a real preset with reso1=100.0.",
         ),
         "kParamReso2": ParamDef(
-            "kParamReso2", "float", default=0.0, min=0.0, max=79.0, unit="Q (approx.)"
+            "kParamReso2", "float", default=0.0, min=0.0, max=95.0, unit="Q (approx.)",
+            notes="Max corrected from 79.0 after finding a real preset with reso2=81.3.",
         ),
     },
     "FXFilter": {
@@ -1085,7 +1162,8 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
     # MOD_DEST_TARGETS.
     "FXBode": {
         "kParamShift": ParamDef(
-            "kParamShift", "float", default=0.0, min=-100.0, max=73.4, unit="% (approx.)"
+            "kParamShift", "float", default=0.0, min=-100.0, max=82.0, unit="% (approx.)",
+            notes="Max corrected from 73.4 after finding a real preset with shift=80.7.",
         ),
         "kParamRange": ParamDef(
             "kParamRange", "float", default=100.0, min=0.1, max=3043.2, unit="Hz (approx.)"
@@ -1095,13 +1173,14 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
         ),
         "kParamBlur": ParamDef("kParamBlur", "float", default=0.0, min=0.0, max=100.0, unit="%"),
         "kParamDelayTime": ParamDef(
-            "kParamDelayTime", "float", default=0.0, min=0.0, max=1.62, unit="seconds (approx.)"
+            "kParamDelayTime", "float", default=0.0, min=0.0, max=1.8, unit="seconds (approx.)",
+            notes="Max corrected from 1.62 after finding a real preset with delayTime=1.75.",
         ),
         "kParamOutputWidth": ParamDef(
-            "kParamOutputWidth", "float", default=0.0, min=0.0, max=96.5, unit="%"
+            "kParamOutputWidth", "float", default=0.0, min=0.0, max=100.0, unit="%"
         ),
         "kParamOutputMix": ParamDef(
-            "kParamOutputMix", "float", default=0.0, min=-73.9, max=100.0, unit="%"
+            "kParamOutputMix", "float", default=0.0, min=-100.0, max=100.0, unit="%"
         ),
         "kParamWet": ParamDef("kParamWet", "float", default=30.0, min=0.0, max=100.0, unit="%"),
     },
@@ -1129,7 +1208,10 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
         "kParamDecay": ParamDef(
             "kParamDecay", "float", default=1.0, min=0.0, max=40.0, unit="seconds (approx.)"
         ),
-        "kParamTone": ParamDef("kParamTone", "float", default=0.0, min=-100.0, max=84.2, unit="%"),
+        "kParamTone": ParamDef(
+            "kParamTone", "float", default=0.0, min=-100.0, max=85.0, unit="%",
+            notes="Max corrected from 84.2 after finding a real preset with tone=84.21.",
+        ),
         "kParamIpTrim": ParamDef(
             "kParamIpTrim", "float", default=0.0, min=-34.0, max=6.0, unit="dB"
         ),
@@ -1152,10 +1234,12 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
             "kParamHPF", "float", default=20.0, min=1.3, max=400.0, unit="Hz (approx.)"
         ),
         "kParamLPF": ParamDef(
-            "kParamLPF", "float", default=20000.0, min=50.0, max=18976.0, unit="Hz (approx.)"
+            "kParamLPF", "float", default=20000.0, min=50.0, max=20000.0, unit="Hz (approx.)",
+            notes="Max corrected from 18976.0 after finding a real preset with LPF=19924.3.",
         ),
         "kParamLFXover": ParamDef(
-            "kParamLFXover", "float", default=150.0, min=20.25, max=300.0, unit="Hz (approx.)"
+            "kParamLFXover", "float", default=150.0, min=20.25, max=400.0, unit="Hz (approx.)",
+            notes="Max corrected from 300.0 after finding a real preset with LFXover=400.0.",
         ),
         "kParamWet": ParamDef(
             "kParamWet",

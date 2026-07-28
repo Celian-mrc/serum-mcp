@@ -55,3 +55,23 @@ def test_bool_params_normalized_to_cbor_safe_floats():
     validate_params("VoiceFilter0", params, VOICE_FILTER_PARAMS)
     assert params["kParamEnable"] == 0.0
     assert type(params["kParamEnable"]) is float
+
+
+def test_bool_param_accepts_already_cbor_safe_float_pass_through():
+    """Found live editing real Factory content: a "bool"-kind key this
+    project doesn't actively write itself (e.g. VoiceFilter's
+    kParamKeyTrack) can arrive here as a pass-through value from a real
+    preset's plainParams -- already the CBOR-safe float Serum itself wrote,
+    just not a Python bool. Must be accepted as-is, not rejected."""
+    params = {"kParamKeyTrack": 1.0}
+    validate_params("VoiceFilter0", params, VOICE_FILTER_PARAMS)
+    assert params["kParamKeyTrack"] == 1.0
+
+    params = {"kParamKeyTrack": 0.0}
+    validate_params("VoiceFilter0", params, VOICE_FILTER_PARAMS)
+    assert params["kParamKeyTrack"] == 0.0
+
+
+def test_bool_param_rejects_a_float_that_isnt_zero_or_one():
+    with pytest.raises(ParamValidationError):
+        validate_params("VoiceFilter0", {"kParamKeyTrack": 0.5}, VOICE_FILTER_PARAMS)
