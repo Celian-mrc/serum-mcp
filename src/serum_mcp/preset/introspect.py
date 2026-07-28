@@ -13,6 +13,7 @@ from typing import Any
 
 from serum_mcp import config
 from serum_mcp.generation.spec import (
+    ArpSpec,
     EnvelopeSpec,
     FilterSpec,
     FxUnitSpec,
@@ -28,6 +29,7 @@ from . import schema
 
 _REVERSE_FILTER_TYPES = {v: k for k, v in schema.SIMPLE_FILTER_TYPES.items()}
 _REVERSE_WARP_MODES = {v: k for k, v in schema.SIMPLE_WARP_MODES.items()}
+_REVERSE_ARP_SHAPES = {v: k for k, v in schema.SIMPLE_ARP_SHAPES.items()}
 _REVERSE_WAVETABLES = {wt.relative_path: name for name, wt in schema.SIMPLE_WAVETABLES.items()}
 _REVERSE_SAMPLE_LOOP_MODES = {v: k for k, v in schema.SIMPLE_SAMPLE_LOOP_MODES.items()}
 _REVERSE_MOD_SOURCE_IDS = {v: k for k, v in schema.MOD_SOURCE_IDS.items()}
@@ -291,6 +293,29 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         poly_count=_resolve(global_pp, "kParamPolyCount", schema.GLOBAL_PARAMS),
     )
 
+    arp_pp = (data.get("Arp0", {}) or {}).get("plainParams")
+    arp_spec = None
+    if isinstance(arp_pp, dict) and arp_pp.get("kParamEnabled"):
+        clip_pp = (data.get("ArpClip0", {}) or {}).get("plainParams")
+        raw_shape = _resolve(clip_pp, "kParamShape", schema.ARPCLIP_PARAMS)
+        raw_transpose_shape = (
+            clip_pp.get("kParamTransposeShape") if isinstance(clip_pp, dict) else None
+        )
+        arp_spec = ArpSpec(
+            enabled=True,
+            shape=_REVERSE_ARP_SHAPES.get(raw_shape, raw_shape),
+            rate=_resolve(clip_pp, "kParamRate", schema.ARPCLIP_PARAMS),
+            gate=_resolve(clip_pp, "kParamGate", schema.ARPCLIP_PARAMS),
+            dotted=bool(_resolve(clip_pp, "kParamDotted", schema.ARPCLIP_PARAMS)),
+            triplets=bool(_resolve(clip_pp, "kParamTriplets", schema.ARPCLIP_PARAMS)),
+            transpose_shift=_resolve(clip_pp, "kParamTransposeShift", schema.ARPCLIP_PARAMS),
+            transpose_shape=(
+                _REVERSE_ARP_SHAPES.get(raw_transpose_shape, raw_transpose_shape)
+                if raw_transpose_shape
+                else None
+            ),
+        )
+
     return PresetSpec(
         name="",
         description="",
@@ -301,5 +326,6 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         macros=macros,
         fx_chain=fx_chain,
         mod_routes=mod_routes,
+        arp=arp_spec,
         **{"global": global_spec},
     )

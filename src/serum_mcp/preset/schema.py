@@ -848,6 +848,166 @@ GLOBAL_PARAMS: dict[str, ParamDef] = {
     ),
 }
 
+# Serum 2's arpeggiator: a single on/off toggle (`Arp0`) plus 12 pattern
+# "clip" slots (`ArpClip0..11`), only one of which is normally used
+# (`Arp0.kParamActiveClipID` selects which; almost always absent/0 in real
+# content). Reverse-engineered by inspecting all 180 presets in a real
+# third-party bank (Unmute's "Places") -- 15 had the arp enabled. An
+# unpopulated ArpClip slot has `plainParams: "default"` (same sentinel as
+# VoiceFilter/FXRack when untouched) and `clip: {}`.
+#
+# `kParamShape` (and the separate `kParamTransposeShape`, which modulates
+# transposition independently using the *same* enum) selects the pattern
+# algorithm. Two DISTINCT modes exist and this project only generates one:
+# - Algorithmic (Played, Chord, Converge, RandOnce, RandDrift, RandNoDup,
+#   and very likely Up/Down/UpDown/ThumbUp given "Down"/"ThumbUp"/"Diverge"
+#   were observed on kParamTransposeShape -- GENERATABLE, see ArpSpec.
+# - "Pattern": a real hand-drawn MIDI-clip-like note list lives in this
+#   clip's own `clip.notes` array (each note: noteNum/timeStamp/length/
+#   channel/an 8-float "attributes" vector whose exact meaning isn't
+#   decoded, always identical across every note observed here/expressionEvents).
+#   Actually the single MOST COMMON shape in the real sample (9/23 populated
+#   clips) -- NOT modeled yet, out of scope for this pass. Selecting
+#   shape="pattern" via ArpSpec is rejected with a clear error rather than
+#   silently writing an empty/broken pattern.
+ARP_PARAMS: dict[str, ParamDef] = {
+    "kParamEnabled": ParamDef("kParamEnabled", "bool", default=False, confidence="observed"),
+    "kParamActiveClipID": ParamDef(
+        "kParamActiveClipID",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=11.0,
+        unit="ArpClip slot index",
+        confidence="observed",
+        notes="Almost always absent in real content (implicitly slot 0) -- this "
+        "project always writes to ArpClip0 and never sets this explicitly.",
+    ),
+    "kParamLaunchQuantize": ParamDef(
+        "kParamLaunchQuantize",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=32.0,
+        unit="uncertain",
+        confidence="uncertain",
+        notes="Observed values 0.0/10.0/12.0 across only 4 samples -- real unit/"
+        "meaning (beats? steps?) not established. Not currently exposed via ArpSpec.",
+    ),
+}
+
+# Curated subset of the real (larger, per the module comment above) shape
+# enum -- only values directly observed in real CBOR data, to avoid writing
+# an unconfirmed string Serum might reject or silently reinterpret. Widened
+# after a second pass across all 844 real presets available (Factory + 6
+# third-party banks, not just the original 180-preset sample) -- turned up
+# 6 more confirmed shapes, including UpDown (the 2nd most common value
+# overall after Pattern). The distinction between e.g. "UpDown" and
+# "DownAndUp" vs "UpAndDown" and "DownUp" (4 separate raw values, all
+# observed) is NOT understood -- likely a real difference in whether the
+# turnaround note at top/bottom repeats, but unverified; named as
+# distinctly as possible without inventing a confident explanation.
+SIMPLE_ARP_SHAPES: dict[str, str] = {
+    "played": "Played",
+    "chord": "Chord",
+    "converge": "Converge",
+    "diverge": "Diverge",
+    "converge_diverge": "ConvAndDiv",
+    "down": "Down",
+    "up_down": "UpDown",
+    "down_up": "DownUp",
+    "up_and_down": "UpAndDown",
+    "down_and_up": "DownAndUp",
+    "thumb_up": "ThumbUp",
+    "thumb_up_down": "ThumbUD",
+    "random": "Rand",
+    "random_once": "RandOnce",
+    "random_drift": "RandDrift",
+    "random_no_dup": "RandNoDup",
+}
+
+ARPCLIP_PARAMS: dict[str, ParamDef] = {
+    "kParamShape": ParamDef(
+        "kParamShape",
+        "enum",
+        default="Played",
+        confidence="observed",
+        enum_values=(
+            "Played",
+            "Pattern",
+            "Chord",
+            "Converge",
+            "Diverge",
+            "ConvAndDiv",
+            "Down",
+            "UpDown",
+            "DownUp",
+            "UpAndDown",
+            "DownAndUp",
+            "ThumbUp",
+            "ThumbUD",
+            "Rand",
+            "RandOnce",
+            "RandDrift",
+            "RandNoDup",
+        ),
+        notes="Union of values observed across kParamShape AND kParamTransposeShape "
+        "(same enum -- confirmed by 'Down'/'ThumbUp'/'Diverge' appearing on the "
+        "latter too) across all 844 real presets available, not just the original "
+        "180-preset sample. Almost certainly still a superset exists (e.g. a plain "
+        "'Up', matching 'Down''s presence, never directly observed with certainty so "
+        "not included). See SIMPLE_ARP_SHAPES for the curated subset ArpSpec "
+        "generates; mapping.py falls back to passing an uncurated-but-otherwise-valid "
+        "raw value through unchanged (same pattern as filter types/wavetables) so a "
+        "round-tripped edit of a preset using a shape outside this curated list "
+        "doesn't fail -- 'Pattern' is the sole deliberate exception, since it needs "
+        "real note data this project doesn't generate (see ArpSpec).",
+    ),
+    "kParamRate": ParamDef(
+        "kParamRate",
+        "float",
+        default=0.25,
+        min=0.0,
+        max=1.0,
+        unit="normalized",
+        confidence="uncertain",
+        notes="Only 2 distinct values observed (0.2692, 0.4615) across the whole "
+        "180-preset sample -- real musical meaning (note division? Hz?) not "
+        "established. Most enabled clips don't set this explicitly at all.",
+    ),
+    "kParamGate": ParamDef(
+        "kParamGate",
+        "float",
+        default=75.0,
+        min=0.0,
+        max=200.0,
+        unit="% (approx.)",
+        confidence="observed",
+        notes="Observed range 0..145.6 -- can exceed 100% (legato overlap past the "
+        "next step), not a simple 0-100% knob.",
+    ),
+    "kParamDotted": ParamDef("kParamDotted", "bool", default=False, confidence="observed"),
+    "kParamTriplets": ParamDef("kParamTriplets", "bool", default=False, confidence="observed"),
+    "kParamTransposeShift": ParamDef(
+        "kParamTransposeShift",
+        "float",
+        default=0.0,
+        min=-24.0,
+        max=24.0,
+        unit="semitones",
+        confidence="observed",
+    ),
+}
+ARPCLIP_PARAMS["kParamTransposeShape"] = ParamDef(
+    "kParamTransposeShape",
+    "enum",
+    default="Played",
+    confidence="observed",
+    enum_values=ARPCLIP_PARAMS["kParamShape"].enum_values,
+    notes="Same enum as kParamShape (see there) -- an independent pattern for the "
+    "transpose lane, so the pitch pattern and the note-trigger pattern can differ.",
+)
+
 # ModSlot0..ModSlot63: the mod matrix. Structurally confirmed (destModuleID /
 # destModuleParamID / destModuleParamName / destModuleTypeString / source /
 # plainParams.kParamAmount). destModuleParamID is CONFIRMED per (type, param)

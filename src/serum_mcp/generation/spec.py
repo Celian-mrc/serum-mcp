@@ -16,6 +16,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from serum_mcp.preset.schema import (
+    SIMPLE_ARP_SHAPES,
     SIMPLE_FILTER_TYPES,
     SIMPLE_SUB_SHAPES,
     SIMPLE_WARP_MODES,
@@ -271,6 +272,61 @@ class ModRouteSpec(BaseModel):
     bipolar: bool = False
 
 
+class ArpSpec(BaseModel):
+    """Serum 2's arpeggiator, algorithmic-pattern modes only. Always targets
+    ArpClip slot 0 (the slot real content overwhelmingly uses).
+
+    Reverse-engineered from a real 180-preset third-party bank -- 15 had the
+    arp enabled. Two distinct pattern modes exist in the real format:
+    algorithmic (this class) and a hand-drawn note-by-note "Pattern" mode
+    (a real MIDI-clip-like note list) that is NOT modeled here -- selecting
+    ``shape='pattern'`` (not offered, since it isn't in ``SIMPLE_ARP_SHAPES``)
+    would need real note data this project doesn't generate yet; passing
+    it raises rather than silently writing an empty/broken pattern.
+    """
+
+    enabled: bool = True
+    shape: str = Field(
+        "played",
+        description=f"one of: {', '.join(sorted(SIMPLE_ARP_SHAPES))}. 'played' repeats "
+        "the notes in the order/chord they were physically played (the closest to "
+        "'no pattern, just retrigger'); 'chord' plays all held notes together each "
+        "step; 'converge'/'diverge' sweep inward/outward from the middle of the held "
+        "notes; 'down'/'thumb_up' are directional (higher note first / lowest note "
+        "held as a constant 'thumb' with the pattern moving around it); "
+        "'random_once'/'random_drift'/'random_no_dup' are randomized order variants. "
+        "Likely more exist (e.g. an 'up' counterpart to 'down') but aren't confirmed "
+        "yet -- see docs/PARAMETER_SCHEMA.md.",
+    )
+    rate: float = Field(
+        0.25,
+        ge=0.0,
+        le=1.0,
+        description="normalized step rate -- UNCERTAIN real musical meaning (note "
+        "division? Hz?), only 2 real values seen in the source data. Adjust by ear/"
+        "experimentation rather than assuming a specific note-length mapping.",
+    )
+    gate: float = Field(
+        75.0,
+        ge=0.0,
+        le=200.0,
+        description="% note length relative to the step -- can exceed 100 for legato "
+        "overlap into the next step (observed up to ~146 in real presets).",
+    )
+    dotted: bool = Field(False, description="dotted-rhythm timing for the step rate")
+    triplets: bool = Field(False, description="triplet timing for the step rate")
+    transpose_shift: float = Field(
+        0.0, ge=-24.0, le=24.0, description="semitones, static transpose of the whole pattern"
+    )
+    transpose_shape: str | None = Field(
+        None,
+        description="optional, one of the same values as `shape` -- an independent "
+        "pattern for the transpose/pitch lane, so the pitch sequence can differ from "
+        "the note-trigger sequence. Leave unset for a plain transpose_shift with no "
+        "extra pitch pattern.",
+    )
+
+
 class PresetSpec(BaseModel):
     """The full target state for a generated or edited preset."""
 
@@ -312,5 +368,12 @@ class PresetSpec(BaseModel):
         "third-party presets using up to 19.",
     )
     global_: GlobalSpec = Field(default_factory=GlobalSpec, alias="global")
+    arp: ArpSpec | None = Field(
+        None,
+        description="Serum's arpeggiator, algorithmic modes only (see ArpSpec). Unset "
+        "(the default) leaves the arp completely untouched -- omit it entirely rather "
+        "than passing ArpSpec(enabled=False) unless you specifically want to disable "
+        "an arp that's already on.",
+    )
 
     model_config = {"populate_by_name": True}

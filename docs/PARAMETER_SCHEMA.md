@@ -373,6 +373,59 @@ matrix encodes *which rack* an FX unit lives in: `0-11` for rack 0 slots,
 `100-111` for rack 1, `200-211` for rack 2 (e.g. `FXComp` destinations
 `0, 1, ..., 9, 14` alongside `101, 102` and `205 `in our sample).
 
+### Arpeggiator (`Arp0` / `ArpClip0..11`)
+
+Previously explicitly out of scope (see the exclusions list in this file's
+intro); reverse-engineered and wired up as `ArpSpec` (2026-07-28) after a
+direct request to see whether it could be recreated at all.
+
+Structure: `Arp0` is just an on/off toggle (`kParamEnabled`) plus which of
+12 `ArpClip{i}` pattern slots is active (`kParamActiveClipID`, almost
+always absent → implicitly slot 0). Real content overwhelmingly uses only
+slot 0; `ArpSpec` always targets it and never sets `kParamActiveClipID`.
+An unpopulated `ArpClip` slot has `plainParams: "default"` (same sentinel
+as `VoiceFilter`/FX) and `clip: {}`.
+
+Two structurally distinct pattern modes share `kParamShape` (and the
+independent `kParamTransposeShape`, which modulates transposition using
+the *same* enum on its own schedule):
+
+- **Algorithmic** (Played, Chord, Converge/Diverge/ConvAndDiv, Down/UpDown/
+  DownUp/UpAndDown/DownAndUp, ThumbUp/ThumbUD, Rand/RandOnce/RandDrift/
+  RandNoDup — 16 confirmed values excluding Pattern) — just a handful of
+  knobs (`kParamRate`, `kParamGate`, `kParamDotted`, `kParamTriplets`,
+  `kParamTransposeShift`), no note data. **Generatable** via `ArpSpec`.
+  The distinction between e.g. `UpDown`/`DownUp`/`UpAndDown`/`DownAndUp`
+  (4 separate confirmed raw values) isn't understood — likely whether the
+  turnaround note at the top/bottom repeats, unverified.
+- **`Pattern`**: a real hand-drawn MIDI-clip-like note list in the same
+  clip's own `clip.notes` array (`noteNum`/`timeStamp`/`length`/`channel`,
+  plus an 8-float `attributes` vector and `expressionEvents` whose exact
+  meaning isn't decoded — every note observed in this sample had the
+  identical attributes vector `[0.5, 1.0, 0.0, 0.0, 0.0, 0.5, 0.0,
+  ~0.504]`, suggesting it may just be a fixed default when no per-note
+  velocity/probability customization was drawn, but unverified). This is
+  the single MOST COMMON shape value in real content (101/844 presets'
+  populated clips) — **NOT modeled**; `apply_spec` rejects `shape='pattern'`
+  (case-insensitively, catching both the friendly name and the raw
+  `'Pattern'` value) with a clear error rather than writing an empty/
+  broken pattern.
+
+`kParamRate`'s real musical meaning (note division? Hz?) is **uncertain**
+— only 2 distinct values seen across 844 presets; most enabled clips don't
+set it explicitly at all. `kParamGate` can exceed 100% (observed up to
+~146, legato overlap into the next step). Two more `Arp0`/`ArpClip` fields
+(`kParamLaunchQuantize`, note-level velocity/retrig/chance humanization
+params) are cataloged in `schema.py` but not exposed via `ArpSpec` yet.
+
+**Not yet verified live in real Serum** — unlike everything else in this
+document, which has been confirmed against an actual FL Studio + Serum 2
+install, the arp write path has only been validated via the CBOR wire-type
+scanner and a stress test against all 844 real presets available (0
+unexplained failures; the only failures are 68 genuinely-missing external
+files and 13 correctly-rejected `Pattern`-mode arps). Treat with the same
+caution as any newly-added generation feature until confirmed.
+
 ## 5. Known gaps and open questions
 
 **Edit round-trip stress test (2026-07-28)**: `extract_spec` then `apply_spec`

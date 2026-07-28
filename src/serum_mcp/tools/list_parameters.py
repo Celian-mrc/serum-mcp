@@ -47,5 +47,8 @@ def list_parameters() -> str:
         },
         "fx_type_ids": schema.FX_TYPE_IDS,
         "fx_params": {name: _dump(defs) for name, defs in schema.FX_PARAMS.items()},
+        "arp": _dump(schema.ARP_PARAMS),
+        "arp_clip": _dump(schema.ARPCLIP_PARAMS),
+        "simple_arp_shapes": schema.SIMPLE_ARP_SHAPES,
     }
     return json.dumps(result, indent=2)

@@ -240,6 +240,26 @@ def _resolve_wavetable(osc: OscillatorSpec) -> schema.WavetableDef:
     )
 
 
+def _resolve_arp_shape(shape: str) -> str:
+    """Resolve a friendly ``SIMPLE_ARP_SHAPES`` name to its raw Serum enum
+    value, or pass an already-raw value through unchanged if it's not in
+    the curated set -- same fallback pattern as filter types/wavetables,
+    needed so a round-tripped edit of a preset using a shape outside the
+    curated list (the real enum is confirmed larger, see schema.py) doesn't
+    fail. 'pattern' is the sole deliberate exception: it needs real
+    note-by-note clip data this project doesn't generate, so it's rejected
+    with a clear error instead of silently writing an empty/broken pattern
+    (checked case-insensitively so both the friendly name and the raw
+    'Pattern' value are caught)."""
+    if shape.lower() == "pattern":
+        raise ValueError(
+            "arp shape 'pattern' needs real note-by-note clip data this project "
+            "doesn't generate yet -- use one of the algorithmic shapes instead: "
+            f"{sorted(schema.SIMPLE_ARP_SHAPES)}"
+        )
+    return schema.SIMPLE_ARP_SHAPES.get(shape, shape)
+
+
 def _build_fx_entry(fx: FxUnitSpec) -> dict[str, Any]:
     fx_module_key = fx.type
     if fx_module_key not in schema.FX_PARAMS:
@@ -534,5 +554,32 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         global_params["kParamPortamentoTime"] = spec.global_.portamento_time
         global_params["kParamPolyCount"] = spec.global_.poly_count
         validate_params("Global0", global_params, schema.GLOBAL_PARAMS, allow_unknown=True)
+
+    # Like `global`, arp is a single nested object (not a list), and unset
+    # (spec.arp is None, the default) must leave Arp0/ArpClip0 completely
+    # untouched -- ArpSpec's own default (enabled=True) exists for when the
+    # caller DOES provide one, not to imply "no arp key present" means
+    # "turn the arp on."
+    if spec.arp is not None:
+        arp = spec.arp
+        arp_params = _plain_params(data, "Arp0")
+        arp_params["kParamEnabled"] = arp.enabled
+        validate_params("Arp0", arp_params, schema.ARP_PARAMS, allow_unknown=True)
+
+        clip_key = "ArpClip0"
+        clip_container = data.setdefault(clip_key, {})
+        if not isinstance(clip_container.get("clip"), dict):
+            clip_container["clip"] = {}
+        clip_params = _plain_params(data, clip_key)
+
+        clip_params["kParamShape"] = _resolve_arp_shape(arp.shape)
+        clip_params["kParamRate"] = arp.rate
+        clip_params["kParamGate"] = arp.gate
+        clip_params["kParamDotted"] = arp.dotted
+        clip_params["kParamTriplets"] = arp.triplets
+        clip_params["kParamTransposeShift"] = arp.transpose_shift
+        if arp.transpose_shape is not None:
+            clip_params["kParamTransposeShape"] = _resolve_arp_shape(arp.transpose_shape)
+        validate_params(clip_key, clip_params, schema.ARPCLIP_PARAMS, allow_unknown=True)
 
     return data

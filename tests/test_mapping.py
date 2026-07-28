@@ -7,6 +7,7 @@ import pytest
 
 from serum_mcp import config
 from serum_mcp.generation.spec import (
+    ArpSpec,
     EnvelopeSpec,
     FilterSpec,
     FxUnitSpec,
@@ -493,6 +494,109 @@ def test_extract_spec_handles_modslot_with_default_sentinel_plainparams(init_dat
     assert spec.mod_routes[0].destination == "filter0.cutoff"
     assert spec.mod_routes[0].amount == 0.0
     assert spec.mod_routes[0].bipolar is False
+
+
+def test_arp_writes_arp0_and_arpclip0(init_data):
+    spec = PresetSpec(
+        name="X",
+        description="",
+        arp=ArpSpec(
+            shape="chord",
+            rate=0.3,
+            gate=90.0,
+            dotted=True,
+            transpose_shift=12.0,
+            transpose_shape="converge",
+        ),
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["Arp0"]["plainParams"]["kParamEnabled"] == 1.0
+    clip = data["ArpClip0"]["plainParams"]
+    assert clip["kParamShape"] == "Chord"
+    assert clip["kParamRate"] == 0.3
+    assert clip["kParamGate"] == 90.0
+    assert clip["kParamDotted"] == 1.0
+    assert clip["kParamTriplets"] == 0.0
+    assert clip["kParamTransposeShift"] == 12.0
+    assert clip["kParamTransposeShape"] == "Converge"
+
+    extracted = extract_spec(data)
+    assert extracted.arp is not None
+    assert extracted.arp.enabled is True
+    assert extracted.arp.shape == "chord"
+    assert extracted.arp.rate == 0.3
+    assert extracted.arp.gate == 90.0
+    assert extracted.arp.dotted is True
+    assert extracted.arp.triplets is False
+    assert extracted.arp.transpose_shift == 12.0
+    assert extracted.arp.transpose_shape == "converge"
+
+
+def test_arp_unset_leaves_existing_arp_untouched(init_data):
+    """Same 'None means don't touch' contract as `global` -- an edit that
+    doesn't mention arp at all must not silently disable/reset an arp the
+    preset already had."""
+    data = copy.deepcopy(init_data)
+    data["Arp0"] = {"plainParams": {"kParamEnabled": 1.0}}
+    data["ArpClip0"] = {"clip": {}, "plainParams": {"kParamShape": "Played", "kParamRate": 0.5}}
+
+    spec = PresetSpec(name="X", description="", filters=[FilterSpec(enabled=True)])
+    new_data = apply_spec(data, spec)
+
+    assert new_data["Arp0"]["plainParams"]["kParamEnabled"] == 1.0
+    assert new_data["ArpClip0"]["plainParams"]["kParamShape"] == "Played"
+
+
+def test_arp_can_be_explicitly_disabled(init_data):
+    data = copy.deepcopy(init_data)
+    data["Arp0"] = {"plainParams": {"kParamEnabled": 1.0}}
+
+    spec = PresetSpec(name="X", description="", arp=ArpSpec(enabled=False))
+    new_data = apply_spec(data, spec)
+
+    assert new_data["Arp0"]["plainParams"]["kParamEnabled"] == 0.0
+
+
+def test_arp_pattern_shape_rejected_with_clear_error(init_data):
+    spec = PresetSpec(name="X", description="", arp=ArpSpec(shape="pattern"))
+    with pytest.raises(ValueError, match="note-by-note clip data"):
+        apply_spec(init_data, spec)
+
+
+def test_arp_raw_pattern_shape_also_rejected(init_data):
+    """The raw capitalized 'Pattern' (as it'd appear round-tripped from a
+    real preset via extract_spec) must be caught too, not just the
+    friendly lowercase 'pattern' name."""
+    spec = PresetSpec(name="X", description="", arp=ArpSpec(shape="Pattern"))
+    with pytest.raises(ValueError, match="note-by-note clip data"):
+        apply_spec(init_data, spec)
+
+
+def test_arp_unknown_shape_rejected(init_data):
+    """A shape that's neither a curated friendly name nor a raw value in
+    the confirmed real enum is caught by validate_params's enum check."""
+    spec = PresetSpec(name="X", description="", arp=ArpSpec(shape="not_a_real_shape"))
+    with pytest.raises(ValueError, match="is not one of"):
+        apply_spec(init_data, spec)
+
+
+def test_arp_uncurated_raw_shape_passes_through(init_data):
+    """Found live stress-testing against real content: the confirmed real
+    shape enum is larger than the curated SIMPLE_ARP_SHAPES set (e.g.
+    'UpDown', the 2nd most common value across 844 real presets after
+    Pattern) -- a round-tripped edit that includes an oscillator's raw,
+    uncurated-but-valid shape must not fail the way a genuinely unknown
+    string does."""
+    spec = PresetSpec(name="X", description="", arp=ArpSpec(shape="UpDown"))
+    data = apply_spec(init_data, spec)
+    assert data["ArpClip0"]["plainParams"]["kParamShape"] == "UpDown"
+
+
+def test_arp_passes_wire_type_scan(init_data):
+    spec = PresetSpec(name="X", description="", arp=ArpSpec(shape="random_drift", dotted=True))
+    data = apply_spec(init_data, spec)
+    assert scan_wire_types(data) == []
 
 
 def test_lfo_extras_and_poly_count(init_data):
