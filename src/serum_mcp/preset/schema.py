@@ -1007,6 +1007,20 @@ ARPCLIP_PARAMS["kParamTransposeShape"] = ParamDef(
     notes="Same enum as kParamShape (see there) -- an independent pattern for the "
     "transpose lane, so the pitch pattern and the note-trigger pattern can differ.",
 )
+ARPCLIP_PARAMS["kParamNoteRetrig"] = ParamDef(
+    "kParamNoteRetrig",
+    "bool",
+    default=False,
+    confidence="observed",
+    notes="Found live: a real preset's Pattern-mode ArpClip0 grafted onto a generated "
+    "preset arpeggiated correctly with this present (1.0); the same generated preset "
+    "with it omitted got stuck retriggering the same single note instead of stepping "
+    "through the pattern. Only ever observed at 1.0 or absent across real content "
+    "(same convention as kParamDotted/kParamTriplets), but unlike those, omitting it "
+    "is NOT a safe 'off' default for Pattern-mode generation -- apply_spec always "
+    "writes 1.0 when arp.pattern is set, regardless of what 'omission means off' "
+    "would otherwise suggest.",
+)
 
 # ModSlot0..ModSlot63: the mod matrix. Structurally confirmed (destModuleID /
 # destModuleParamID / destModuleParamName / destModuleTypeString / source /

@@ -644,6 +644,12 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             # curate it (see ArpSpec).
             clip_params["kParamShape"] = "Pattern"
             clip_container["clip"] = _build_arp_clip(arp)
+            # Found live: without this, a real generated Pattern-mode preset
+            # got stuck retriggering the same single note instead of
+            # stepping through the pattern -- see schema.ARPCLIP_PARAMS's
+            # kParamNoteRetrig note. Unlike kParamDotted/kParamTriplets,
+            # omitting this is NOT a safe "off" default here.
+            clip_params["kParamNoteRetrig"] = True
         else:
             clip_params["kParamShape"] = _resolve_arp_shape(arp.shape)
             # Always explicitly reset to {} (not just "if missing") -- an
