@@ -418,13 +418,15 @@ set it explicitly at all. `kParamGate` can exceed 100% (observed up to
 (`kParamLaunchQuantize`, note-level velocity/retrig/chance humanization
 params) are cataloged in `schema.py` but not exposed via `ArpSpec` yet.
 
-**Not yet verified live in real Serum** — unlike everything else in this
-document, which has been confirmed against an actual FL Studio + Serum 2
-install, the arp write path has only been validated via the CBOR wire-type
-scanner and a stress test against all 844 real presets available (0
-unexplained failures; the only failures are 68 genuinely-missing external
-files and 13 correctly-rejected `Pattern`-mode arps). Treat with the same
-caution as any newly-added generation feature until confirmed.
+**Confirmed live** (2026-07-28, real Serum 2 in FL Studio 21): the two
+`_ArpTest/` presets (`up_down` and `chord` shapes) both loaded and
+arpeggiated correctly on a held chord. Algorithmic-mode generation via
+`ArpSpec` is verified working, on top of the earlier CBOR wire-type scan
+and the 844-preset round-trip stress test (0 unexplained failures there
+either). `Pattern`-mode generation remains unimplemented (see above), and
+the exact meaning of `kParamRate` and the `UpDown`/`DownUp`/`UpAndDown`/
+`DownAndUp` distinction are still unverified specifics within the
+otherwise-confirmed feature.
 
 ## 5. Known gaps and open questions
 
