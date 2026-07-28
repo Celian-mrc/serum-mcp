@@ -425,3 +425,42 @@ def test_omitting_global_does_not_reset_it(init_data):
     data = apply_spec(data, second)
     assert data["Global0"]["plainParams"]["kParamPolyCount"] == 6.0
     assert data["Global0"]["plainParams"]["kParamMonoToggle"] == 1.0
+
+
+def test_different_oscillators_can_use_different_wavetables(init_data):
+    """Regression test: the init fixture assigns the same wavetable file to
+    every WTOsc slot, and apply_spec never touched that file reference, so
+    every generated preset used the identical table for every oscillator
+    (found via real-world use -- a pad's two layers sounded thin because
+    both were literally the same wavetable at different octaves)."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(enabled=True, wavetable="pwm", table_position=30.0),
+            OscillatorSpec(enabled=True, wavetable="harmonic_smooth", table_position=100.0),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    wt0 = data["Oscillator0"]["WTOsc0"]
+    assert wt0["relativePathToWT"] == "Analog/PWM Juno.wav"
+    assert wt0["numFrames"] == 229376
+    assert type(wt0["numFrames"]) is int  # not a float -- real Serum presets use int here
+    wt1 = data["Oscillator1"]["WTOsc1"]
+    assert wt1["relativePathToWT"] == "S2 Tables/Digital/Harmonic Series Smooth.wav"
+    assert wt0["relativePathToWT"] != wt1["relativePathToWT"]
+
+    extracted = extract_spec(data)
+    assert extracted.oscillators[0].wavetable == "pwm"
+    assert extracted.oscillators[1].wavetable == "harmonic_smooth"
+
+
+def test_unknown_wavetable_rejected(init_data):
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, wavetable="not_a_real_table")],
+    )
+    with pytest.raises(ValueError, match="unknown wavetable"):
+        apply_spec(init_data, spec)

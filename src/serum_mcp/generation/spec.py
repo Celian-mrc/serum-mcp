@@ -15,7 +15,12 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from serum_mcp.preset.schema import SIMPLE_FILTER_TYPES, SIMPLE_SUB_SHAPES, SIMPLE_WARP_MODES
+from serum_mcp.preset.schema import (
+    SIMPLE_FILTER_TYPES,
+    SIMPLE_SUB_SHAPES,
+    SIMPLE_WARP_MODES,
+    SIMPLE_WAVETABLES,
+)
 
 FilterTypeName = str  # validated against SIMPLE_FILTER_TYPES keys in mapping.py
 
@@ -42,6 +47,12 @@ class OscillatorSpec(BaseModel):
         "CBOR wire type (see docs/PARAMETER_SCHEMA.md's CBOR bool/float note).",
     )
     detune: float = Field(0.0, ge=0.0, le=1.0, description="unison detune amount, slots 0-2 only")
+    wavetable: str = Field(
+        "default",
+        description=f"slots 0-2 only, one of: {', '.join(sorted(SIMPLE_WAVETABLES))}. "
+        "Different oscillators can (and often should) use different wavetables -- "
+        "using the same one for every slot limits timbral variety.",
+    )
     table_position: float = Field(
         0.0, ge=0.0, le=256.0, description="wavetable frame position, slots 0-2 only"
     )

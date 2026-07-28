@@ -27,6 +27,7 @@ from . import schema
 
 _REVERSE_FILTER_TYPES = {v: k for k, v in schema.SIMPLE_FILTER_TYPES.items()}
 _REVERSE_WARP_MODES = {v: k for k, v in schema.SIMPLE_WARP_MODES.items()}
+_REVERSE_WAVETABLES = {wt.relative_path: name for name, wt in schema.SIMPLE_WAVETABLES.items()}
 _REVERSE_MOD_SOURCE_IDS = {v: k for k, v in schema.MOD_SOURCE_IDS.items()}
 _REVERSE_MOD_DEST_TARGETS = {
     (d.dest_type, d.dest_id, d.param_name): name for name, d in schema.MOD_DEST_TARGETS.items()
@@ -70,11 +71,14 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             detune=_resolve(pp, "kParamDetune", schema.OSCILLATOR_PARAMS),
         )
         if i in (0, 1, 2):
-            wt_pp = _sub_plain_params(container, f"WTOsc{i}")
+            wt_container = container.get(f"WTOsc{i}") or {}
+            wt_pp = wt_container.get("plainParams")
             kwargs["table_position"] = _resolve(wt_pp, "kParamTablePos", schema.WTOSC_PARAMS)
             kwargs["warp_amount"] = _resolve(wt_pp, "kParamWarp", schema.WTOSC_PARAMS)
             raw_warp_mode = _resolve(wt_pp, "kParamWarpMenu", schema.WTOSC_PARAMS)
             kwargs["warp_mode"] = _REVERSE_WARP_MODES.get(raw_warp_mode, raw_warp_mode)
+            raw_path = wt_container.get("relativePathToWT")
+            kwargs["wavetable"] = _REVERSE_WAVETABLES.get(raw_path, raw_path or "default")
         elif i == 3:
             noise_pp = _sub_plain_params(container, f"NoiseOsc{i}")
             kwargs["noise_type"] = _resolve(noise_pp, "kParamNoiseType", schema.NOISEOSC_PARAMS)

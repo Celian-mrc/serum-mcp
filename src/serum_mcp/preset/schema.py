@@ -276,6 +276,51 @@ SIMPLE_WARP_MODES: dict[str, str] = {
     "filter_hpf": "kFilterHPF",
 }
 
+
+@dataclass(frozen=True)
+class WavetableDef:
+    """A selectable wavetable file for the WTOsc engine (slots 0-2).
+
+    ``num_frames``/``sample_rate``/``num_channels`` describe the referenced
+    .wav file itself (not a tunable synth parameter) and must match it
+    exactly, or Serum may misread the table -- same risk class as the CBOR
+    bool/int wire-type bugs (see docs/PARAMETER_SCHEMA.md), just for file
+    metadata instead of a plainParams value. Every entry below was copied
+    from real Serum-saved presets that reference that exact file, not
+    guessed or computed from the .wav headers ourselves.
+    """
+
+    relative_path: str
+    num_frames: int
+    sample_rate: int
+    num_channels: int
+
+
+# Friendly names -> WavetableDef, curated from the ~40 most commonly
+# referenced factory wavetables across our 400-preset sample for a spread of
+# distinct characters (warm analog, PWM, digital/FM, harmonic-rich, acid).
+# kParamTablePos (0..256, see WTOSC_PARAMS above) appears to already be
+# normalized to a fixed slot count independent of a table's raw numFrames
+# (observed range is ~0-256 across tables whose numFrames ranges from 4096
+# to 524288), so no per-table position rescaling is needed when switching
+# wavetables.
+SIMPLE_WAVETABLES: dict[str, WavetableDef] = {
+    "default": WavetableDef("S2 Tables/Default Shapes.wav", 18432, 44100, 1),
+    "analog_basic": WavetableDef("Analog/Basic Shapes.wav", 14336, 44100, 1),
+    "analog_warm": WavetableDef("S2 Tables/Analog/DM - OSCAR.wav", 8192, 44100, 1),
+    "pwm": WavetableDef("Analog/PWM Juno.wav", 229376, 44100, 1),
+    "analog_mini": WavetableDef("Analog/Basic Mini.wav", 8192, 44100, 1),
+    "warm_sub": WavetableDef("S2 Tables/Analog/Warm Sub.wav", 4096, 44100, 1),
+    "digital_fm": WavetableDef("S2 Tables/Digital/Basic OPL.wav", 16384, 44100, 1),
+    "harmonic_smooth": WavetableDef(
+        "S2 Tables/Digital/Harmonic Series Smooth.wav", 49152, 44100, 1
+    ),
+    "dying_sine": WavetableDef("S2 Tables/Digital/Dying Sine.wav", 524288, 44100, 1),
+    "acid": WavetableDef("Analog/Acid.wav", 81920, 44100, 1),
+    "fm_piano": WavetableDef("S2 Tables/Digital/FM Piano.wav", 4096, 44100, 1),
+    "flute": WavetableDef("S2 Tables/Digital/JF Flute.wav", 524288, 44100, 1),
+}
+
 NOISEOSC_PARAMS: dict[str, ParamDef] = {
     "kParamNoiseType": ParamDef(
         "kParamNoiseType",

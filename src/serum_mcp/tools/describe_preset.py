@@ -26,7 +26,8 @@ def describe_preset(preset_path: str) -> str:
         common = f"octave={osc.octave:+.0f}  volume={osc.volume:.2f}  pan={osc.pan:+.0f}"
         if i in (0, 1, 2):
             extra = (
-                f"table_pos={osc.table_position:.1f}  warp={osc.warp_mode}({osc.warp_amount:.2f})"
+                f"wavetable={osc.wavetable}  table_pos={osc.table_position:.1f}  "
+                f"warp={osc.warp_mode}({osc.warp_amount:.2f})"
             )
             if osc.unison > 1:
                 extra += f"  unison={osc.unison:.0f}  detune={osc.detune:.2f}"

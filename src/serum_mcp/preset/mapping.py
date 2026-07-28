@@ -176,7 +176,25 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         validate_params(f"Oscillator{i}", osc_params, schema.OSCILLATOR_PARAMS)
 
         if i in _WTOSC_SLOTS:
-            wtosc_params = _plain_params(osc_container, f"WTOsc{i}")
+            wt_key = f"WTOsc{i}"
+            wt_def = schema.SIMPLE_WAVETABLES.get(osc.wavetable)
+            if wt_def is None:
+                raise ValueError(
+                    f"unknown wavetable {osc.wavetable!r}; "
+                    f"expected one of {sorted(schema.SIMPLE_WAVETABLES)}"
+                )
+            wtosc_container = osc_container.setdefault(wt_key, {})
+            # File metadata, not a plainParams knob -- must match the
+            # referenced .wav exactly or Serum may misread the table (same
+            # risk class as the CBOR bool/int wire-type bugs, see
+            # docs/PARAMETER_SCHEMA.md). Real ints, not floats -- confirmed
+            # against real Serum-saved presets.
+            wtosc_container["relativePathToWT"] = wt_def.relative_path
+            wtosc_container["numFrames"] = wt_def.num_frames
+            wtosc_container["sampleRate"] = wt_def.sample_rate
+            wtosc_container["numChannels"] = wt_def.num_channels
+
+            wtosc_params = _plain_params(osc_container, wt_key)
             for spec_key, param_key in _WTOSC_KEYS.items():
                 wtosc_params[param_key] = getattr(osc, spec_key)
             wtosc_params["kParamWarpMenu"] = schema.SIMPLE_WARP_MODES.get(

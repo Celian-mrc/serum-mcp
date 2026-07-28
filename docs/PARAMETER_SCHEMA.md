@@ -173,6 +173,26 @@ LFO scanning through the wavetable, or a macro morphing the warp amount.
 Granular, multisample, spectral and raw sample playback exist in the format
 and round-trip fine, but `serum-mcp` cannot currently generate or target them.
 
+`OscillatorSpec.wavetable` (slots 0-2) selects *which* wavetable file the
+WTOsc engine loads — found missing via real-world use: every generated
+preset used the same file (`fixtures/init_preset.SerumPreset`'s default,
+`"S2 Tables/Default Shapes.wav"`) for every oscillator regardless of what
+was asked for, since `apply_spec` only ever touched `kParamTablePos`/
+`kParamWarp`/`kParamWarpMenu` inside `WTOsc{i}`, never the file reference
+itself. A wavetable file's `relativePathToWT`/`numFrames`/`sampleRate`/
+`numChannels` (siblings of `plainParams` inside `WTOsc{i}`, not `kParam*`
+values) must match the actual referenced `.wav` exactly, or Serum may
+misread the table — same risk class as the CBOR bool/int wire-type bugs.
+`schema.SIMPLE_WAVETABLES` curates 12 factory tables (warm analog, PWM,
+digital/FM, harmonic-rich, acid, ...) picked from the ~40 most commonly
+referenced tables across a 400-preset sample, with their exact metadata
+copied from real Serum-saved presets that reference each file (not computed
+from the `.wav` headers ourselves) — see `preset/mapping.py`'s `WTOSC_SLOTS`
+branch. `kParamTablePos`'s range appears to already be normalized to a
+fixed ~0-256 slot count independent of a table's raw `numFrames` (observed
+consistently across tables whose `numFrames` ranges from 4,096 to 524,288),
+so switching wavetables doesn't require rescaling `table_position`.
+
 **Slots 3 and 4 are not the same engine family** — this is structural, not
 a modeling gap: slot 3 is *always* `NoiseOsc3` (white/pink/brown/geiger
 noise, `OscillatorSpec.noise_type`) and slot 4 is *always* `SubOsc4` (a
