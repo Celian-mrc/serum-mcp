@@ -472,6 +472,29 @@ def test_count_unmodeled_fx_units_zero_for_a_normal_preset(init_data):
     assert count_unmodeled_fx_units(init_data) == 0
 
 
+def test_extract_spec_handles_modslot_with_default_sentinel_plainparams(init_data):
+    data = copy.deepcopy(init_data)
+    # Same "default" string sentinel pattern as VoiceFilter0/1 and the FX
+    # crash above, found live on a real Factory preset's ModSlot -- must not
+    # crash (it used to, with a raw AttributeError), and should fall back
+    # to amount=0.0/bipolar=False rather than fabricating anything else.
+    data["ModSlot0"] = {
+        "source": [6, 0],  # lfo0
+        "destModuleTypeString": "VoiceFilter",
+        "destModuleID": 0,
+        "destModuleParamName": "kParamFreq",
+        "plainParams": "default",
+    }
+
+    spec = extract_spec(data)
+
+    assert len(spec.mod_routes) == 1
+    assert spec.mod_routes[0].source == "lfo0"
+    assert spec.mod_routes[0].destination == "filter0.cutoff"
+    assert spec.mod_routes[0].amount == 0.0
+    assert spec.mod_routes[0].bipolar is False
+
+
 def test_lfo_extras_and_poly_count(init_data):
     spec = PresetSpec(
         name="X",

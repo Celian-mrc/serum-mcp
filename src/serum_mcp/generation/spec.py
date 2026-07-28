@@ -209,7 +209,7 @@ class FilterSpec(BaseModel):
 
 
 class EnvelopeSpec(BaseModel):
-    attack: float = Field(0.0005, ge=0.0, le=7.0, description="seconds")
+    attack: float = Field(0.0005, ge=0.0, le=10.0, description="seconds")
     hold: float = Field(0.0, ge=0.0, le=5.2, description="seconds, full level before decay starts")
     decay: float = Field(1.0, ge=0.0, le=32.0, description="seconds")
     sustain: float = Field(1.0, ge=0.0, le=1.0)
@@ -227,7 +227,7 @@ class LfoSpec(BaseModel):
         description="seconds before the LFO starts after note-on -- use for "
         "'vibrato that kicks in after a moment' style requests, 0 = starts immediately",
     )
-    rise: float = Field(0.0, ge=0.0, le=3.0, description="seconds to ramp up to full depth")
+    rise: float = Field(0.0, ge=0.0, le=5.0, description="seconds to ramp up to full depth")
     smooth: float = Field(
         0.0, ge=0.0, le=100.0, description="% lag smoothing, higher = less steppy/more glidey"
     )
@@ -248,7 +248,7 @@ class GlobalSpec(BaseModel):
     master_volume: float = Field(0.5, ge=0.0, le=1.0)
     mono: bool = False
     portamento_time: float = Field(
-        0.0, ge=0.0, le=2.6, description="glide time between notes, seconds"
+        0.0, ge=0.0, le=3.0, description="glide time between notes, seconds"
     )
     poly_count: float = Field(8.0, ge=1.0, le=32.0, description="max simultaneous voices")
 

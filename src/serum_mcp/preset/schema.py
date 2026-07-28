@@ -666,10 +666,12 @@ ENV_PARAMS: dict[str, ParamDef] = {
         "float",
         default=0.0005,
         min=0.0,
-        max=7.0,
+        max=10.0,
         unit="seconds",
         confidence="confirmed",
-        notes="VST3 default 0.5ms.",
+        notes="VST3 default 0.5ms. Max corrected from 7.0 to 10.0 after finding a real "
+        "Factory preset (FX - Wasp Whistle Sweep) with attack=9.46 in the raw CBOR -- "
+        "same VST3-dump-undersells-the-real-range pattern as kParamRelease.",
     ),
     "kParamHold": ParamDef("kParamHold", "float", default=0.0, min=0.0, max=5.2, unit="seconds"),
     "kParamDecay": ParamDef(
@@ -743,7 +745,16 @@ LFO_PARAMS: dict[str, ParamDef] = {
         "('Free = 0, Retrig, Envelope, kCount'); never observed in the factory sample.",
     ),
     "kParamBeatSync": ParamDef("kParamBeatSync", "bool", default=False),
-    "kParamRise": ParamDef("kParamRise", "float", default=0.0, min=0.0, max=3.0, unit="seconds"),
+    "kParamRise": ParamDef(
+        "kParamRise",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=5.0,
+        unit="seconds",
+        notes="Max corrected from 3.0 to 5.0 after finding real Factory presets with "
+        "rise up to 4.0 in the raw CBOR.",
+    ),
     "kParamSmooth": ParamDef("kParamSmooth", "float", default=0.0, min=0.0, max=100.0, unit="%"),
     "kParamDelay": ParamDef("kParamDelay", "float", default=0.0, min=0.0, max=3.6, unit="seconds"),
 }
@@ -775,8 +786,10 @@ GLOBAL_PARAMS: dict[str, ParamDef] = {
         "float",
         default=0.0,
         min=0.0,
-        max=2.6,
+        max=3.0,
         unit="seconds",
+        notes="Max corrected from 2.6 to 3.0 after finding a real Factory preset "
+        "(FX - BHouse Glide - 04) with portamento_time=2.61 in the raw CBOR.",
     ),
 }
 

@@ -267,7 +267,13 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         dest_name = _REVERSE_MOD_DEST_TARGETS.get(dest_key) or fx_wet_dest_by_key.get(dest_key)
         if dest_name is None:
             continue
-        pp = entry.get("plainParams", {}) or {}
+        pp = entry.get("plainParams")
+        if not isinstance(pp, dict):
+            # Same "default" string sentinel pattern as the FX/VoiceFilter
+            # cases above -- `.get("plainParams", {}) or {}` doesn't catch
+            # it since a non-empty string is truthy (found live on a real
+            # Factory preset's ModSlot, not just third-party content).
+            pp = {}
         mod_routes.append(
             ModRouteSpec(
                 source=source_name,
