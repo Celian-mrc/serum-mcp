@@ -7,6 +7,7 @@ import pytest
 
 from serum_mcp import config
 from serum_mcp.generation.spec import (
+    ArpPatternNoteSpec,
     ArpSpec,
     EnvelopeSpec,
     FilterSpec,
@@ -560,7 +561,7 @@ def test_arp_can_be_explicitly_disabled(init_data):
 
 def test_arp_pattern_shape_rejected_with_clear_error(init_data):
     spec = PresetSpec(name="X", description="", arp=ArpSpec(shape="pattern"))
-    with pytest.raises(ValueError, match="note-by-note clip data"):
+    with pytest.raises(ValueError, match="needs arp.pattern set"):
         apply_spec(init_data, spec)
 
 
@@ -569,7 +570,7 @@ def test_arp_raw_pattern_shape_also_rejected(init_data):
     real preset via extract_spec) must be caught too, not just the
     friendly lowercase 'pattern' name."""
     spec = PresetSpec(name="X", description="", arp=ArpSpec(shape="Pattern"))
-    with pytest.raises(ValueError, match="note-by-note clip data"):
+    with pytest.raises(ValueError, match="needs arp.pattern set"):
         apply_spec(init_data, spec)
 
 
@@ -597,6 +598,84 @@ def test_arp_passes_wire_type_scan(init_data):
     spec = PresetSpec(name="X", description="", arp=ArpSpec(shape="random_drift", dotted=True))
     data = apply_spec(init_data, spec)
     assert scan_wire_types(data) == []
+
+
+def test_arp_pattern_writes_real_note_list(init_data):
+    notes = [
+        ArpPatternNoteSpec(step=0, note_offset=0),
+        ArpPatternNoteSpec(step=1, note_offset=3),
+        ArpPatternNoteSpec(step=2, note_offset=7),
+        ArpPatternNoteSpec(step=3, note_offset=0, length_steps=2.0),
+    ]
+    spec = PresetSpec(name="X", description="", arp=ArpSpec(shape="pattern", pattern=notes))
+    data = apply_spec(init_data, spec)
+
+    assert data["ArpClip0"]["plainParams"]["kParamShape"] == "Pattern"
+    clip_notes = data["ArpClip0"]["clip"]["notes"]
+    assert len(clip_notes) == 4
+    by_offset = {n["noteNum"]: n for n in clip_notes}
+    assert by_offset[0]["timeStamp"] in (0.0, 0.75)  # two note_offset=0 notes, steps 0 and 3
+    assert by_offset[3]["timeStamp"] == pytest.approx(0.25)
+    assert by_offset[3]["length"] == pytest.approx(0.25)
+    assert by_offset[7]["length"] == pytest.approx(0.25)
+    assert data["ArpClip0"]["clip"]["regionEndBeats"] == pytest.approx(1.25)
+    assert scan_wire_types(data) == []
+
+
+def test_arp_pattern_requires_pattern_notes(init_data):
+    spec = PresetSpec(name="X", description="", arp=ArpSpec(shape="pattern", pattern=[]))
+    with pytest.raises(ValueError, match="needs arp.pattern set"):
+        apply_spec(init_data, spec)
+
+
+def test_arp_pattern_without_shape_pattern_rejected(init_data):
+    """arp.pattern is set but shape wasn't explicitly changed to 'pattern' --
+    a likely caller mistake, not something to silently override."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        arp=ArpSpec(shape="played", pattern=[ArpPatternNoteSpec(step=0, note_offset=0)]),
+    )
+    with pytest.raises(ValueError, match="shape is not 'pattern'"):
+        apply_spec(init_data, spec)
+
+
+def test_arp_pattern_round_trips_through_introspection(init_data):
+    notes = [
+        ArpPatternNoteSpec(step=0, note_offset=0),
+        ArpPatternNoteSpec(step=2, note_offset=5, length_steps=2.0),
+    ]
+    spec = PresetSpec(name="X", description="", arp=ArpSpec(shape="pattern", pattern=notes))
+    data = apply_spec(init_data, spec)
+
+    extracted = extract_spec(data)
+    assert extracted.arp.shape == "Pattern"
+    assert extracted.arp.pattern_step_beats == pytest.approx(0.25)
+    assert len(extracted.arp.pattern) == 2
+    by_offset = {n.note_offset: n for n in extracted.arp.pattern}
+    assert by_offset[0].step == 0
+    assert by_offset[5].step == 2
+    assert by_offset[5].length_steps == pytest.approx(2.0)
+
+    # A full extract-then-reapply must not fail or alter the note data --
+    # the natural edit_preset workflow of tweaking one unrelated field.
+    extracted.global_.master_volume = 0.6
+    new_data = apply_spec(data, extracted)
+    assert new_data["ArpClip0"]["clip"]["notes"] == data["ArpClip0"]["clip"]["notes"]
+
+
+def test_arp_switching_away_from_pattern_clears_stale_notes(init_data):
+    data = copy.deepcopy(init_data)
+    data["ArpClip0"] = {
+        "clip": {"notes": [{"noteNum": 0, "timeStamp": 0.0, "length": 0.25, "channel": 0}]},
+        "plainParams": {"kParamShape": "Pattern"},
+    }
+
+    spec = PresetSpec(name="X", description="", arp=ArpSpec(shape="played"))
+    new_data = apply_spec(data, spec)
+
+    assert new_data["ArpClip0"]["clip"] == {}
+    assert new_data["ArpClip0"]["plainParams"]["kParamShape"] == "Played"
 
 
 def test_lfo_extras_and_poly_count(init_data):

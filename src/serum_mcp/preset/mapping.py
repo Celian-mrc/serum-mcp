@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from serum_mcp import config
-from serum_mcp.generation.spec import FxUnitSpec, ModRouteSpec, OscillatorSpec, PresetSpec
+from serum_mcp.generation.spec import ArpSpec, FxUnitSpec, ModRouteSpec, OscillatorSpec, PresetSpec
 
 from . import sample_library, schema, wavetable
 from .validator import validate_params
@@ -246,11 +246,13 @@ def _resolve_arp_shape(shape: str) -> str:
     the curated set -- same fallback pattern as filter types/wavetables,
     needed so a round-tripped edit of a preset using a shape outside the
     curated list (the real enum is confirmed larger, see schema.py) doesn't
-    fail. 'pattern' is the sole deliberate exception: it needs real
-    note-by-note clip data this project doesn't generate, so it's rejected
-    with a clear error instead of silently writing an empty/broken pattern
-    (checked case-insensitively so both the friendly name and the raw
-    'Pattern' value are caught)."""
+    fail. 'pattern' is rejected here too (checked case-insensitively) as a
+    safety net for ``ArpSpec.transpose_shape`` -- the main ``shape`` field's
+    pattern-vs-algorithmic branching happens one level up in ``apply_spec``,
+    which has access to ``arp.pattern`` to build real note data; this
+    function alone has no way to write that, so it must never silently
+    write the raw 'Pattern' string for a lane that has no note data behind
+    it."""
     if shape.lower() == "pattern":
         raise ValueError(
             "arp shape 'pattern' needs real note-by-note clip data this project "
@@ -258,6 +260,52 @@ def _resolve_arp_shape(shape: str) -> str:
             f"{sorted(schema.SIMPLE_ARP_SHAPES)}"
         )
     return schema.SIMPLE_ARP_SHAPES.get(shape, shape)
+
+
+# 7 of these 8 values were constant across all 1507 real Pattern-mode notes
+# surveyed (Factory + 6 third-party banks); only index 6 showed real
+# variation whose meaning isn't decoded (index 7's precise value, 64/127,
+# suggests a MIDI-CC-style 0-127 range normalized to 0..1 with 64 as a
+# "centered" default -- consistent with several of these being per-note
+# expression lanes left untouched). Not exposed as configurable in
+# ArpPatternNoteSpec yet -- every generated note uses this same vector.
+_DEFAULT_ARP_NOTE_ATTRIBUTES: tuple[float, ...] = (
+    0.5,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.5,
+    0.0,
+    0.5039370078740157,
+)
+
+
+def _build_arp_clip(arp: ArpSpec) -> dict[str, Any]:
+    """Build the ``ArpClip0.clip`` dict for ``shape='pattern'``: a real
+    note list on a quantized step grid (see ``ArpPatternNoteSpec`` --  the
+    real format supports free timestamps, this project only generates a
+    grid-quantized subset of it) plus ``regionEndBeats`` (present in 81% of
+    real Pattern clips surveyed; set to the pattern's own last note-end
+    time here rather than omitted, matching how real authored content
+    usually ties it to the actual content span)."""
+    notes = []
+    for note in arp.pattern:
+        time_stamp = note.step * arp.pattern_step_beats
+        length = note.length_steps * arp.pattern_step_beats
+        notes.append(
+            {
+                "noteNum": note.note_offset,
+                "timeStamp": time_stamp,
+                "length": length,
+                "channel": 0,
+                "attributes": list(_DEFAULT_ARP_NOTE_ATTRIBUTES),
+                "expressionEvents": [None] * 5,
+            }
+        )
+    notes.sort(key=lambda n: n["timeStamp"])
+    region_end = max(n["timeStamp"] + n["length"] for n in notes)
+    return {"notes": notes, "regionEndBeats": region_end}
 
 
 def _build_fx_entry(fx: FxUnitSpec) -> dict[str, Any]:
@@ -568,11 +616,35 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
 
         clip_key = "ArpClip0"
         clip_container = data.setdefault(clip_key, {})
-        if not isinstance(clip_container.get("clip"), dict):
-            clip_container["clip"] = {}
         clip_params = _plain_params(data, clip_key)
 
-        clip_params["kParamShape"] = _resolve_arp_shape(arp.shape)
+        is_pattern_shape = arp.shape.lower() == "pattern"
+        if is_pattern_shape and not arp.pattern:
+            raise ValueError(
+                "arp.shape='pattern' needs arp.pattern set with real note data -- "
+                "use one of the algorithmic shapes instead, or provide arp.pattern."
+            )
+        if arp.pattern and not is_pattern_shape:
+            raise ValueError(
+                "arp.pattern is set but arp.shape is not 'pattern' -- set "
+                "shape='pattern' explicitly to use a custom pattern."
+            )
+
+        if arp.pattern:
+            # kParamShape must be the exact raw "Pattern" string here (not run
+            # through _resolve_arp_shape's friendly-name lookup) since it's
+            # matched case-insensitively above and SIMPLE_ARP_SHAPES doesn't
+            # curate it (see ArpSpec).
+            clip_params["kParamShape"] = "Pattern"
+            clip_container["clip"] = _build_arp_clip(arp)
+        else:
+            clip_params["kParamShape"] = _resolve_arp_shape(arp.shape)
+            # Always explicitly reset to {} (not just "if missing") -- an
+            # edit_preset call switching this preset's arp AWAY from a
+            # previous Pattern-mode note list must not leave stale notes
+            # behind now that kParamShape no longer says "Pattern".
+            clip_container["clip"] = {}
+
         clip_params["kParamRate"] = arp.rate
         clip_params["kParamGate"] = arp.gate
         clip_params["kParamDotted"] = arp.dotted

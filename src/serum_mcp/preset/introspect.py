@@ -13,6 +13,7 @@ from typing import Any
 
 from serum_mcp import config
 from serum_mcp.generation.spec import (
+    ArpPatternNoteSpec,
     ArpSpec,
     EnvelopeSpec,
     FilterSpec,
@@ -66,6 +67,73 @@ def count_unmodeled_fx_units(data: dict[str, Any]) -> int:
             if fx_name is not None and fx_name in entry and fx_name not in schema.FX_PARAMS:
                 count += 1
     return count
+
+
+# Coarsest-first: straight subdivisions down to 64th notes, plus their
+# triplet counterparts. Used to find the coarsest grid that explains a real
+# preset's note timing/lengths within _ARP_GRID_TOLERANCE, rather than an
+# exact GCD -- found live, a real preset's raw values include both genuine
+# floating-point serialization noise around a clean value (e.g. 0.5,
+# 0.49999999999999734, 0.5000000000000027 all meaning "half a beat") AND
+# at least one genuinely non-gridded/"humanized" timestamp
+# (0.4411764705882355, no clean musical fraction) in the same clip -- an
+# exact-GCD approach is far too sensitive to either and can infer an
+# absurdly fine step size (one real preset blew up to 62500 step-units for
+# a single note this way).
+_ARP_STEP_CANDIDATES: tuple[float, ...] = (
+    1.0,
+    0.5,
+    1 / 3,
+    0.25,
+    1 / 6,
+    0.125,
+    1 / 12,
+    0.0625,
+    1 / 24,
+    0.03125,
+)
+_ARP_GRID_TOLERANCE_BEATS = 0.01
+
+
+def _infer_step_beats(values: list[float]) -> float:
+    """Coarsest candidate step size (see ``_ARP_STEP_CANDIDATES``) that
+    explains every value within ``_ARP_GRID_TOLERANCE_BEATS`` -- falls back
+    to the finest candidate (accepting some rounding) if a value is
+    genuinely free-timed and fits no candidate grid well."""
+    for candidate in _ARP_STEP_CANDIDATES:
+        if all(abs(v - round(v / candidate) * candidate) < _ARP_GRID_TOLERANCE_BEATS for v in values):
+            return candidate
+    return _ARP_STEP_CANDIDATES[-1]
+
+
+def _infer_arp_pattern(clip: Any) -> tuple[list[ArpPatternNoteSpec], float] | None:
+    """Reconstruct ``(notes, step_beats)`` from a real ``ArpClip0.clip``
+    dict's ``notes`` list (``shape='Pattern'`` only). Returns None if there
+    are no real notes to reconstruct. See ``_infer_step_beats`` for how the
+    grid is chosen; a note whose own timing doesn't fit that grid exactly
+    still gets rounded to the nearest step rather than raising, since this
+    project only ever generates grid-quantized patterns to begin with (see
+    ``ArpPatternNoteSpec``) -- round-tripping such a preset accepts a small,
+    documented precision loss on that specific note rather than failing.
+    """
+    notes_raw = clip.get("notes") if isinstance(clip, dict) else None
+    if not notes_raw:
+        return None
+
+    values = [v for n in notes_raw for v in (n.get("timeStamp", 0.0), n.get("length", 0.0)) if v > 0]
+    if not values:
+        return None
+    step_beats = _infer_step_beats(values)
+
+    notes = [
+        ArpPatternNoteSpec(
+            step=round(n.get("timeStamp", 0.0) / step_beats),
+            note_offset=int(n.get("noteNum", 0)),
+            length_steps=max(round(n.get("length", 0.0) / step_beats), 1),
+        )
+        for n in notes_raw
+    ]
+    return notes, step_beats
 
 
 def extract_spec(data: dict[str, Any]) -> PresetSpec:
@@ -301,6 +369,13 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         raw_transpose_shape = (
             clip_pp.get("kParamTransposeShape") if isinstance(clip_pp, dict) else None
         )
+        pattern_notes: list[ArpPatternNoteSpec] = []
+        pattern_step_beats = 0.25
+        if raw_shape == "Pattern":
+            clip = (data.get("ArpClip0", {}) or {}).get("clip")
+            inferred = _infer_arp_pattern(clip)
+            if inferred is not None:
+                pattern_notes, pattern_step_beats = inferred
         arp_spec = ArpSpec(
             enabled=True,
             shape=_REVERSE_ARP_SHAPES.get(raw_shape, raw_shape),
@@ -314,6 +389,8 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                 if raw_transpose_shape
                 else None
             ),
+            pattern=pattern_notes or None,
+            pattern_step_beats=pattern_step_beats,
         )
 
     return PresetSpec(

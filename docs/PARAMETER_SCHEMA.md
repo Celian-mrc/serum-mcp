@@ -400,16 +400,39 @@ the *same* enum on its own schedule):
   turnaround note at the top/bottom repeats, unverified.
 - **`Pattern`**: a real hand-drawn MIDI-clip-like note list in the same
   clip's own `clip.notes` array (`noteNum`/`timeStamp`/`length`/`channel`,
-  plus an 8-float `attributes` vector and `expressionEvents` whose exact
-  meaning isn't decoded — every note observed in this sample had the
-  identical attributes vector `[0.5, 1.0, 0.0, 0.0, 0.0, 0.5, 0.0,
-  ~0.504]`, suggesting it may just be a fixed default when no per-note
-  velocity/probability customization was drawn, but unverified). This is
-  the single MOST COMMON shape value in real content (101/844 presets'
-  populated clips) — **NOT modeled**; `apply_spec` rejects `shape='pattern'`
-  (case-insensitively, catching both the friendly name and the raw
-  `'Pattern'` value) with a clear error rather than writing an empty/
-  broken pattern.
+  plus an 8-float `attributes` vector and `expressionEvents`). The single
+  MOST COMMON shape value in real content (101/844 presets' populated
+  clips). **Generatable** via `ArpSpec.pattern` (a list of
+  `ArpPatternNoteSpec`), added 2026-07-28 in a second pass after the
+  algorithmic modes, with two deliberate simplifications vs. the full real
+  format:
+  - **Fixed attributes vector.** Surveying 1507 real notes across all 844
+    presets found 283 *distinct* attribute vectors, not one constant one as
+    a single earlier example suggested — but 7 of the 8 values were
+    constant throughout (`[0.5, 1.0, 0.0, 0.0, 0.0, 0.5, ?, 0.5039...]`);
+    only index 6 varied, meaning unknown. Index 7's precise value
+    (`0.5039370078740157` = 64/127) suggests a MIDI-CC-style 0-127 range
+    normalized to 0..1 with 64 ("centered") as the default. Every generated
+    note uses the same constant vector; index 6 isn't exposed.
+    `expressionEvents` (per-note automation curves on one of 5 lanes) was
+    non-`None` on only 6 of 1507 real notes — always written as
+    `[None]*5`.
+  - **Grid-quantized timing**, not the free timestamps the real format
+    supports. `ArpPatternNoteSpec.step`/`length_steps` are integers/simple
+    multiples of `ArpSpec.pattern_step_beats` (default 0.25 = 16th notes).
+    On read-back, `introspect._infer_step_beats` picks the COARSEST musical
+    grid (whole notes down to 64th notes, straight and triplet) that
+    explains every real timestamp/length within a small tolerance, rather
+    than assuming 0.25 or computing an exact GCD — found live, real timing
+    data mixes genuine floating-point serialization noise around a clean
+    value (e.g. `0.49999999999999734`/`0.5000000000000027` both meaning
+    "half a beat") with occasional genuinely non-gridded/"humanized"
+    timestamps (`0.4411764705882355`, no clean musical fraction) in the
+    *same* clip — an exact-GCD approach is far too sensitive to either and
+    can infer an absurdly fine step size (one real preset's GCD blew up to
+    62500 step-units for a single note). Verified round-trip-exact
+    (extract → reapply, notes byte-identical) against all 15 real presets
+    surveyed whose `ArpClip0` itself uses `Pattern` shape.
 
 `kParamRate`'s real musical meaning (note division? Hz?) is **uncertain**
 — only 2 distinct values seen across 844 presets; most enabled clips don't
@@ -419,14 +442,14 @@ set it explicitly at all. `kParamGate` can exceed 100% (observed up to
 params) are cataloged in `schema.py` but not exposed via `ArpSpec` yet.
 
 **Confirmed live** (2026-07-28, real Serum 2 in FL Studio 21): the two
-`_ArpTest/` presets (`up_down` and `chord` shapes) both loaded and
-arpeggiated correctly on a held chord. Algorithmic-mode generation via
-`ArpSpec` is verified working, on top of the earlier CBOR wire-type scan
-and the 844-preset round-trip stress test (0 unexplained failures there
-either). `Pattern`-mode generation remains unimplemented (see above), and
-the exact meaning of `kParamRate` and the `UpDown`/`DownUp`/`UpAndDown`/
-`DownAndUp` distinction are still unverified specifics within the
-otherwise-confirmed feature.
+original `_ArpTest/` presets (`up_down` and `chord` shapes, algorithmic
+mode) both loaded and arpeggiated correctly on a held chord. `Pattern`-mode
+generation is verified via the CBOR wire-type scanner and the round-trip
+stress test above, but **not yet confirmed live** the way algorithmic mode
+is — treat with the same caution as any newly-added, not-yet-live-tested
+generation feature until confirmed. The exact meaning of `kParamRate`, the
+`UpDown`/`DownUp`/`UpAndDown`/`DownAndUp` distinction, and Pattern mode's
+attribute-vector index 6 remain unverified specifics either way.
 
 ## 5. Known gaps and open questions
 

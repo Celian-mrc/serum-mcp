@@ -120,9 +120,14 @@ def describe_preset(preset_path: str) -> str:
         arp = spec.arp
         timing = "dotted" if arp.dotted else ("triplets" if arp.triplets else "straight")
         transpose = f"  transpose_shape={arp.transpose_shape}" if arp.transpose_shape else ""
+        pattern = (
+            f"  pattern={len(arp.pattern)} notes @ {arp.pattern_step_beats:.4f} beats/step"
+            if arp.pattern
+            else ""
+        )
         lines.append(
             f"Arp: ON  shape={arp.shape}  rate={arp.rate:.2f}  gate={arp.gate:.0f}%  "
-            f"{timing}  transpose_shift={arp.transpose_shift:+.0f}st{transpose}"
+            f"{timing}  transpose_shift={arp.transpose_shift:+.0f}st{transpose}{pattern}"
         )
 
     return "\n".join(lines)

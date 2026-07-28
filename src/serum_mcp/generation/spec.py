@@ -272,17 +272,52 @@ class ModRouteSpec(BaseModel):
     bipolar: bool = False
 
 
-class ArpSpec(BaseModel):
-    """Serum 2's arpeggiator, algorithmic-pattern modes only. Always targets
-    ArpClip slot 0 (the slot real content overwhelmingly uses).
+class ArpPatternNoteSpec(BaseModel):
+    """One note in a custom hand-drawn arp pattern (``ArpSpec.pattern``,
+    ``shape='pattern'`` only). Quantized to a fixed grid (see
+    ``ArpSpec.pattern_step_beats``) rather than free timing -- the real
+    format supports arbitrary timestamps, but 1243 of 1507 real notes
+    surveyed used exactly a 0.25-beat (16th-note) grid, so a step grid
+    covers the overwhelming majority of real usage with a much simpler API.
+    """
 
-    Reverse-engineered from a real 180-preset third-party bank -- 15 had the
-    arp enabled. Two distinct pattern modes exist in the real format:
-    algorithmic (this class) and a hand-drawn note-by-note "Pattern" mode
-    (a real MIDI-clip-like note list) that is NOT modeled here -- selecting
-    ``shape='pattern'`` (not offered, since it isn't in ``SIMPLE_ARP_SHAPES``)
-    would need real note data this project doesn't generate yet; passing
-    it raises rather than silently writing an empty/broken pattern.
+    step: int = Field(ge=0, le=1023, description="0-indexed position on the step grid")
+    note_offset: int = Field(
+        0,
+        ge=-48,
+        le=48,
+        description="pitch offset from the held/played note -- can be negative. Real "
+        "presets used a wide range (-26..+12 observed), not just +/-12.",
+    )
+    length_steps: float = Field(
+        1.0,
+        gt=0.0,
+        le=64.0,
+        description="note length in step-units; 1.0 (the default) fills exactly one "
+        "step with no gap or overlap, matching the most common real value.",
+    )
+
+
+class ArpSpec(BaseModel):
+    """Serum 2's arpeggiator. Always targets ArpClip slot 0 (the slot real
+    content overwhelmingly uses).
+
+    Reverse-engineered from real content -- first a 180-preset third-party
+    bank, then widened against 844 real presets total. Two distinct pattern
+    modes exist in the real format:
+
+    - Algorithmic (``shape`` = up/down/chord/random/... -- see
+      ``SIMPLE_ARP_SHAPES``): just a handful of knobs, no note data.
+    - ``shape='pattern'``: a real hand-drawn note-by-note sequence, set via
+      ``pattern`` (a list of ``ArpPatternNoteSpec``). Requires ``pattern`` to
+      be non-empty -- selecting ``shape='pattern'`` without it raises rather
+      than silently writing an empty/broken clip. Two aspects of this mode
+      are simplified vs. the full real format: every note is written with
+      the same fixed "attributes" vector (7 of its 8 values were constant
+      across all 1507 real notes surveyed; the 8th showed real variation
+      whose meaning isn't decoded, so it's not exposed here), and timing is
+      quantized to a step grid rather than the free timestamps real content
+      can use (see ``ArpPatternNoteSpec``).
     """
 
     enabled: bool = True
@@ -324,6 +359,21 @@ class ArpSpec(BaseModel):
         "pattern for the transpose/pitch lane, so the pitch sequence can differ from "
         "the note-trigger sequence. Leave unset for a plain transpose_shift with no "
         "extra pitch pattern.",
+    )
+    pattern: list[ArpPatternNoteSpec] | None = Field(
+        None,
+        max_length=128,
+        description="custom hand-drawn note sequence, shape='pattern' ONLY. Required "
+        "(and must be non-empty) when shape='pattern'; ignored/must be left unset for "
+        "every other shape.",
+    )
+    pattern_step_beats: float = Field(
+        0.25,
+        gt=0.0,
+        le=4.0,
+        description="beats per grid step for `pattern` note positions/lengths -- 0.25 "
+        "(16th notes, the default) matches the most common real value, but the real "
+        "format allows any grid; use 0.5 for 8th notes, 1.0 for quarter notes, etc.",
     )
 
 
