@@ -91,6 +91,19 @@ mcp = FastMCP(
         "thirds of the primary's volume; only go quieter than that for a deliberately "
         "subliminal 'harmonic dust' effect, and say so in the description if that's the "
         "intent.\n"
+        "- WHEN COMBINING MULTIPLE sample_playback_source LAYERS specifically (as "
+        "opposed to wavetable oscillators, which are roughly level-normalized to each "
+        "other), don't set their relative volume by ear/guess -- call "
+        "analyze_sample_file(path) on each candidate FIRST and check peak_dbfs/rms_dbfs. "
+        "Found live: two one-shots from different sample packs measured 18dB apart in "
+        "RMS despite being given similar volume values (0.55 vs 0.75) -- the quieter-"
+        "recorded file was nearly inaudible even alone, let alone under the other "
+        "layers. Raw one-shot libraries are NOT gain-matched to each other; a layer's "
+        "OscillatorSpec.volume has to compensate for its source file's own recorded "
+        "level, not just express the creative balance you want. Roughly: if two "
+        "candidate files differ by Xdb in rms_dbfs, their volume values need to differ "
+        "by about that same amount in the OPPOSITE direction to sound equally present "
+        "before you apply any deliberate creative emphasis on top.\n"
         "- CREATIVE DIFFERENTIATION, found via real user feedback: when generating "
         "multiple presets/banks in one session, especially across different genres or "
         "styles, don't reskin an earlier preset by tweaking envelope/FX wet% while "
@@ -245,9 +258,10 @@ def list_sample_files(directory: str | None = None, recursive: bool = True) -> s
 @mcp.tool()
 def analyze_sample_file(path: str) -> str:
     """Compute lightweight acoustic descriptors for one .wav one-shot as
-    JSON: brightness (dark/warm/bright/airy), texture (tonal/mixed/noisy),
-    a gated pitch estimate (note name or null if unpitched/untrustworthy),
-    attack time, sustain ratio, duration, and an embedded_metadata field.
+    JSON: peak_dbfs/rms_dbfs, brightness (dark/warm/bright/airy), texture
+    (tonal/mixed/noisy), a gated pitch estimate (note name or null if
+    unpitched/untrustworthy), attack time, sustain ratio, duration, and an
+    embedded_metadata field.
 
     Call this on a handful of specific candidate files (not in bulk -- it
     does real signal processing per file) when filenames within a sample
@@ -256,6 +270,13 @@ def analyze_sample_file(path: str) -> str:
     individual filenames within them often aren't). This never guesses an
     instrument name ("this is a kick") -- only report the objective
     descriptors back, and combine them with the filename/folder yourself.
+
+    Also call this on EVERY file before combining multiple
+    sample_playback_source layers in one preset: peak_dbfs/rms_dbfs exist
+    specifically because raw one-shot libraries aren't gain-matched to each
+    other (found live, an 18dB RMS gap between two one-shots given similar
+    volume values left one nearly inaudible) -- use them to set each
+    layer's volume, don't guess from the filename/description alone.
 
     embedded_metadata (not universal -- empty dict when absent) surfaces
     root_note/root_note_midi and, if the file's creator embedded sample-

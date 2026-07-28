@@ -12,9 +12,18 @@ that needs a trained classifier and labeled data this project doesn't have,
 and a wrong confident guess is worse than no guess (this project's usual
 evidence standard, see ``CONTRIBUTING.md``). Instead this exposes
 well-understood, individually-interpretable signal-processing quantities --
-spectral brightness, tonal-vs-noisy texture, a gated pitch estimate,
-attack/sustain shape -- for the calling model (which already has the file's
-name and folder context) to combine into its own judgment.
+peak/RMS level, spectral brightness, tonal-vs-noisy texture, a gated pitch
+estimate, attack/sustain shape -- for the calling model (which already has
+the file's name and folder context) to combine into its own judgment.
+
+``peak_dbfs``/``rms_dbfs`` exist specifically for gain-matching multiple
+``sample_playback_source`` layers in one preset: raw one-shot libraries are
+not recorded/normalized to a common level, so two files can need very
+different ``OscillatorSpec.volume`` values to sound equally present --
+guessing a volume without checking these first risks a layer that's
+audible in isolation but effectively silent once mixed against louder
+layers (found live: an 18dB RMS gap between two one-shots in the same
+preset, with volume set almost the same for both).
 
 Validated informally (a sanity check, not a rigorous evaluation) against 5
 real one-shots from two different factory sample packs:
@@ -129,6 +138,25 @@ def _spectral_features(samples: np.ndarray, sample_rate: int) -> tuple[float, fl
     arith_mean = np.mean(spectrum) + eps
     flatness = float(geo_mean / arith_mean)
     return centroid, flatness
+
+
+_SILENCE_FLOOR_DBFS = -120.0
+
+
+def _loudness(samples: np.ndarray) -> tuple[float, float]:
+    """Returns ``(peak_dbfs, rms_dbfs)`` -- absolute level relative to full
+    scale (0dBFS = a sample at +/-1.0). Found live: two one-shots from the
+    same combined preset measured 18dB apart in RMS despite both having
+    OscillatorSpec.volume in the same ballpark (0.55 vs 0.75) -- raw sample
+    libraries are not gain-matched to each other, so ``volume`` alone can't
+    correct for it without first knowing how loud the *source file* already
+    is. Floored at ``_SILENCE_FLOOR_DBFS`` instead of returning -inf for a
+    silent/near-silent file."""
+    peak = float(np.max(np.abs(samples))) if len(samples) else 0.0
+    rms = float(np.sqrt(np.mean(samples.astype(np.float64) ** 2))) if len(samples) else 0.0
+    peak_dbfs = 20.0 * np.log10(peak) if peak > 1e-9 else _SILENCE_FLOOR_DBFS
+    rms_dbfs = 20.0 * np.log10(rms) if rms > 1e-9 else _SILENCE_FLOOR_DBFS
+    return max(peak_dbfs, _SILENCE_FLOOR_DBFS), max(rms_dbfs, _SILENCE_FLOOR_DBFS)
 
 
 def _zero_crossing_rate(samples: np.ndarray) -> float:
@@ -286,6 +314,7 @@ def analyze_sample(path: Path) -> dict[str, object]:
     duration_seconds = len(samples) / sample_rate
     total_frames = len(samples)
 
+    peak_dbfs, rms_dbfs = _loudness(samples)
     attack_seconds, sustain_ratio = _attack_and_sustain(samples, sample_rate)
     centroid_hz, flatness = _spectral_features(samples, sample_rate)
     zcr = _zero_crossing_rate(samples)
@@ -299,6 +328,8 @@ def analyze_sample(path: Path) -> dict[str, object]:
 
     return {
         "duration_seconds": round(duration_seconds, 3),
+        "peak_dbfs": round(peak_dbfs, 1),
+        "rms_dbfs": round(rms_dbfs, 1),
         "brightness": _bucket(centroid_hz, _BRIGHTNESS_BUCKETS),
         "spectral_centroid_hz": round(centroid_hz, 1),
         "texture": _bucket(flatness, _TEXTURE_BUCKETS),

@@ -111,6 +111,41 @@ def test_high_frequency_tone_is_airy(tmp_path):
     assert result["brightness"] == "airy"
 
 
+def test_peak_and_rms_dbfs_match_known_amplitude_sine(tmp_path):
+    path = tmp_path / "tone.wav"
+    _write_wav(path, _sine(440.0, 1.0, amplitude=0.5))
+
+    result = analyze_sample(path)
+    # A sine of amplitude A has peak == A and RMS == A/sqrt(2).
+    assert result["peak_dbfs"] == pytest.approx(20 * np.log10(0.5), abs=0.5)
+    assert result["rms_dbfs"] == pytest.approx(20 * np.log10(0.5 / np.sqrt(2)), abs=0.5)
+
+
+def test_quieter_file_has_lower_peak_and_rms_dbfs():
+    from serum_mcp.preset.sample_analysis import _loudness
+
+    loud = 0.8 * np.sin(2 * np.pi * 440 * np.linspace(0, 1, 44100, endpoint=False))
+    quiet = 0.1 * np.sin(2 * np.pi * 440 * np.linspace(0, 1, 44100, endpoint=False))
+
+    loud_peak, loud_rms = _loudness(loud)
+    quiet_peak, quiet_rms = _loudness(quiet)
+
+    assert quiet_peak < loud_peak
+    assert quiet_rms < loud_rms
+    # 0.8 vs 0.1 is an 8x amplitude ratio, i.e. ~18dB -- this is the exact
+    # class of gap found live between two one-shots in the same preset.
+    assert (loud_rms - quiet_rms) == pytest.approx(18.06, abs=0.5)
+
+
+def test_silent_file_floors_instead_of_returning_negative_infinity(tmp_path):
+    path = tmp_path / "silent.wav"
+    _write_wav(path, np.zeros(4410))
+
+    result = analyze_sample(path)
+    assert result["peak_dbfs"] == -120.0
+    assert result["rms_dbfs"] == -120.0
+
+
 def test_duration_is_reported_accurately(tmp_path):
     path = tmp_path / "tone.wav"
     _write_wav(path, _sine(440.0, 1.0))
