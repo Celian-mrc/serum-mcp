@@ -283,12 +283,20 @@ _DEFAULT_ARP_NOTE_ATTRIBUTES: tuple[float, ...] = (
 
 def _build_arp_clip(arp: ArpSpec) -> dict[str, Any]:
     """Build the ``ArpClip0.clip`` dict for ``shape='pattern'``: a real
-    note list on a quantized step grid (see ``ArpPatternNoteSpec`` --  the
+    note list on a quantized step grid (see ``ArpPatternNoteSpec`` -- the
     real format supports free timestamps, this project only generates a
-    grid-quantized subset of it) plus ``regionEndBeats`` (present in 81% of
-    real Pattern clips surveyed; set to the pattern's own last note-end
-    time here rather than omitted, matching how real authored content
-    usually ties it to the actual content span)."""
+    grid-quantized subset of it).
+
+    Deliberately does NOT write ``regionEndBeats``, despite it being
+    present in 81% of real Pattern clips surveyed -- found live: a real,
+    directly-confirmed-working Factory preset's ArpClip0 (ARP - Acid101)
+    omits it entirely, and a generated preset that included it (computed
+    as the pattern's own last note-end time) failed to arpeggiate at all
+    in real Serum, while an otherwise-identical preset with that same real
+    ArpClip0 grafted in worked. Not fully isolated from the kParamDotted/
+    kParamTriplets fix made at the same time (see apply_spec), but omitting
+    it matches the one directly-verified-working example, so there's no
+    reason to keep it as an unverified guess."""
     notes = []
     for note in arp.pattern:
         time_stamp = note.step * arp.pattern_step_beats
@@ -304,8 +312,7 @@ def _build_arp_clip(arp: ArpSpec) -> dict[str, Any]:
             }
         )
     notes.sort(key=lambda n: n["timeStamp"])
-    region_end = max(n["timeStamp"] + n["length"] for n in notes)
-    return {"notes": notes, "regionEndBeats": region_end}
+    return {"notes": notes}
 
 
 def _build_fx_entry(fx: FxUnitSpec) -> dict[str, Any]:
@@ -647,8 +654,22 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
 
         clip_params["kParamRate"] = arp.rate
         clip_params["kParamGate"] = arp.gate
-        clip_params["kParamDotted"] = arp.dotted
-        clip_params["kParamTriplets"] = arp.triplets
+        # Found live: kParamDotted/kParamTriplets=0.0 was never observed in
+        # any of 844 real presets (only 1.0, or the key absent entirely) --
+        # a real Pattern-mode preset with these written explicitly (even at
+        # 0.0) failed to arpeggiate at all in Serum, while an otherwise-
+        # identical preset with a real, unmodified ArpClip0 grafted in
+        # (which never writes these keys when off) worked. Matches the same
+        # "omission means off" convention already established for
+        # kParamLoopMode.
+        if arp.dotted:
+            clip_params["kParamDotted"] = True
+        else:
+            clip_params.pop("kParamDotted", None)
+        if arp.triplets:
+            clip_params["kParamTriplets"] = True
+        else:
+            clip_params.pop("kParamTriplets", None)
         clip_params["kParamTransposeShift"] = arp.transpose_shift
         if arp.transpose_shape is not None:
             clip_params["kParamTransposeShape"] = _resolve_arp_shape(arp.transpose_shape)

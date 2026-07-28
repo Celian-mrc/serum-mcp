@@ -518,7 +518,7 @@ def test_arp_writes_arp0_and_arpclip0(init_data):
     assert clip["kParamRate"] == 0.3
     assert clip["kParamGate"] == 90.0
     assert clip["kParamDotted"] == 1.0
-    assert clip["kParamTriplets"] == 0.0
+    assert "kParamTriplets" not in clip  # False -- omitted, matching real content
     assert clip["kParamTransposeShift"] == 12.0
     assert clip["kParamTransposeShape"] == "Converge"
 
@@ -618,7 +618,9 @@ def test_arp_pattern_writes_real_note_list(init_data):
     assert by_offset[3]["timeStamp"] == pytest.approx(0.25)
     assert by_offset[3]["length"] == pytest.approx(0.25)
     assert by_offset[7]["length"] == pytest.approx(0.25)
-    assert data["ArpClip0"]["clip"]["regionEndBeats"] == pytest.approx(1.25)
+    # regionEndBeats deliberately NOT written -- found live, a real
+    # confirmed-working Factory preset's ArpClip0 (ARP - Acid101) omits it.
+    assert "regionEndBeats" not in data["ArpClip0"]["clip"]
     assert scan_wire_types(data) == []
 
 
