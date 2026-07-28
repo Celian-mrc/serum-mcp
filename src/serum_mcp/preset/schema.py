@@ -966,14 +966,17 @@ ARPCLIP_PARAMS: dict[str, ParamDef] = {
     "kParamRate": ParamDef(
         "kParamRate",
         "float",
-        default=0.25,
+        default=0.5,
         min=0.0,
         max=1.0,
         unit="normalized",
         confidence="uncertain",
-        notes="Only 2 distinct values observed (0.2692, 0.4615) across the whole "
-        "180-preset sample -- real musical meaning (note division? Hz?) not "
-        "established. Most enabled clips don't set this explicitly at all.",
+        notes="Real musical meaning (note division? Hz?) still not established, but "
+        "found live: for shape='pattern', a low value (0.25, this field's old default) "
+        "made a real generated pattern appear stuck on its first note -- an isolated "
+        "diagnostic confirmed raising it to a real Factory preset's value (~0.51) was "
+        "the difference between stuck and correctly stepping through the pattern, "
+        "holding every other field constant. Default raised to 0.5 accordingly.",
     ),
     "kParamGate": ParamDef(
         "kParamGate",
@@ -1012,14 +1015,38 @@ ARPCLIP_PARAMS["kParamNoteRetrig"] = ParamDef(
     "bool",
     default=False,
     confidence="observed",
-    notes="Found live: a real preset's Pattern-mode ArpClip0 grafted onto a generated "
-    "preset arpeggiated correctly with this present (1.0); the same generated preset "
-    "with it omitted got stuck retriggering the same single note instead of stepping "
-    "through the pattern. Only ever observed at 1.0 or absent across real content "
-    "(same convention as kParamDotted/kParamTriplets), but unlike those, omitting it "
-    "is NOT a safe 'off' default for Pattern-mode generation -- apply_spec always "
-    "writes 1.0 when arp.pattern is set, regardless of what 'omission means off' "
-    "would otherwise suggest.",
+    notes="CORRECTION: an earlier version of this note claimed this field alone fixed "
+    "a real 'stuck on one note' Pattern-mode bug -- a later, more rigorous isolated "
+    "diagnostic (holding every other field constant one at a time) found the ACTUAL "
+    "cause was kParamRate (see there), not this field. This field was present in every "
+    "working configuration tested but never individually proven necessary in "
+    "isolation. apply_spec still writes 1.0 when arp.pattern is set, since it's "
+    "present in every real working example found and never observed to cause harm, "
+    "but treat its necessity as unconfirmed, not established.",
+)
+ARPCLIP_PARAMS["kParamWrapRange"] = ParamDef(
+    "kParamWrapRange",
+    "float",
+    default=12.0,
+    min=0.0,
+    max=24.0,
+    unit="semitones (approx.)",
+    confidence="uncertain",
+    notes="Real values observed: 1.0, 2.0, 12.0, 24.0. Likely the pitch range the "
+    "pattern wraps/folds within, unconfirmed. Same status as kParamNoteRetrig: present "
+    "in every working Pattern-mode configuration tested (default 12.0, one octave), "
+    "never individually isolated as necessary -- kParamRate was the actual fix for the "
+    "'stuck on one note' bug this was originally (incorrectly) blamed alongside.",
+)
+ARPCLIP_PARAMS["kParamWrapTranspose"] = ParamDef(
+    "kParamWrapTranspose",
+    "bool",
+    default=False,
+    confidence="uncertain",
+    notes="Only ever observed at 1.0 across real content. Same status as "
+    "kParamWrapRange/kParamNoteRetrig -- written (True) whenever arp.pattern is set, "
+    "present in every working configuration tested, never individually isolated as "
+    "necessary.",
 )
 
 # ModSlot0..ModSlot63: the mod matrix. Structurally confirmed (destModuleID /

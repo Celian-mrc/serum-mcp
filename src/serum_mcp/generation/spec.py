@@ -334,12 +334,17 @@ class ArpSpec(BaseModel):
         "yet -- see docs/PARAMETER_SCHEMA.md.",
     )
     rate: float = Field(
-        0.25,
+        0.5,
         ge=0.0,
         le=1.0,
         description="normalized step rate -- UNCERTAIN real musical meaning (note "
-        "division? Hz?), only 2 real values seen in the source data. Adjust by ear/"
-        "experimentation rather than assuming a specific note-length mapping.",
+        "division? Hz?). IMPORTANT, found live: for shape='pattern' specifically, low "
+        "values (this field's old default of 0.25) made the pattern appear stuck/"
+        "frozen on its first note -- confirmed via an isolated diagnostic that the SAME "
+        "pattern only advanced through its steps once rate was raised to ~0.5. Keep "
+        "rate at 0.5 or above for shape='pattern' unless you've specifically verified a "
+        "lower value still steps through live; algorithmic shapes don't show this "
+        "issue.",
     )
     gate: float = Field(
         75.0,
