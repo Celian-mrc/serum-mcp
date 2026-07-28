@@ -18,8 +18,35 @@ def test_synthesize_frame_pure_sine_has_expected_shape():
     frame = synthesize_frame([1.0])
     assert len(frame) == FRAME_SIZE
     assert frame.dtype == np.float32
-    # Peak-normalized to 0.98, not clipped.
-    assert 0.9 < np.max(np.abs(frame)) <= 0.98
+    # Fundamental-anchored normalization: a pure sine's peak IS the
+    # fundamental's contribution, so it lands exactly at fundamental_level.
+    assert np.max(np.abs(frame)) == pytest.approx(0.85, abs=1e-4)
+
+
+def test_synthesize_frame_fundamental_level_survives_extra_harmonics():
+    """Regression test found via real-world use: a preset with a 10-harmonic
+    custom wavetable played back much quieter in upper octaves than a
+    factory table, while the shared filter/envelope were ruled out by A/B
+    testing another oscillator. Root cause: the original peak-normalization
+    scaled the *whole* multi-harmonic waveform down to fit its combined
+    peak, diluting the fundamental's own level -- exactly what survives once
+    Serum's wavetable oscillator band-limits away upper harmonics at high
+    pitch. Fundamental-anchoring plus a soft-knee limiter (only compressing
+    the portion of the waveform *above* the fundamental's own level, leaving
+    the fundamental-dominated bulk of each cycle untouched) meaningfully
+    improves this over plain peak-normalization or a whole-signal tanh
+    clip, though physically it can't be made perfectly independent of
+    harmonic content -- a genuinely louder set of upper harmonics always
+    costs *some* headroom. This asserts the improvement, not perfection."""
+    sine = synthesize_frame([1.0])
+    rich = synthesize_frame([1.0, 0.5, 0.35, 0.5, 0.25, 0.2, 0.3, 0.15, 0.2, 0.1])
+
+    sine_fund_bin = np.abs(np.fft.rfft(sine))[1]
+    rich_fund_bin = np.abs(np.fft.rfft(rich))[1]
+    # A plain whole-signal tanh clip measured ~0.71x here; soft-knee limiting
+    # measured ~0.72x. Assert it doesn't regress below that -- not a tight
+    # bound, since some reduction is physically unavoidable for this content.
+    assert rich_fund_bin > 0.65 * sine_fund_bin
 
 
 def test_synthesize_frame_rejects_empty_or_too_many_harmonics():

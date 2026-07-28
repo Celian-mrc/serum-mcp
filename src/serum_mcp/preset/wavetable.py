@@ -40,13 +40,54 @@ _CLM_MARKER = b"<!>2048 01000000 wavetable (www.xferrecords.com)"
 _JUNK_PADDING = b"\x00" * 28
 
 
-def synthesize_frame(harmonics: list[float], *, frame_size: int = FRAME_SIZE) -> np.ndarray:
+def _soft_limit(waveform: np.ndarray, threshold: float, ceiling: float) -> np.ndarray:
+    """Soft-knee limiter: samples at or below ``threshold`` pass through
+    completely unchanged; only the portion of each sample's magnitude above
+    ``threshold`` is compressed (via tanh) toward ``ceiling``.
+
+    A plain ``tanh(x / ceiling) * ceiling`` compresses the *entire* signal
+    once any sample exceeds the ceiling, including the many samples that
+    were already well within range -- which is what undid the
+    fundamental-anchoring in :func:`synthesize_frame` the first time this
+    was tried (a waveform peaking at 2.5x ceiling got squashed hard enough
+    that even its fundamental-dominated regions lost most of their level).
+    Leaving everything below ``threshold`` untouched preserves that.
+    """
+    sign = np.sign(waveform)
+    magnitude = np.abs(waveform)
+    span = ceiling - threshold
+    over = magnitude > threshold
+    limited = magnitude.copy()
+    if span > 0:
+        limited[over] = threshold + span * np.tanh((magnitude[over] - threshold) / span)
+    else:
+        limited[over] = ceiling
+    return sign * limited
+
+
+def synthesize_frame(
+    harmonics: list[float], *, frame_size: int = FRAME_SIZE, fundamental_level: float = 0.85
+) -> np.ndarray:
     """Additive-synthesize one single-cycle waveform frame from a harmonic
     amplitude series (index 0 = fundamental, index 1 = 2nd harmonic, ...).
 
     Amplitudes are used as real-valued (cosine-phase) FFT bins and inverse
-    Fourier transformed; the result is peak-normalized to 0.98 to avoid
-    clipping while leaving headroom. Returns ``frame_size`` float32 samples.
+    Fourier transformed. Normalized so the *fundamental's own* contribution
+    reaches ``fundamental_level`` -- not simply peak- or RMS-normalizing the
+    combined waveform, which scales the whole signal down to fit whatever
+    the harmonics' combined peak happens to be. That under-represents how
+    loud the fundamental ends up once Serum's wavetable oscillator
+    band-limits away upper harmonics at higher played pitches: observed
+    live, a custom multi-harmonic table played back much quieter in upper
+    octaves than a factory table with comparable harmonic content, with
+    octave-independent factors (the shared filter/envelope) ruled out by
+    A/B comparison. If anchoring the fundamental drives the combined peak
+    over 1.0 (common for harmonic-rich content), a soft-knee limiter (see
+    :func:`_soft_limit`) compresses only the excursions above
+    ``fundamental_level`` -- the fundamental-dominated bulk of the waveform
+    passes through unchanged, unlike a plain rescale/tanh over the whole
+    signal, which would undo the anchoring this function exists to provide.
+    Returns ``frame_size`` float32 samples.
     """
     max_harmonic = frame_size // 2
     if not harmonics:
@@ -59,9 +100,19 @@ def synthesize_frame(harmonics: list[float], *, frame_size: int = FRAME_SIZE) ->
     spectrum = np.zeros(frame_size // 2 + 1, dtype=np.complex128)
     spectrum[1 : len(harmonics) + 1] = harmonics
     waveform = np.fft.irfft(spectrum, n=frame_size)
+
+    # A single unit-amplitude harmonic bin produces a sinusoid of peak
+    # 2/frame_size (numpy's irfft scaling convention) -- so this is the
+    # scale factor that puts the fundamental's own peak at fundamental_level.
+    fundamental_amplitude = abs(harmonics[0])
+    if fundamental_amplitude > 1e-9:
+        natural_fundamental_peak = fundamental_amplitude * 2.0 / frame_size
+        waveform = waveform * (fundamental_level / natural_fundamental_peak)
+
     peak = float(np.max(np.abs(waveform)))
-    if peak > 1e-9:
-        waveform = waveform / peak * 0.98
+    if peak > fundamental_level:
+        waveform = _soft_limit(waveform, threshold=fundamental_level, ceiling=0.98)
+
     return waveform.astype(np.float32)
 
 
@@ -101,9 +152,24 @@ def write_wavetable_wav(
     return len(data), sample_rate, channels
 
 
+# Bump whenever synthesize_frame's algorithm changes in a way that alters
+# output for the same harmonics input (normalization scheme, limiter, ...).
+# wavetable_filename folds this into the cache key specifically so that an
+# existing file on disk (preset/mapping.py only (re)synthesizes if the
+# target path doesn't already exist) can't silently keep serving stale
+# audio content after a synthesis fix -- found the hard way: fixing a
+# fundamental-level normalization bug had zero effect on an already-cached
+# preset, because the file already existed under the same content hash and
+# was never regenerated.
+_SYNTHESIS_VERSION = 2
+
+
 def wavetable_filename(frames_harmonics: list[list[float]]) -> str:
-    """Deterministic filename for a given harmonic-series definition, so
-    identical content across presets reuses one file instead of duplicating
-    it, and different content never collides."""
-    digest = hashlib.sha256(repr(frames_harmonics).encode()).hexdigest()[:16]
+    """Deterministic filename for a given harmonic-series definition (and
+    the current synthesis algorithm version), so identical content across
+    presets reuses one file instead of duplicating it, different content
+    never collides, and a synthesize_frame algorithm change always produces
+    a fresh file instead of serving stale cached audio."""
+    payload = repr((_SYNTHESIS_VERSION, frames_harmonics)).encode()
+    digest = hashlib.sha256(payload).hexdigest()[:16]
     return f"wt_{digest}.wav"

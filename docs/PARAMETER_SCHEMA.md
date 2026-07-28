@@ -476,8 +476,38 @@ peak-normalized to avoid clipping. Generated tables are written to
 `Tables/User/serum-mcp/` under Serum's Tables folder (a sibling of
 `Presets/`, resolved by `config.get_tables_dir()` — override with
 `SERUM_TABLES_PATH` the same way `SERUM_PRESETS_PATH` overrides the presets
-folder), named by a content hash of the harmonic data so identical
-definitions reuse one file instead of duplicating it.
+folder). Filenames are a hash of `(synthesis algorithm version, harmonic
+data)`, not just the harmonic data alone -- identical definitions reuse one
+file, but a `synthesize_frame` algorithm change always produces a fresh
+file rather than silently continuing to serve stale cached audio for
+existing presets (found the hard way: fixing the normalization bug below
+had zero effect on an already-generated preset on the first attempt,
+because its wavetable file already existed under the old cache key and
+`preset/mapping.py` only (re)synthesizes when the target path doesn't
+already exist).
+
+**Amplitude across octaves (partially addressed, `observed`-confidence)**:
+the first live real-Serum test of a synthesized wavetable played back much
+quieter in upper octaves than a factory table, with the shared filter/
+envelope ruled out by A/B-comparing against another oscillator in the same
+preset. Root cause, as best understood: `synthesize_frame` originally
+peak-normalized the *combined* multi-harmonic waveform, which scales the
+whole signal down to fit whatever the harmonics' constructive-interference
+peak happens to be -- under-representing how loud the fundamental ends up
+once Serum's wavetable oscillator band-limits away upper harmonics at
+higher played pitches (a normal thing for any wavetable synth to do, not a
+bug in Serum). Changed to anchor the *fundamental's own* contribution at a
+target level, with a soft-knee limiter (only compressing the portion of
+each sample *above* that level, leaving the fundamental-dominated bulk of
+the waveform untouched) for harmonic content that would otherwise clip.
+This is a measured improvement (the fundamental's spectral energy survives
+better relative to a plain peak-normalize-then-clip approach — see
+`tests/test_wavetable.py`), not a proven complete fix -- it hasn't been
+re-verified live yet, and there may be a Serum-side factor (e.g. how
+aggressively its anti-aliasing filters upper harmonics at a given pitch)
+that no normalization scheme on our end can fully compensate for. Treat
+"still quiet in extreme upper octaves" as a possible remaining gap, not
+disproof that the fix helped at all.
 
 **Known gap**: phase is not exposed — `synthesize_frame` treats every
 harmonic amplitude as a real-valued (cosine-phase) FFT bin, so all
