@@ -697,10 +697,13 @@ ENV_PARAMS: dict[str, ParamDef] = {
         "float",
         default=0.015,
         min=0.0,
-        max=13.0,
+        max=32.0,
         unit="seconds",
         confidence="confirmed",
-        notes="VST3 default 15ms.",
+        notes="VST3 default 15ms. Max corrected from 13.0 to 32.0 (matching kParamDecay) "
+        "after finding real presets in a third-party bank with release=32.0 written "
+        "directly into the CBOR data -- stronger evidence than the VST3 automation-range "
+        "dump this field's earlier max came from.",
     ),
     "kParamCurve1": ParamDef(
         "kParamCurve1", "float", default=50.0, min=0.0, max=100.0, unit="curve %"

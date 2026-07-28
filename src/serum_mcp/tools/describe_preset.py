@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from serum_mcp.preset.introspect import extract_spec
+from serum_mcp.preset.introspect import count_unmodeled_fx_units, extract_spec
 from serum_mcp.preset.packer import unpack_file
 
 _OSC_LABELS = ("A", "B", "C", "Noise", "Sub")
@@ -90,6 +90,12 @@ def describe_preset(preset_path: str) -> str:
             lines.append(f"  - {fx.type} (wet={fx.wet:.0f}%)")
     else:
         lines.append("FX chain: (empty)")
+    unmodeled_fx = count_unmodeled_fx_units(preset.data)
+    if unmodeled_fx:
+        lines.append(
+            f"  (+ {unmodeled_fx} unit(s) in parallel/multiband FX routing -- "
+            "not decoded, not shown above, but still present in the file)"
+        )
 
     lines.append("")
     if spec.mod_routes:

@@ -20,6 +20,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+# Real preset metadata (author/description) can contain arbitrary Unicode --
+# found live against a third-party bank ("Tunecraft Unmüte") that crashed
+# this script with UnicodeEncodeError on a default Windows console, whose
+# legacy cp1252 codepage can't encode it. reconfigure() is a no-op failure
+# risk only on exotic non-TextIOWrapper stdout, hence the hasattr guard.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 from serum_mcp.preset.packer import unpack_file  # noqa: E402
 from serum_mcp.preset.safety import scan_wire_types  # noqa: E402
 from serum_mcp.tools.describe_preset import describe_preset  # noqa: E402

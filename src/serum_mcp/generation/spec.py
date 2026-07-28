@@ -213,7 +213,7 @@ class EnvelopeSpec(BaseModel):
     hold: float = Field(0.0, ge=0.0, le=5.2, description="seconds, full level before decay starts")
     decay: float = Field(1.0, ge=0.0, le=32.0, description="seconds")
     sustain: float = Field(1.0, ge=0.0, le=1.0)
-    release: float = Field(0.015, ge=0.0, le=13.0, description="seconds")
+    release: float = Field(0.015, ge=0.0, le=32.0, description="seconds")
 
 
 class LfoSpec(BaseModel):
@@ -295,13 +295,21 @@ class PresetSpec(BaseModel):
     macros: list[MacroSpec] = Field(default_factory=list, max_length=8)
     fx_chain: list[FxUnitSpec] = Field(
         default_factory=list,
-        max_length=12,
-        description="effects, in order, on FX rack 1",
+        max_length=32,
+        description="effects, in order, on FX rack 1. Cap raised from an earlier 12 after "
+        "finding real third-party presets with up to 19 flattened units (their actual FX "
+        "racks use parallel/multiband routing this project doesn't model yet -- see "
+        "docs/PARAMETER_SCHEMA.md -- so the flat count runs higher than a simple serial "
+        "chain would suggest). This is a technical ceiling, not a recommendation: most "
+        "good presets use far fewer, see server.py's generation guidance.",
     )
     mod_routes: list[ModRouteSpec] = Field(
         default_factory=list,
-        max_length=16,
-        description="modulation matrix routes; see ModRouteSpec for supported sources/destinations",
+        max_length=64,
+        description="modulation matrix routes; see ModRouteSpec for supported sources/"
+        "destinations. Cap matches the real mod matrix's 64 physical slots (see "
+        "mapping._free_modslot_indices) -- raised from an earlier 16 after finding real "
+        "third-party presets using up to 19.",
     )
     global_: GlobalSpec = Field(default_factory=GlobalSpec, alias="global")
 

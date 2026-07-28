@@ -48,6 +48,24 @@ def _sub_plain_params(container: dict[str, Any], key: str) -> Any:
     return sub.get("plainParams") if isinstance(sub, dict) else None
 
 
+def count_unmodeled_fx_units(data: dict[str, Any]) -> int:
+    """How many entries across FXRack0/1/2 are a structural FX routing type
+    (FXSplit/FXSplit3/FXSplitMS -- parallel/multiband chains, found live in
+    a real third-party bank) that :func:`extract_spec` silently skips rather
+    than crashing on. Lets a caller like ``describe_preset`` surface that
+    its reported ``fx_chain`` is incomplete instead of quietly under-
+    reporting it -- these presets' FX racks aren't actually simpler than
+    what's shown, this project just can't decode the branch structure yet
+    (see docs/PARAMETER_SCHEMA.md)."""
+    count = 0
+    for rack_key in ("FXRack0", "FXRack1", "FXRack2"):
+        for entry in (data.get(rack_key, {}) or {}).get("FX", []) or []:
+            fx_name = schema.FX_TYPE_IDS.get(entry.get("type"))
+            if fx_name is not None and fx_name in entry and fx_name not in schema.FX_PARAMS:
+                count += 1
+    return count
+
+
 def extract_spec(data: dict[str, Any]) -> PresetSpec:
     """Best-effort reconstruction of a :class:`PresetSpec` from raw preset data."""
     _reverse_sub_shapes = {v: k for k, v in schema.SIMPLE_SUB_SHAPES.items()}
@@ -188,9 +206,29 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
     for entry in (data.get("FXRack0", {}) or {}).get("FX", []) or []:
         type_id = entry.get("type")
         fx_name = schema.FX_TYPE_IDS.get(type_id)
-        if fx_name is None or fx_name not in entry:
+        if fx_name is None or fx_name not in entry or fx_name not in schema.FX_PARAMS:
+            # fx_name not in schema.FX_PARAMS: a structural/routing type (e.g.
+            # FXSplit/FXSplit3/FXSplitMS -- parallel/multiband FX routing,
+            # found live in a real third-party bank) rather than an audio
+            # effect with a param table. These don't carry a kParamWet or
+            # any other modeled param, and the units nested inside their
+            # branch aren't distinguishable from top-level ones without also
+            # decoding branch boundaries (observed kParamModuleCount1/2/3
+            # fields, semantics not yet reverse-engineered -- see
+            # docs/PARAMETER_SCHEMA.md) -- skip rather than crash or
+            # misrepresent a parallel chain as sequential. count_unmodeled_fx
+            # exists so callers can at least surface that something was
+            # skipped instead of silently under-reporting the FX chain.
             continue
-        pp = entry[fx_name].get("plainParams", {}) or {}
+        pp = entry[fx_name].get("plainParams")
+        if not isinstance(pp, dict):
+            # Real-world finding: an FX unit's plainParams can be the raw
+            # string sentinel "default" (same pattern as VoiceFilter0/1 when
+            # never touched, see _sub_plain_params) instead of a dict --
+            # `.get("plainParams", {}) or {}` doesn't catch this since a
+            # non-empty string is truthy, and used to crash with
+            # AttributeError on the next line.
+            pp = {}
         wet_default = schema.FX_PARAMS[fx_name].get("kParamWet")
         wet = pp.get("kParamWet", wet_default.default if wet_default else 100.0)
         params = {k: v for k, v in pp.items() if k != "kParamWet"}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,7 @@ from serum_mcp.generation.spec import (
     OscillatorSpec,
     PresetSpec,
 )
-from serum_mcp.preset.introspect import extract_spec
+from serum_mcp.preset.introspect import count_unmodeled_fx_units, extract_spec
 from serum_mcp.preset.mapping import apply_spec
 from serum_mcp.preset.packer import SerumPreset, pack_bytes, unpack_bytes, unpack_file
 from serum_mcp.preset.safety import scan_wire_types
@@ -446,6 +447,29 @@ def test_oscillator_semitone_round_trips(init_data):
 
     extracted = extract_spec(data)
     assert extracted.oscillators[0].semitone == -7.0
+
+
+def test_extract_spec_skips_unmodeled_fx_routing_types_without_crashing(init_data):
+    data = copy.deepcopy(init_data)
+    data["FXRack0"] = {
+        "FX": [
+            {"FXEQ": {"plainParams": {"kParamWet": 100.0}}, "type": 7},
+            # FXSplit has no kParamWet/param schema at all -- this used to
+            # raise a raw KeyError from extract_spec (found live against a
+            # real third-party bank where most presets use this).
+            {"FXSplit": {"plainParams": {"kParamModuleCount2": 3.0}}, "type": 13},
+            {"FXDelay": {"plainParams": {"kParamWet": 25.0}}, "type": 4},
+        ]
+    }
+
+    spec = extract_spec(data)
+
+    assert [fx.type for fx in spec.fx_chain] == ["FXEQ", "FXDelay"]
+    assert count_unmodeled_fx_units(data) == 1
+
+
+def test_count_unmodeled_fx_units_zero_for_a_normal_preset(init_data):
+    assert count_unmodeled_fx_units(init_data) == 0
 
 
 def test_lfo_extras_and_poly_count(init_data):

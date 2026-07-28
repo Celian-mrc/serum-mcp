@@ -302,6 +302,13 @@ that — it's just how presets are usually built. `EnvelopeSpec` generates
 `attack`/`hold`/`decay`/`sustain`/`release`; `hold` (a plateau at full level
 before decay starts) defaults to 0 and is rarely needed.
 
+`kParamRelease`'s max was `13.0` ("confirmed" from a VST3 automation-range
+dump) until a real third-party bank (Unmüte's "Places") turned up multiple
+presets with `release=32.0` written directly into the CBOR — corrected to
+`32.0`, matching `kParamDecay`. The VST3 dump apparently reports a narrower
+range than what the plugin actually accepts when loading a saved preset;
+direct evidence from real files now overrides it.
+
 ### LFOs
 
 10 slots (`LFO0..9`). `LfoSpec` generates `rate`, `mode` (`Free`/`Retrig`/
@@ -343,6 +350,23 @@ frequency band, via `kParamModuleCount1/2/3`). They're cataloged in
 `FX_TYPE_IDS` and round-trip fine, but aren't modeled in `FX_PARAMS` —
 targeting them would need a recursive `FxUnitSpec` (an FX chain that itself
 contains FX chains), which is a bigger feature than a flat param schema.
+
+Found live against a real third-party bank (Unmüte's "Places", 180
+presets): 90 of them (50%) use at least one of these split types, and
+`extract_spec` used to raise a raw `KeyError` on every one (no `FX_PARAMS`
+entry to look up a default `kParamWet` from) — `describe_preset`/
+`edit_preset` were completely broken on roughly half of a real professional
+bank. Fixed by skipping split-type entries during extraction instead of
+crashing; `introspect.count_unmodeled_fx_units` lets a caller report how
+many were skipped rather than silently under-representing the FX chain.
+The branch-boundary semantics of `kParamModuleCount1/2/3` are still not
+reverse-engineered with confidence — observed so far: `FXSplit` (2-way) with
+only `kParamModuleCount2` set (e.g. `3.0`); `FXSplit3` (3-way) with
+`kParamModuleCount2`/`kParamModuleCount3` both set (e.g. `1.0`/`2.0`);
+`FXSplitMS` (mid/side) with `kParamModuleCount1` alone or paired with
+`kParamModuleCount2`. Consistent with "how many of the following flat FX-
+list entries belong to this branch," but not verified across enough
+examples to build a recursive `FxUnitSpec` from with confidence yet.
 
 We also confirmed empirically that an FX entry's `destModuleID` in the mod
 matrix encodes *which rack* an FX unit lives in: `0-11` for rack 0 slots,
