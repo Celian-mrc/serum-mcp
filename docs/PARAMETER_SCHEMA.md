@@ -120,7 +120,7 @@ A decompressed CBOR payload's top-level keys, as observed:
 | `Macro0`..`Macro7` | the 8 macro knobs | Yes |
 | `Global0` | master volume, mono, portamento, poly count, ... | Partially |
 | `ModSlot0`..`ModSlot63` | the 64-slot mod matrix | Partially — all destinations + LFO/Macro sources, see §6 |
-| `FXRack0`..`FXRack2` | 3 independent effects racks, each an ordered `FX` list | FXRack0 only, in V1 |
+| `FXRack0`..`FXRack2` | 3 independent, PARALLEL effects racks, each an ordered `FX` list | Yes, all 3 (since 2026-07-29 — see §4) |
 | `Arp0`, `ArpClip0`..`ArpClip11`, `arpBankDisplayName` | arpeggiator | No — round-trips untouched |
 | `MidiClip0`..`MidiClip11`, `ClipPlayer`, `ClipPlayer0`, `clipBankDisplayName` | MIDI clip player | No — round-trips untouched |
 | `PitchQuantizer0` | scale/quantizer | No — round-trips untouched |
@@ -157,14 +157,20 @@ Every `ParamDef` carries a `confidence` field:
 is enabled by default** — this is a *per-slot* default, not a shared one
 (confirmed via the VST3 dump), which is why `preset/introspect.py`
 special-cases slot 0 rather than encoding it in the shared param table. The
-shared params (`kParamEnable`, `kParamOctave`, `kParamPitch`, `kParamVolume`,
-`kParamPan`, `kParamUnison`, `kParamDetune`) apply to all 5 slots identically
-and are fully generatable via `OscillatorSpec`. `kParamPitch`
-(`OscillatorSpec.semitone`, ±12 semitones) is a static offset independent of
-`kParamOctave` — added specifically to align two `sample_playback_source`
-one-shots to the same pitch class, since `SampleOsc` has no configurable
-root note and each layer otherwise sounds at whatever pitch its own
-recorded content actually is.
+shared params (`kParamEnable`, `kParamOctave`, `kParamPitch`, `kParamFine`,
+`kParamVolume`, `kParamPan`, `kParamUnison`, `kParamDetune`) apply to all 5
+slots identically and are fully generatable via `OscillatorSpec`.
+`kParamPitch` (`OscillatorSpec.semitone`, ±12 semitones) is a static offset
+independent of `kParamOctave` — added specifically to align two
+`sample_playback_source` one-shots to the same pitch class, since
+`SampleOsc` has no configurable root note and each layer otherwise sounds
+at whatever pitch its own recorded content actually is. `kParamFine`
+(`OscillatorSpec.fine`, cents, ±80) is a THIRD, independent tuning
+control — the standard "Coarse + Fine" pattern — found live 2026-07-29
+comparing a recreation's oscillators byte-for-byte against a real preset
+(both used it, -3/+4 cents); had been documented in `schema.py` and usable
+as a mod destination for a while, but never exposed as a settable base
+value until then.
 
 **Slots 0-2 (Osc A/B/C)** each have a sound source that's one of 5 engines,
 keyed as `WTOsc{i}`, `GranularOsc{i}`, `MultiSampleOsc{i}`, `SampleOsc{i}`,
@@ -273,8 +279,23 @@ comb, phaser-as-filter, formant, "Scream" distortion-filter hybrids, etc.);
 names (`lowpass_12`, `lowpass_24`, `highpass_12`, ...) for generation to
 target (via `FilterSpec.type`). The raw enum remains fully valid for
 `edit_preset`/`list_parameters` consumers who want the rest. `FilterSpec`
-also generates `stereo` (`kParamStereo`, width/spread %) alongside
-cutoff/resonance/drive.
+also generates `stereo` (`kParamStereo`, width/spread %), `var`
+(`kParamVar`), `key_track` (`kParamKeyTrack`), `wet` (`kParamWet`, this
+filter's own dry/wet — separate from `fx_chain`), and `level_out`
+(`kParamLevelOut`) alongside cutoff/resonance/drive.
+
+**`kParamVar` ("Var")** was documented in `schema.py` since early in this
+project (`notes="'Var' knob; meaning changes per filter type (e.g. comb
+spacing, formant blend)."`) but never wired into `FilterSpec`/generation
+until found live 2026-07-29 to matter a lot in practice, not just in
+theory: recreating a real preset that used `DistComb1BP` (a comb filter
+variant) with `var` silently left at 0 (`FilterSpec`'s old implicit
+default) produced a harsh, aliased, "8-bit"-sounding result — the real
+preset had `var=65.1`. For comb-family (and likely formant-family) filter
+types, `var` is a primary character control, not a minor tweak; check a
+real reference value before assuming 0 is safe. `key_track` (cutoff
+follows note pitch) was also found unwired at the same time — the same
+real preset had it `True` on both filter slots.
 
 `kParamStereo`'s neutral/centered value is **50**, not 0 — confirmed live
 (2026-07-28, real Serum 2 in FL Studio 21) after a user reported a
@@ -299,8 +320,18 @@ points to fit the curve.
 4 slots (`Env0..3`), all identical schema. Env 1 (`Env0`) is *conventionally*
 the amp envelope in factory content, but nothing in the format enforces
 that — it's just how presets are usually built. `EnvelopeSpec` generates
-`attack`/`hold`/`decay`/`sustain`/`release`; `hold` (a plateau at full level
-before decay starts) defaults to 0 and is rarely needed.
+`attack`/`hold`/`decay`/`sustain`/`release`/`attack_curve`/`decay_curve`/
+`release_curve`; `hold` (a plateau at full level before decay starts)
+defaults to 0 and is rarely needed. The three `*_curve` fields
+(`kParamCurve1/2/3`, 0-100, shaping how linear/exponential each ramp is)
+were found live 2026-07-29 present on **97% of all real envelopes
+surveyed** (3242/3333) — effectively always set, not an optional/rare
+field, and had gone completely unmodeled until diffing a recreation's
+`Env0..3` byte-for-byte against a real preset. Defaults (`50`/`66.6`/`66.6`)
+match the overwhelmingly most common real values, presumed to be Serum's
+own defaults for an untouched envelope. The attack/decay/release segment
+mapping (matching `kParamAttack`/`kParamDecay`/`kParamRelease`'s
+declaration order) is inferred, not independently confirmed.
 
 `kParamRelease`'s max was `13.0` ("confirmed" from a VST3 automation-range
 dump) until a real third-party bank (Unmüte's "Places") turned up multiple
@@ -314,25 +345,80 @@ direct evidence from real files now overrides it.
 10 slots (`LFO0..9`). `LfoSpec` generates `rate`, `mode` (`Free`/`Retrig`/
 `Envelope` — `Retrig` recovered from the plugin binary's debug strings,
 never observed in the factory sample), `beat_sync`, `delay` (fade-in before
-the LFO starts after note-on), `rise` (ramp-up time), and `smooth` (lag
-smoothing, for less steppy random/S&H shapes). Free-hand curve-drawn LFO
-shapes (`curveData`: `xVals`/`yVals`/`curveVals`) exist and round-trip, but
-generating them is out of scope for V1 (no natural-language mapping for
+the LFO starts after note-on), `rise` (ramp-up time), `smooth` (lag
+smoothing, for less steppy random/S&H shapes), `shape` (named algorithmic
+shapes — S&H/Rossler/Lorenz/Path, see §5 item 4-adjacent finding above),
+`mono`, `swing`, `dotted`, `triplets`, and `rate10x`. Free-hand curve-drawn
+LFO shapes (`curveData`: `xVals`/`yVals`/`curveVals`) exist and round-trip,
+but generating them is out of scope for V1 (no natural-language mapping for
 "draw this LFO shape" yet).
+
+`kParamDotted`/`kParamTriplets` (found live 2026-07-29, same
+byte-for-byte-diff pass that found `kParamFine`/envelope curves) mirror the
+arpeggiator's identically-named fields — dotted/triplet rhythm timing for
+the LFO's own rate, present on 16%/15% of 4,384 real LFO slots surveyed
+(always `1.0` when present). `kParamRate10x` (14%) is presumed a ×10 rate
+multiplier, not independently confirmed — found specifically alongside a
+chaotic-shape (Rossler/Lorenz) LFO with a very low base rate, where it may
+be the difference between a near-static and a clearly-moving modulation.
+
+**`kParamMono`**, found live 2026-07-29 in the same Galaxy investigation as
+the warp-lane fix (§ above/below): the real preset's busiest LFO (rate 100,
+`RandomSH` shape, driving a fast-arpeggiated oscillator) visibly kept
+moving with no note held; the recreation's, without this field, appeared
+frozen and was reported as feeling "too fast"/choppy. `kParamMono=1.0`
+makes the LFO a single shared instance running continuously, independent
+of note-on events, instead of a per-voice one that restarts its phase at
+every note — under a fast arpeggiator, a per-voice LFO barely completes any
+of its cycle before the next note resets it, plausibly explaining both
+symptoms with one cause. Surveyed across 4,374 real LFO slots: only ever
+`1.0` when present (63 slots) — absence is the common/default case, not
+`0.0`. `kParamSwing` was found alongside it (only ever `1.0`, 9/4,374
+slots) — presumed to affect a stepped LFO's shuffle/timing by analogy with
+"swing" elsewhere, not independently confirmed.
 
 ### Macros & Global
 
 8 macros (`Macro0..7`, each `{name, plainParams.kParamValue}`). `Global0`
-covers master volume (confirmed default `0.5` = -9dB), mono toggle, and
+covers master volume (confirmed default `0.5` = -9dB), mono toggle,
 portamento time (`kParamPortamentoTime`, seconds — glide between notes),
-all generatable via `GlobalSpec`; a handful of rarer global params (voice
+poly count, and `limit_same_note_polyphony`
+(`kParamLimitSameNotePolyphony`, found live 2026-07-29, present on 39% of
+832 real `Global0` slots surveyed, always `True` when present — presumed
+to cap voice-stacking when the same note retriggers rapidly, e.g. under a
+fast arp, rather than letting overlapping voices for one note pile up),
+all generatable via `GlobalSpec`; a handful of rarer global params
+(`kParamS1Compatibility` — a legacy Serum-1-porting flag, deliberately not
+generalized since it's not relevant to freshly-generated content — voice
 count, tuning, MPE bend range, FX bus routing) are documented in
 `schema.py` but not yet wired into generation.
 
 ### Effects
 
-3 independent racks (`FXRack0..2`); V1 generation only writes to
-`FXRack0`. Each rack holds an ordered `FX` list; each entry has an integer
+3 independent, PARALLEL racks (`FXRack0..2`) — **all 3 supported since
+2026-07-29**, found live diagnosing why a from-scratch recreation of a real,
+complex Unmute preset ("Galaxy") sounded nothing like the original despite
+every other parameter matching closely: the real preset ran a second,
+entirely independent 5-unit chain (incl. a real `FXReverb` and `FXBode`
+frequency shifter) in `FXRack1`, alongside `FXRack0`'s 8 units — 100%
+invisible to `extract_spec` before this fix, since it only ever read
+`FXRack0`. Racks run in PARALLEL, not series — rack 1 is a second signal
+path, not "what happens after rack 0". `FxUnitSpec.rack` (0-2, default 0)
+selects which rack a generated unit lives in; editing a preset only
+replaces the racks actually represented in the new `fx_chain` list, leaving
+others (that the caller may not even know exist) untouched.
+
+An FX unit's `destModuleID` (used when a mod-matrix route targets it, e.g.
+`fx{i}.wet`) is **not** its position in a flat merged list — it's
+`rack * 100 + position_within_that_rack`, confirmed against Galaxy's real
+raw `ModSlot` data (e.g. an `FXBode` at rack-1 position 4 had
+`destModuleID` 104; rack 0's own IDs are just `0 + position`, i.e. `0-99`
+as before). `serum-mcp`'s own `fx{i}.wet` NAMING still addresses units by
+their position in the flat `PresetSpec.fx_chain` list (spans all racks, in
+rack-0-then-1-then-2 order) — only the internal raw `destModuleID` uses the
+rack-encoded scheme; see `mapping._fx_dest_module_id`.
+
+Each rack holds an ordered `FX` list; each entry has an integer
 `type` selecting one of 16 effect kinds (`FX_TYPE_IDS` in `schema.py`) and a
 `plainParams` dict specific to that type. 13 of the 16 are modeled with full
 param schemas (`FXDistortion`, `FXChorus`, `FXFlanger`, `FXPhaser`,
@@ -517,6 +603,198 @@ which this project can't ingest (no FLAC decoder), and without the fast
 path *any* edit touching a later oscillator in the list would fail trying
 to re-process an untouched `.flac` reference just to preserve position.
 
+**Galaxy recreation investigation (2026-07-29)**: attempting to recreate a
+single real, complex Unmute preset (`UN_PLACES_ARP_120_Galaxy`) from
+scratch via `generate_preset` surfaced two significant gaps at once, found
+by comparing `extract_spec`'s output against the preset's *raw* CBOR
+directly rather than trusting the extracted `PresetSpec` was complete:
+
+1. **Multi-rack FX (fixed, see §4)** — `extract_spec`/`apply_spec` only
+   ever touched `FXRack0`; a real second, parallel rack (`FXRack1`, 5 units
+   incl. `FXReverb`/`FXBode`) was invisible. Now fully supported.
+2. **Mod-route destination coverage is narrower than it looks.** The raw
+   file had **27** active `ModSlot`s; `extract_spec` surfaced only 11
+   (14 after the FX-rack fix) — the rest silently dropped because their
+   *destination* isn't in `MOD_DEST_TARGETS`, not because their source is
+   unresolved. Newly-observed destination categories with zero coverage:
+   `Arp` params (`kParamGate`, `kParamChance` — modulating the arpeggiator
+   itself), a `WTOsc` secondary warp control (`kParamWarpVar2`, distinct
+   from the modeled `kParamWarp`), `NoiseOsc.kParamColor`, non-wet FX
+   params (e.g. `FXEQ.kParamFreq2`, `FXUtils.kParamWidth`/`kParamLPF` —
+   currently only each FX unit's `kParamWet` is a valid mod destination),
+   `VoiceFilter.kParamWet`/`kParamReso` via some routes, `Global.
+   kParamVoiceAmp`, and `VoicePanel.kParamGlobalScalingEnvTime`. None of
+   these are wired into `MOD_DEST_TARGETS` or generatable yet. Also found:
+   3 more unresolved mod **source** IDs beyond §6's list — `24`, `40`, `57`
+   — each seen exactly once in this file, not enough on their own to
+   identify via the direct-probe method (which needs a real Serum UI
+   session, not passive observation) — flagged for a future probe round.
+3. **`FilterSpec` was missing `var`/`key_track`/`wet`/`level_out` (fixed,
+   see the Filters section above)** — found by a byte-for-byte comparison
+   of Osc A's raw data between the recreation and the original (which
+   matched almost exactly at the time, ruling out the oscillator as the
+   cause *given what was checked*) followed by the same comparison for
+   `VoiceFilter0`, which didn't match: `var` (already documented in
+   `schema.py` as meaningful-per-filter-type, e.g. comb spacing) was
+   silently 0 instead of the real preset's `65.1`. Plausible contributor
+   for the `DistComb1BP` filter type this preset uses, but fixing it alone
+   did NOT resolve the reported "8-bit" character — see item 4.
+4. **`OscillatorSpec` was missing a second warp lane entirely (fixed, see
+   the Oscillators §8 note above)** — after item 3's fix
+   still didn't help, a FULL (not partial) byte-for-byte comparison of Osc
+   A's raw `WTOsc0` `plainParams` (every key, not just the ones this
+   project already modeled) found `kParamWarp2`/`kParamWarpMenu2`: a
+   second, independent warp stage (`kFilterLPF` at 56%) taming the primary
+   `kFM_NOISE` warp's otherwise-raw/digital character. This had a
+   `ParamDef` in `schema.py` since early in the project but was never
+   exposed via `OscillatorSpec` or written by `apply_spec` — the earlier
+   "matched almost exactly" comparison in item 3 had only checked the
+   fields this project already knew to look for, not the full raw dict.
+   Lesson for future investigations of this kind: compare *every* raw key,
+   not just the modeled subset, or a real gap looks like a match.
+5. **`LfoSpec` was missing `mono`/`swing` (fixed, see the LFOs section
+   above)** — after item 4's fix still didn't resolve it, the user reported
+   a specific, concrete symptom (the real preset's LFO visibly moves with
+   no note held; the recreation's doesn't) rather than just "still sounds
+   wrong" — a much more actionable bug report, and the direct lead to
+   `kParamMono`. Also fixed `kParamSwing` at the same time (lower
+   confidence, found alongside it).
+6. **`kParamWarpVar2` — a mod-matrix destination on Osc A specifically,
+   still unmodeled after item 4 (fixed, see the WTOsc note in the
+   Oscillators §8 section above)** — asked directly "can you fully
+   analyze this preset, or are there real technical holes", which prompted
+   an exact count: 27 raw mod
+   routes, 14 reproduced at the time. Of the 13 gaps, this one stood out as
+   the most likely to matter for TONE specifically (the others are mostly
+   `Arp`/`Global`/`VoicePanel`/non-wet-FX-param destinations, or blocked by
+   3 still-unresolved source IDs) because it targets Osc A, the oscillator
+   repeatedly flagged as sounding wrong. `destModuleParamID` confirmed 4
+   directly from the real preset's raw `ModSlot4`. Fixed
+   (`OscillatorSpec.warp_var2`, `oscillator{i}.warp_var2` mod destination)
+   — 15/27 routes now reproduced.
+7. **A second, deliberately-chosen recreation (`UN_PLACES_PL_Dreams`)
+   surfaced a different kind of gap: a whole unmodeled oscillator
+   engine.** Asked to drop the Galaxy-specific arp gaps and instead pick a
+   preset entirely within scope — surveyed all 180 Unmute presets for
+   single-rack FX, no sample oscillators, and the fewest silently-dropped
+   mod routes; `Dreams` had only 2 of 14. Its Osc C turned out to be a real
+   `SpectralOsc` (`kOsc_Spectral`, referencing a genuine Factory `.flac`,
+   confirmed independently by a macro literally named "SPECTRAL SAND") —
+   see item 3 above (Unmodeled oscillator engines) for the full raw
+   structure and why this wasn't generalized into a feature, just patched
+   in as a one-off for this single recreation.
+8. **`Global.kParamVoiceAmp` and `FXUtils.kParamBalance` (fixed, see §6 and
+   the Effects section in §4)** — Dreams's other 2 unreproduced routes.
+   `Global.kParamVoiceAmp` had already appeared in Galaxy too (both real
+   presets used `key_track -> Global.kParamVoiceAmp`, independently
+   confirming both the destination and its `destModuleParamID`, 2) —
+   strong enough evidence to add as a proper, reusable `MOD_DEST_TARGETS`
+   entry (`global.voice_amp`) rather than a one-off patch.
+   `FXUtils.kParamBalance` (`destModuleParamID` 4) is type-specific,
+   confirmed once — added via a new, deliberately-scoped
+   `FX_EXTRA_MOD_DEST_PARAMS` mechanism (`fx{i}.balance`) that only
+   applies to FX types where a param has actually been confirmed, rather
+   than assuming any non-wet FX param can be addressed generically.
+   Result: **14/14** of Dreams's real mod routes now reproduced, and
+   Galaxy went from 15 to 16/27 for free (same fix, independent
+   confirmation).
+9. **Per-instrument-module fields never checked at all, found by a
+   systematic FULL raw-`plainParams` diff** (fixed where general, patched
+   where one-off — see the Oscillators/Envelopes/LFOs/Macros & Global
+   sections above) — user asked to check for "other small things" after
+   catching `kParamFine` by eye (comparing Serum's own UI); rather than
+   keep chasing individual fields, every module's *complete* raw
+   `plainParams` dict was diffed against the original at once. Found:
+   `kParamFine` (oscillators, on 2 of 3 active slots), `kParamCurve1/2/3`
+   (envelopes, on literally every envelope — 97% corpus prevalence),
+   `kParamLimitSameNotePolyphony` (global), `kParamDotted`/`kParamTriplets`/
+   `kParamRate10x` (LFOs). All fixed generally. Also found, and left as
+   one-off patches (see item 7, §6's curve-shaping note, and the Global
+   section above): `SpectralOsc`'s extra `kParamPosition`/`kParamScanRate`/
+   `kParamManualPositionMode`, `Global.kParamS1Compatibility`, and
+   per-route curve shaping on 2 mod routes. Result: **zero remaining raw
+   `plainParams` differences** across every oscillator/filter/envelope/LFO/
+   global module for this specific recreation (`kParamDefaultMode`
+   excepted — always `0.0` everywhere, confirmed inert).
+10. **Presence of a param, not just its value, can change the sound —
+    confirmed on 4 params, fixed generally (see the Filters section and
+    `mapping.build_fx_unit`).** After item 9's "zero diff" result, Dreams
+    still had a persistent fuzzy/buzzy character. A real-preset FX unit's
+    `kParamWet` is ABSENT whenever it would be 100 (fully wet), explicit
+    only for other values — writing an explicit `kParamWet=100.0`
+    (mathematically "the same") was audibly non-transparent, most likely
+    because Serum skips the wet/dry crossfade computation entirely when the
+    key is absent vs. actually running a 100/0 mix when it's present. The
+    same pattern held for `VoiceFilter.kParamWet`/`kParamLevelOut`/
+    `kParamDrive`/`kParamStereo` — all four confirmed absent on Dreams's
+    real `VoiceFilter0`/`1` despite `FilterSpec` always writing them at
+    their schema-documented neutral defaults (100/0.5/0.0/50.0). A
+    real-corpus survey confirmed `kParamStereo` absent in 1162/1300 (89%)
+    real filters — not a one-off. Fixed by omitting each of these params
+    from the written `plainParams` whenever the spec value equals its
+    neutral default, both on write (`mapping.py`) and on the FX read side
+    (`introspect.py` previously fell back to each FX type's own
+    schema-documented default when absent, e.g. FXDelay's 30.0, instead of
+    the universal true absent-state value of 100.0).
+11. **A whole unmodeled oscillator-to-filter/filter-to-output routing
+    system (`RoutingSlot0-6`), plus a real bug in the shared generation
+    fixture (fixed, both — see the note after this list).** Even after item
+    10's fix, Dreams was still fuzzy, then (once that resolved) still
+    noticeably quieter than the original on an isolated oscillator. A full
+    recursive diff (same technique as item 9 but on the whole data tree,
+    not just `plainParams`) turned up 7 top-level `RoutingSlot` nodes never
+    looked at before. Confirmed via user-provided screenshots (OSC-tab
+    per-filter routing toggles, then the MIX tab): `RoutingSlot0-4` are the
+    5 oscillators' filter-routing choice (which of Filter 1/Filter 2/both/
+    neither/an FX bus each one feeds — real preset: Osc A + Osc B + Noise
+    feed Filter 2, not just Osc A as this project had been silently
+    defaulting to); `RoutingSlot5`/`RoutingSlot6` are each FILTER's own
+    output-routing choice (`"MAIN"` = direct to output, i.e. parallel dual
+    filters, vs `"FILTER"` = cascade into the other filter, i.e. serial —
+    the real preset uses `"MAIN"` for Filter 1). The quieter-oscillator
+    symptom was explained by arithmetic, not guesswork: bisecting by
+    toggling each filter's power button while soloing one oscillator showed
+    either filter ALONE cost only 1-2dB, but BOTH together cost 8dB more
+    than the real preset's both-on state — additive/serial loss, not
+    parallel. Not generalized into `PresetSpec` this session (still a
+    one-off raw-CBOR patch reproducing the real preset's exact
+    `RoutingSlot` values) — full enum/semantics (`kRoutingDestFilter`/
+    `kRoutingDestNone`/`kRoutingDestDirect`/`kRoutingDestMaster`,
+    `kParamFilterBalance`, `kParamFXBus1Level`/`kParamFXBus2Level`) surveyed
+    across the real corpus but not yet wired into a spec field.
+
+**Fixture bug, not a schema gap** (fixed): `fixtures/init_preset.SerumPreset`
+— the blank template every `generate_preset`/`edit_preset` call starts
+from — was built (`scripts/build_fixture.py`, one-off) by resetting most
+modules from a real donor preset (`BA - Sub Sustain - mids`) to blank
+defaults, but never touched `RoutingSlot0-6`. `RoutingSlot5` (Filter 1's own
+output routing) was left at the donor's value, `kRoutingDestFilter`
+(cascade into Filter 2) — meaning **every** `serum-mcp`-generated preset
+with both filters enabled has been silently running them in series instead
+of parallel since the project's first commit, not just Dreams. Fixed by
+resetting all 7 `RoutingSlot`s to genuine absent/default in the fixture
+itself (2026-07-29) — this is a code fix, not a documentation gap, and
+needs no `PresetSpec` changes to take effect for future generations.
+
+**Still open** (not pursued further this session): for Galaxy specifically,
+11 of 27 routes remain unreproduced — `Arp` params (3 routes),
+`NoiseOsc.kParamColor`, a few more non-wet FX params (`FXEQ.kParamFreq2`,
+`FXUtils.kParamWidth`/`kParamLPF`), `VoicePanel.kParamGlobalScalingEnvTime`,
+`VoiceFilter.kParamWet`, plus 3 unresolved source IDs (`24`, `40`, `57`)
+blocking a couple of routes whose destination *is* already modeled. The
+same direct-UI-probe method used to resolve Velocity/Mod Wheel/etc. (§6)
+would work for the source IDs; likely candidates from Serum's real source
+picker not yet probed: `Release Velo`, `Active Voices`, `Voice Index`,
+`Voice Mod 1`/`2`.
+
+None of the first two gaps caused incorrect/crashing output (both silently
+under-report, they don't corrupt anything) — but together, plus the filter
+and warp-lane fixes, they meant a "faithful" recreation built from
+`extract_spec`'s output was missing an entire
+parallel signal path and roughly 40% of the real preset's modulation,
+which is a large enough gap to plausibly explain most of why the
+recreation sounded meaningfully different from the original.
+
 Result: 0 real bugs left across all 844 presets. The only remaining
 failures (68, all in the Unmute bank) are genuinely missing external
 files — that pack's custom wavetables were never installed alongside its
@@ -525,20 +803,48 @@ presets on this machine, not a bug in this project.
 These are the honest uncertainties, ranked roughly by how much they'd
 improve generation quality if resolved:
 
-1. **Mod matrix `source` encoding is partially decoded** (updated — see §6
-   for the full writeup). The *destination* side was already fully
-   confirmed. The *source* side (`[sourceId, subIndex]`) is now resolved for
-   two families — LFO1-10 (ids 6-15) and Macro1-8 (ids 25-32) — via
-   statistical clustering across all 626 factory presets, cross-checked
-   against `destModuleParamID` values recovered independently from the
-   Serum 2 plugin binary's own debug/RTTI strings. **Still unresolved**:
-   Envelope, Velocity, Mod Wheel, Aftertouch, Pitch Bend, Key Track and
-   Random/S&H sources — several candidate IDs exist (`1-5`, `16-24`, `34+`)
-   but none clustered into an evidence-backed block the way LFO/Macro did.
+1. **Mod matrix `source` encoding is fully decoded for its original scope**
+   (updated — see §6 for the full writeup). The *destination* side is
+   confirmed for every destination this project models (see
+   `MOD_DEST_TARGETS`) — but "confirmed" only means "correct where we
+   claim coverage", not "covers everything real content uses": the Galaxy
+   investigation above found real routes into `Arp`/`NoiseOsc`/non-wet FX
+   params/`Global`/`VoicePanel`, none of which have a `MOD_DEST_TARGETS`
+   entry at all yet (see item 1b below). The *source* side
+   (`[sourceId, subIndex]`) is now resolved for every source this project
+   originally set out to
+   decode: LFO1-10 (ids 6-15) and Macro1-8 (ids 25-32) via statistical
+   clustering (`observed`), plus Mod Wheel (`1`), Env1-4-as-source
+   (`2-5`), Velocity (`16`), Key Track/`Note#` (`17`), Aftertouch (`18`),
+   Poly Aftertouch (`19`), Random1 (`21`), Random2 (`22`), Pitch Bend
+   (`33`), and Random-Discrete (`59`) — all `confirmed` via a 2026-07-29
+   direct UI probe of a real Serum 2 instance, in two rounds (see §6,
+   including the reusable method). Random turned out to be three
+   independent sources, not one, which is why the original "Envelope/
+   Velocity/Mod Wheel/Aftertouch/Pitch Bend/Key Track/Random" list maps to
+   more than seven resolved names. **Still unresolved, but out of original
+   scope** (only discovered by seeing Serum 2's real source picker):
+   `Release Velo`, `Active Voices`, `Voice Index`, `Voice Mod 1`/`2`, and
+   `Oscillators`/`Filters`/`Note Expression` as self-mod sources.
    `subIndex` (`source[1]`) is unresolved for every source family (always 0
-   in every sample). `serum-mcp` now generates and reads back LFO/Macro mod
-   routes (`generation/spec.py::ModRouteSpec`); everything else still
-   round-trips opaquely.
+   in every sample so far). `serum-mcp` now generates and reads back mod
+   routes for every confirmed source (`generation/spec.py::ModRouteSpec`);
+   everything else still round-trips opaquely.
+1b. **Mod matrix destination coverage is narrower than `MOD_DEST_TARGETS`
+   makes it look** (found live 2026-07-29, see the Galaxy writeup above) —
+   a real preset's raw file had 27 active `ModSlot`s; only 11 round-tripped
+   through `extract_spec` before this was found (14 after the multi-rack FX
+   fix below), the rest silently dropped for an unmodeled *destination*
+   even though their source was resolved. Unmodeled destination categories:
+   `Arp` params (e.g. modulating the arpeggiator's gate/chance live), a
+   `WTOsc` secondary warp param (`kParamWarpVar2`), `NoiseOsc.kParamColor`,
+   FX params other than `kParamWet` (currently the ONLY FX param
+   generatable as a mod destination), `VoiceFilter.kParamWet`, `Global.
+   kParamVoiceAmp`, `VoicePanel.kParamGlobalScalingEnvTime`. Silent
+   under-reporting, not corruption — but it means `describe_preset`/
+   `extract_spec` can present a real preset as far simpler than it actually
+   is, which misled an earlier recreation attempt into thinking its
+   modulation was complete when ~40% of it was invisible.
 2. **Filter cutoff Hz curve** (§4, Filters) — only one calibration point.
 3. **Unmodeled oscillator engines** — Granular/MultiSample/Spectral remain
    unmodeled (GranularOsc/MultiSampleOsc/SpectralOsc appeared in 3.6-15.8%
@@ -547,12 +853,51 @@ improve generation quality if resolved:
    which was the highest-value item in this list as of this project's
    earlier sessions; MultiSampleOsc (used for realistic multisampled
    instrument patches, e.g. real pianos/guitars) is arguably the next most
-   valuable remaining gap.
+   valuable remaining gap. Confirmed live 2026-07-29 recreating a second
+   real Unmute preset (`UN_PLACES_PL_Dreams`, chosen specifically for being
+   otherwise fully within scope — no arp, no sample oscillators, single FX
+   rack): its Osc C is a real `SpectralOsc` (`kOsc_Spectral`) referencing a
+   genuine Factory `.flac` (`Spatial/Ambience Grains of Sand.flac` — a
+   macro named "SPECTRAL SAND" controls its volume, confirming it's not
+   incidental). `SpectralOsc2`'s raw structure: `{flex: {curve data,
+   trivial single-point in this sample}, numChannels, numFrames,
+   plainParams: {kParamFreqLo, kParamWarp, kParamWarpMenu}, samplePathRelative,
+   sampleRate}` — a real `.flac` reference works fine written directly
+   (same "reference an already-installed Factory file, don't decode it"
+   approach used for wavetables), no FLAC decoder needed for THIS. A
+   one-off patch (`packer.unpack_file`/`pack_file`, bypassing
+   `PresetSpec` entirely) reproduced this single oscillator exactly for
+   that one recreation, but this is not remotely enough evidence to design
+   a general `OscillatorSpec` `SpectralOsc` feature (one sample, `flex`'s
+   real meaning/range totally unexplored, `kParamFreqLo` suggests other
+   related params likely exist unseen) — would need the same kind of
+   corpus survey done for LFO shapes/second-warp-lane before generalizing.
 4. **LFO curve shapes** (`curveData`) and **free-drawn envelope curves** are
-   unmodeled — Serum 2's point-based custom curve editor data.
+   unmodeled — Serum 2's point-based custom curve editor data. Confirmed
+   live 2026-07-29 that this isn't just a theoretical gap: attempting to
+   recreate a real, complex Unmute preset (`UN_PLACES_ARP_120_Galaxy`) via
+   `generate_preset` matched essentially every other parameter (oscillator
+   wavetables/warp, filter types incl. uncurated `DistComb1BP`/`RMT`, an
+   8-unit FX chain, 11 mod routes incl. the newly-decoded `key_track`
+   source, arp settings) but was judged "n'a rien à voir" (nothing like the
+   original) once loaded — the real preset's screenshot showed its busiest
+   LFO (rate 100, driving both a table_position sweep and filter cutoff)
+   set to **S&H** (Sample & Hold, a stepped-random shape), not the smooth
+   default curve this project silently substitutes since shape isn't
+   modeled at all. For a preset whose character depends heavily on one
+   fast, heavily-routed LFO, an unmodeled shape can be the dominant
+   perceptual difference, not a minor detail. Also spotted in the same
+   screenshot: the `DistComb1BP` filter type exposes a `COMBFRQ` knob with
+   no equivalent in this project's generic 4-param (`cutoff`/`resonance`/
+   `drive`/`stereo`) filter model — unconfirmed whether that's a real
+   5th parameter or a relabeling of an existing one, but a plausible
+   secondary contributor, not yet investigated.
 5. **3 of 16 FX types lack param schemas**: `FXSplit`/`FXSplit3`/`FXSplitMS`
    — structurally different (nested band-splitter containers, not a flat
-   `plainParams` dict), see §4. The other 13 are fully modeled.
+   `plainParams` dict), see §4. The other 13 are fully modeled. (Separate
+   from this: `FXRack0`/`1`/`2` — the 3 *parallel racks* each of these 16
+   types can sit in — are now all supported, as of 2026-07-29; don't
+   confuse "unmodeled FX type" with the now-fixed "unmodeled rack".)
 6. Several numeric ranges are marked `uncertain` in `schema.py` (e.g. unison
    voice count ceiling, LFO/Chorus/Delay times where only normalized values
    were observed without a confirmed Hz/ms curve) — these are *observed*
@@ -592,10 +937,66 @@ value):
   "source": [6, 0],                // [sourceId, subIndex] -- see below
   "plainParams": {
     "kParamAmount": 53.2,          // -100..100
-    "kParamBipolar": 1.0           // optional, bool-ish
-  }
+    "kParamBipolar": 1.0,          // optional, bool-ish
+    "kParamCurveIn": 7.06,         // optional, per-route curve shaping -- see below
+    "kParamMainCurveData": 1.0     // optional, alongside a hand-drawn "flex" curve -- see below
+  },
+  "flex": [ /* optional point-based curve, same shape as LFO curveData */ ]
 }
 ```
+
+**Per-route curve shaping (`kParamCurveIn`/`kParamMainCurveData`/`flex`),
+found live 2026-07-29** while comparing a recreated preset's MATRIX tab
+against the real one row-by-row after the user reported they "didn't have
+100% the same things" — a discovery this project had never looked for
+across two prior deep investigations of the same real preset's mod
+routes. Two independent mechanisms, both unmodeled and NOT generated by
+`serum-mcp`:
+
+- `kParamCurveIn`: a scalar, range `-100..100` observed (521/17,361 real
+  active `ModSlot`s surveyed, ~3%). Presumed to skew/bend the source-to-
+  amount response curve (by analogy with "curve" controls elsewhere), not
+  independently confirmed.
+- `kParamMainCurveData` + a `flex` array: a genuine hand-drawn point-based
+  curve (same `{curveVals, numPoints, xVals, yVals}` shape as LFO
+  `curveData`, §"LFOs" above) reshaping the response nonlinearly — e.g. a
+  real route observed with `xVals=[0, 0.625, 1.0]`, `yVals=[1.0, 0.37,
+  0.0]`, a deliberate S-curve/taper, not a straight line. 570/17,361 (3.3%)
+  and 647/17,361 (3.7%) respectively.
+
+Both are rare (~3-4% of real routes) but clearly deliberate when present,
+not incidental defaults. This is the SAME class of problem as LFO curve
+shapes (arbitrary hand-drawn point data, out of scope to generate
+generally) plus a smaller, more tractable scalar (`kParamCurveIn`) whose
+exact semantics aren't understood yet. `serum-mcp`'s `ModRouteSpec` has no
+fields for either — not modeled, not generated, and (like LFO curveData)
+`extract_spec` doesn't surface them either, so a route using a custom
+curve currently round-trips as if it were linear. Not pursued as a general
+feature this session (too little evidence for `kParamCurveIn`'s exact
+effect, and `flex` has the same arbitrary-curve-decoding difficulty as
+LFO shapes) — for a specific known preset with confirmed real values, a
+one-off `packer.unpack_file`/`pack_file` patch (same technique used for
+`SpectralOsc`, see §5 items 3/7) is the practical path today.
+
+**This "flex" curve system is not exclusive to mod routes**, found live
+2026-07-29 tracking down a persistent audible difference ("fuzzy/buzzy/
+high-pitched") a flat `plainParams`-only diff hadn't caught: individual
+**FX units** (`FXRack{n}.FX[i].flex`) and **`WTOsc` containers**
+(`Oscillator{i}.WTOsc{i}.flex`) carry their own, independent `flex` curves
+too, using the same `{curveVals, numPoints, xVals, yVals}` shape. On one
+real preset, a `FXDistortion` unit had a genuine deliberately-shaped
+2-segment saturation curve here — plausibly the actual source of the
+reported character, since a distortion unit's response curve directly
+shapes its harmonic/saturation output, more so than any single scalar
+param. This makes at least **four** independent contexts for this curve
+format found so far (LFO shape, per-mod-route response, per-FX-unit
+response, per-`WTOsc` — likely a general-purpose curve widget Serum reuses
+internally), none generated by `serum-mcp`, all requiring the same
+one-off-patch approach for now. A full recursive diff of the raw data tree
+(not just top-level `plainParams`) is what surfaced this — a flat
+per-module `plainParams` comparison, even an exhaustive one, doesn't see
+into nested containers like `WTOsc{i}`/`FX[i]`/`ModSlot{n}`'s own
+sub-keys.
 
 ### Destination side (confirmed)
 
@@ -618,9 +1019,18 @@ enum reads `kParamEnable=0, kParamVolume, kParamPan, kParamOctave,
 kParamPitch, kParamFine, kParamCoarsePit, ...`, which assigns `kParamVolume
 = 1`, matching the empirical result exactly. `schema.MOD_DEST_TARGETS`
 exposes the curated, generation-ready subset of this table (oscillator
-volume/pan/octave/pitch/fine/table_position/warp_amount; filter cutoff/
-resonance/drive; envelope attack/decay/sustain/release; LFO rate; macro
-value).
+volume/pan/octave/pitch/fine/table_position/warp_amount/warp_var2; filter
+cutoff/resonance/drive; envelope attack/decay/sustain/release; LFO rate;
+macro value; `Global.kParamVoiceAmp` as `global.voice_amp`, confirmed
+2026-07-29 against two independent real presets both using
+`key_track -> Global.kParamVoiceAmp`).
+
+Type-specific FX-internal params (anything other than `kParamWet`) live in
+a separate, deliberately narrower table, `schema.FX_EXTRA_MOD_DEST_PARAMS`
+— each `destModuleParamID` there is confirmed per-FX-type individually
+(e.g. `FXUtils.kParamBalance` = 4), not assumed to generalize to other FX
+types just because they share a param name. Addressed as `fx{i}.<suffix>`
+(e.g. `fx0.balance`), same naming convention as `fx{i}.wet`.
 
 FX destinations are a special case, handled outside `MOD_DEST_TARGETS`:
 an FX rack slot's `destModuleTypeString` is whichever FX type actually sits
@@ -636,61 +1046,92 @@ silent no-op). `preset/introspect.py::extract_spec` mirrors this on the
 read side, matching each `ModSlot` destination against the preset's own
 extracted `fx_chain` before falling back to the static table.
 
-### Source side (partially decoded)
+### Source side (decoded for every originally-scoped source)
 
-`source[0]` (the source ID) was decoded by clustering all mod routes across
-the same 626-preset sample by ID and looking for internally-consistent,
-correctly-sized blocks:
+`source[0]` (the source ID) was originally approached by clustering all mod
+routes across a 626-preset sample by ID, which cleanly resolved two
+contiguous blocks (LFO, Macro) but left everything else circumstantial —
+see "Superseded: statistical clustering" below. On 2026-07-29, two rounds
+of a **direct UI probe** closed out the rest: a real Serum 2 instance's own
+mod-matrix UI was used to wire up one route per known source by hand
+(`Source` column dropdown → pick a named source → any destination →
+nonzero amount → save), then the raw saved file was read to recover the
+exact `source[0]` integer. This is strictly stronger evidence than
+clustering (ground truth from the plugin itself, not inference from usage
+patterns) and resolved an ambiguity clustering had left genuinely unsettled
+(id 1 vs id 16 for Velocity, see below).
 
 | Source family | Source IDs | Evidence |
 |---|---|---|
-| LFO 1-10 | `6-15` | Contiguous 10-ID block. Consistent bipolar rate across the block (25-39% of routes bipolar — matches LFOs being a bipolar-capable source), and total usage strictly decreases from id 6 (895 routes, 447/626 presets) down to id 15 (18 routes, 15/626 presets) — matching the "reach for LFO1 first" convention visible everywhere else in the factory content (e.g. Macro 1 used far more than Macro 8). |
-| Macro 1-8 | `25-32` | Contiguous 8-ID block. Near-universal usage (544-586 of 626 presets per ID, i.e. 87-94%) — consistent with Serum's factory-content convention of wiring up all 8 macro knobs to something in almost every preset. Near-always unipolar (4-7% bipolar), consistent with macros being 0-100 knobs by convention. |
+| LFO 1-10 | `6-15` | Contiguous 10-ID block, statistical clustering (`observed`). Consistent bipolar rate across the block (25-39% of routes bipolar — matches LFOs being a bipolar-capable source), and total usage strictly decreases from id 6 (895 routes, 447/626 presets) down to id 15 (18 routes, 15/626 presets) — matching the "reach for LFO1 first" convention visible everywhere else in the factory content (e.g. Macro 1 used far more than Macro 8). |
+| Macro 1-8 | `25-32` | Contiguous 8-ID block, statistical clustering (`observed`). Near-universal usage (544-586 of 626 presets per ID, i.e. 87-94%) — consistent with Serum's factory-content convention of wiring up all 8 macro knobs to something in almost every preset. Near-always unipolar (4-7% bipolar), consistent with macros being 0-100 knobs by convention. |
+| Mod Wheel | `1` | Direct UI probe, `confirmed`. (Clustering had suspected id 1 might be Velocity instead — it's Mod Wheel.) |
+| Env 1-4 as a **source** (Serum UI: `Envelopes > Env 1`..`4`) | `2-5` | Direct UI probe, `confirmed` for all four (round 1 confirmed Env 1=2; round 2 confirmed Env 2/3/4=3/4/5, validating the contiguity guess round 1 had left unconfirmed). Distinct from routing something *into* an envelope (a destination, see above) — this is an envelope's own output used to modulate something else. |
+| Velocity (Serum UI: `Note > Velo`) | `16` | Direct UI probe, `confirmed`. Resolves the id-1-vs-16 ambiguity above in favor of 16. |
+| Key Track (Serum UI: `Note > Note#`) | `17` | Direct UI probe, `confirmed`. Immediately after Velocity, inside the `16-24` candidate range clustering had already flagged. |
+| Aftertouch | `18` | Direct UI probe, `confirmed`. Immediately after Key Track — this whole `16-19` run is one contiguous "Note" cluster. |
+| Poly Aftertouch | `19` | Direct UI probe, `confirmed`. |
+| Random 1 (Serum UI: `Note > NoteOn Rand1`) | `21` | Direct UI probe, `confirmed`. |
+| Random 2 (Serum UI: `Note > NoteOn Rand2`) | `22` | Direct UI probe, `confirmed`. Serum 2 has **three independent** per-note random sources, not one "Random/S&H" as this project had assumed pre-probe — see Random (Discrete) below. |
+| Pitch Bend | `33` | Direct UI probe, `confirmed`. Immediately after the Macro block (`25-32`) — a source-ID region clustering hadn't considered at all. |
+| Random (Discrete) (Serum UI: `Note > NoteOn Rand (Discrete)`) | `59` | Direct UI probe, `confirmed`. Inside the `34+` candidate range clustering had flagged, but far higher than the other two random sources — not contiguous with them. |
 
-Both are `observed`-confidence (statistical clustering, not cross-checked
-against Xfer's own source/docs the way the destination side was) but strong
-enough that `serum-mcp` generates and reads back routes for them (see
-`schema.MOD_SOURCE_IDS`, `generation/spec.py::ModRouteSpec`).
+Note: `20` and `23+` (within the probed `16-24` cluster) weren't assigned to
+anything in this project's original scope and remain unidentified — likely
+`Release Velo` or one of the voice-management sources mentioned below, but
+not probed.
 
-**Unresolved, but with a candidate hypothesis** (do NOT wire this into
-generation — it's below our confidence bar, documented so a future
-contributor doesn't start from zero): ids `1-5`, `16-24`, and `34+` remain
-undecoded. Two more rounds of investigation were tried and didn't clear the
-bar:
+All of the above are wired into `serum-mcp`, which generates and reads back
+routes for them (see `schema.MOD_SOURCE_IDS`, `generation/spec.py::ModRouteSpec`).
+**This closes out every source in this project's original gap list**
+(Envelope, Velocity, Mod Wheel, Aftertouch, Pitch Bend, Key Track,
+Random/S&H — all resolved, the last three via a discovery that Random is
+actually three independent sources).
 
-- *Binary string mining*: unlike `destModuleParamID`, no enum declaration or
-  control-tag JSON entry tying a specific source name (`Velocity`, `Mod
-  Wheel`, `Aftertouch`, `Pitch Bend`, `KeyTrack`, `Random` all appear as
-  literal UI strings in the binary) to a specific `ModSlot.source` integer
-  was found, despite targeted searches.
-- *destModuleParamName distribution per source ID*: looking at exactly
-  which parameter (not just which module type) each source ID most often
-  targets gives suggestive, but not conclusive, signal. For example: id `1`
-  most often targets `VoiceFilter.kParamFreq` and `Macro.kParamValue`; id
-  `16` most often targets `Env.kParamDecay`/`Env.kParamAttack` (envelope
-  *time* modulation is a classic velocity-sensitivity technique, which
-  would suggest id 16 = Velocity rather than id 1); id `23` targets
-  `Oscillator.kParamPan` disproportionately with a high bipolar rate (75%),
-  consistent with a per-voice Random source used for pan humanization. None
-  of this rises to the "contiguous block, internally consistent, matches a
-  known count" standard that closed the LFO/Macro case — it's circumstantial
-  at best, and in at least one place (id 16 vs id 1 for Velocity) two
-  plausible readings of the same data actively disagree with each other.
+**Genuinely out of original scope, still unresolved**: `subIndex`
+(`source[1]`, see below), and a handful of sources this project only
+learned existed by seeing Serum 2's real source picker rather than being
+part of the original gap list: `Release Velo`, `Active Voices`,
+`Voice Index`, `Voice Mod 1`/`Voice Mod 2` (all nested
+under `Note`, likely voice-management/polyphony-related, not in the
+original "Envelope/Velocity/Mod Wheel/Aftertouch/Pitch Bend/Key
+Track/Random" gap list this project started from) — none of these are
+decoded or wired in, but the direct-probe method below is proven to reach
+them quickly if/when they're needed.
 
-If you can resolve any of this further — a MIDI Learn export, a Serum
-factory-default XML/plist, an enum declaration in a newer plugin build, or
-just more presets that isolate a single source ID unambiguously (e.g. a
-preset where you, with the real Serum UI open, wire up exactly one known
-source and inspect the resulting file) — see `CONTRIBUTING.md`. The
-`(destModuleTypeString, destModuleParamID)` binary-string cross-validation
-technique from §2 is reusable if a similar debug enum for mod sources turns
-up in a future Serum build.
+**Method, for resolving what's left**: open Serum 2 on any preset, go to
+the MATRIX tab, pick an unresolved source from the `Source` column dropdown
+on an empty row, set any destination and a nonzero amount, save under a new
+name, then read the raw file (`serum_mcp.preset.packer.unpack_file(path).data["ModSlot0"]["source"]`,
+or whichever slot index the new row landed in — matrix rows correspond 1:1
+to `ModSlot0`, `ModSlot1`, ... in ascending index order, confirmed across
+multiple probes this session). Multiple sources can be probed in one file
+in one sitting (this project probed 8 at once) as long as each gets its own
+row — the row's position in the file, read in order, tells you which
+source produced which `source[0]`; the destination doesn't need to be
+distinct between rows, only the row order matters. This is faster and more
+conclusive than statistical clustering and doesn't require a large corpus
+of real-world presets — see `CONTRIBUTING.md`.
+
+**Superseded: statistical clustering** (kept for method-reuse value, e.g. if
+a future source can't be probed directly for some reason): before the
+direct probe, `destModuleParamName` distribution per source ID gave
+suggestive but not conclusive signal — id `1` most often targeted
+`VoiceFilter.kParamFreq` and `Macro.kParamValue`; id `16` most often
+targeted `Env.kParamDecay`/`Env.kParamAttack` (envelope *time* modulation is
+a classic velocity-sensitivity technique) — correctly predicting id 16 =
+Velocity, though it couldn't distinguish this from id 1 without the direct
+probe. Binary string mining (searching the plugin binary's debug strings for
+an enum tying source names to `ModSlot.source` integers, the technique that
+worked for the destination side) did not find one for sources despite
+targeted searches.
 
 `subIndex` (`source[1]`) is unresolved for every source family — it's 0 in
-the overwhelming majority of samples; a handful of source IDs (notably 6-9,
-inside the LFO block) show varied non-zero subIndex values correlated with
-other valid source IDs (16-32ish), suggestive of some kind of chained/
-secondary modulation, but this wasn't pinned down further either.
+the overwhelming majority of samples (including every route in the
+2026-07-29 probe session); a handful of source IDs (notably 6-9, inside the
+LFO block) show varied non-zero subIndex values correlated with other valid
+source IDs (16-32ish), suggestive of some kind of chained/secondary
+modulation, but this wasn't pinned down further either.
 
 ## 7. Wavetable file format
 
@@ -892,9 +1333,17 @@ SampleOsc1:
   observed here -- `kDistSoftClip`, `kAM_OSC`, `kPD_FILT1`, `kFM_NOISE`,
   `kFM_OSC2`, `kRM_OSC`, ... -- are all members of `WTOSC_PARAMS`'s
   already-established enum). A second warp lane (`kParamWarp2`/
-  `kParamWarpMenu2`/`kParamWarpVar2`) was observed on ~10 of 41 slots but
-  isn't exposed via `OscillatorSpec` (v1 only drives the primary lane, same
-  scope decision as `WTOsc`).
+  `kParamWarpMenu2`, plus a rarer, separate `kParamWarpVar2` of uncertain
+  meaning) exists on both engines. **For `WTOsc` this is now generatable**
+  (`OscillatorSpec.warp_mode2`/`warp_amount2`) — found live 2026-07-29 to
+  matter far more than "a rarely-used extra knob": a real preset's primary
+  oscillator used it to tame an otherwise-raw/digital `kFM_NOISE` warp with
+  a `kFilterLPF` second stage, and a recreation missing it sounded harshly
+  "8-bit" despite the primary warp matching exactly. Surveyed across all
+  886 real presets: 193 `WTOsc` slots use it (not the ~10/41 this note
+  originally estimated from a much smaller sample). `SampleOsc`'s own
+  second lane remains unwired — same v1 scope decision, lower observed
+  prevalence there, revisit if a `SampleOsc` case needs it.
 - **File format**: every `samplePathRelative` observed across the factory
   survey (32 distinct references checked) was `.flac`. `serum-mcp` only
   supports `.wav` (`preset/sample_library.py`'s `_SUPPORTED_EXTENSIONS`) --

@@ -7,19 +7,43 @@ expand or correct our understanding of it are just as valuable as code.
 ## Ways to help
 
 - **Fill in a documented gap.** `docs/PARAMETER_SCHEMA.md` §5 lists known
-  unknowns — the remaining mod matrix `source` IDs (Envelope/Velocity/Mod
-  Wheel/Aftertouch/Pitch Bend/Key Track/Random are still unresolved, though
-  LFO and Macro sources were decoded — see §6 for the method, which is
-  reusable), the filter cutoff Hz curve, unmodeled oscillator engines
+  unknowns — the mod matrix `source` IDs are now fully decoded for this
+  project's original scope (LFO/Macro via statistical clustering, plus
+  Velocity/Mod Wheel/Pitch Bend/Key Track/Aftertouch/Poly Aftertouch/
+  Env1-4-as-source/three independent Random sources via a fast direct-UI-
+  probe method — see §6 for both methods). What's left there is genuinely
+  out-of-scope extras this project only learned existed by seeing Serum
+  2's real source picker (`Release Velo`, voice-management sources) — low
+  priority unless a use case comes up. Mod matrix *destinations* have a
+  similar gap, found live 2026-07-29: a real preset's raw file had 27
+  active mod routes but only 11 were generatable/readable, because their
+  *destination* (not source) wasn't modeled — `Arp` params, a secondary
+  `WTOsc` warp control, `NoiseOsc.kParamColor`, non-`kParamWet` FX params,
+  `VoiceFilter.kParamWet`, and a couple of `Global`/`VoicePanel` params are
+  all real, observed destinations with zero `MOD_DEST_TARGETS` coverage —
+  see §5 item 1b. Multi-rack FX (`FXRack0`/`1`/`2`, up to 3 PARALLEL
+  chains) was a similar blind spot and got fixed the same session — see
+  §4 — a template for how to approach the destination gap too: find one
+  real preset that exercises the missing thing, read its raw CBOR
+  directly (not through `extract_spec`, which by definition can't surface
+  what it doesn't decode), and work out the encoding from there. Elsewhere:
+  the filter cutoff Hz curve, unmodeled oscillator engines
   (granular/multisample/spectral — `SampleOsc` is now modeled, see §8),
-  LFO/envelope curve shapes, and the 3 band-splitter FX types
-  (`FXSplit`/`FXSplit3`/`FXSplitMS`), which need a recursive FX schema
-  rather than a flat one. Any of these, backed by evidence (see "Evidence
-  standard" below), is welcome. The newly-modeled `SampleOsc` engine (§8)
+  LFO/envelope curve shapes (though the 4 named algorithmic LFO shapes —
+  S&H/Rossler/Lorenz/Path — are now modeled, see §4's LFO section; it's
+  specifically hand-drawn point curves that remain unmodeled), and the 3
+  band-splitter FX types (`FXSplit`/`FXSplit3`/`FXSplitMS`), which need a
+  recursive FX schema rather than a flat one. Any of these, backed by
+  evidence (see "Evidence standard" below), is welcome. The newly-modeled `SampleOsc` engine (§8)
   has been confirmed live (real `.wav` playback works despite every
   factory reference being `.flac`; pitch reference note is `C5`) and
   `introspect.py`/`describe_preset` now recognize it too — `.flac` support
-  remains the main open follow-up there.
+  remains the main open follow-up there. The arpeggiator (algorithmic
+  patterns and custom hand-drawn Pattern mode) has also since been added
+  and confirmed live — remaining unknowns there are `kParamRate`'s exact
+  meaning beyond "must not be too low for `Pattern`", the
+  `UpDown`/`DownUp`/`UpAndDown`/`DownAndUp` distinction, and Pattern mode's
+  per-note attribute-vector index 6 (see §4's arpeggiator subsection).
 - **Add parameter coverage.** More of Serum 2's ~2,600 VST3 parameters could
   be mapped into `src/serum_mcp/preset/schema.py` and exposed through
   `generation/spec.py`.
@@ -88,7 +112,9 @@ the file. It does **not** replace an actual load in Serum — only that
 proves a preset really works — but it catches the specific failure class
 this project has already been bitten by twice, automatically. If you're
 using Claude Code, the `.claude/skills/test-in-serum/` skill wraps this
-into a full pre-test checklist.
+into a full pre-test checklist. See `docs/REAL_SERUM_TESTING.md` for the
+running record of what's actually been confirmed live vs. what only
+passes the automated scan/unit tests.
 
 ## Pull requests
 

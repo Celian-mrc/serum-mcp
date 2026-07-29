@@ -205,6 +205,7 @@ def test_mod_route_round_trips_through_introspection(init_data):
         mod_routes=[
             ModRouteSpec(source="lfo0", destination="filter0.cutoff", amount=53.2, bipolar=True),
             ModRouteSpec(source="macro2", destination="oscillator0.pan", amount=-25.0),
+            ModRouteSpec(source="velocity", destination="env0.decay", amount=30.0),
         ],
     )
     data = apply_spec(init_data, spec)
@@ -218,6 +219,7 @@ def test_mod_route_round_trips_through_introspection(init_data):
     assert type(data["ModSlot0"]["plainParams"]["kParamBipolar"]) is float
 
     assert data["ModSlot1"]["source"] == [27, 0]  # macro2
+    assert data["ModSlot2"]["source"] == [16, 0]  # velocity
 
     extracted = extract_spec(data)
     routes = {r.destination: r for r in extracted.mod_routes}
@@ -225,6 +227,61 @@ def test_mod_route_round_trips_through_introspection(init_data):
     assert routes["filter0.cutoff"].amount == 53.2
     assert routes["oscillator0.pan"].source == "macro2"
     assert routes["oscillator0.pan"].amount == -25.0
+    assert routes["env0.decay"].source == "velocity"
+    assert routes["env0.decay"].amount == 30.0
+
+
+def test_mod_route_2026_07_29_probe_sources_round_trip(init_data):
+    """mod_wheel/pitch_bend/key_track/env0/random1/random2/random_discrete --
+    all confirmed live 2026-07-29 via direct probing of a real Serum 2
+    instance (see docs/PARAMETER_SCHEMA.md §6)."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[
+            ModRouteSpec(source="mod_wheel", destination="filter0.cutoff", amount=10.0),
+            ModRouteSpec(source="pitch_bend", destination="filter0.cutoff", amount=11.0),
+            ModRouteSpec(source="key_track", destination="filter0.cutoff", amount=12.0),
+            ModRouteSpec(source="env0", destination="filter0.cutoff", amount=13.0),
+            ModRouteSpec(source="random1", destination="filter0.cutoff", amount=14.0),
+            ModRouteSpec(source="random2", destination="filter0.cutoff", amount=15.0),
+            ModRouteSpec(source="random_discrete", destination="filter0.cutoff", amount=16.0),
+            ModRouteSpec(source="aftertouch", destination="filter0.cutoff", amount=17.0),
+            ModRouteSpec(source="poly_aftertouch", destination="filter0.cutoff", amount=18.0),
+            ModRouteSpec(source="env1", destination="filter0.cutoff", amount=19.0),
+            ModRouteSpec(source="env2", destination="filter0.cutoff", amount=20.0),
+            ModRouteSpec(source="env3", destination="filter0.cutoff", amount=21.0),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["ModSlot0"]["source"] == [1, 0]  # mod_wheel
+    assert data["ModSlot1"]["source"] == [33, 0]  # pitch_bend
+    assert data["ModSlot2"]["source"] == [17, 0]  # key_track
+    assert data["ModSlot3"]["source"] == [2, 0]  # env0
+    assert data["ModSlot4"]["source"] == [21, 0]  # random1
+    assert data["ModSlot5"]["source"] == [22, 0]  # random2
+    assert data["ModSlot6"]["source"] == [59, 0]  # random_discrete
+    assert data["ModSlot7"]["source"] == [18, 0]  # aftertouch
+    assert data["ModSlot8"]["source"] == [19, 0]  # poly_aftertouch
+    assert data["ModSlot9"]["source"] == [3, 0]  # env1
+    assert data["ModSlot10"]["source"] == [4, 0]  # env2
+    assert data["ModSlot11"]["source"] == [5, 0]  # env3
+
+    extracted = extract_spec(data)
+    sources = {r.amount: r.source for r in extracted.mod_routes}
+    assert sources[10.0] == "mod_wheel"
+    assert sources[11.0] == "pitch_bend"
+    assert sources[12.0] == "key_track"
+    assert sources[17.0] == "aftertouch"
+    assert sources[18.0] == "poly_aftertouch"
+    assert sources[19.0] == "env1"
+    assert sources[20.0] == "env2"
+    assert sources[21.0] == "env3"
+    assert sources[13.0] == "env0"
+    assert sources[14.0] == "random1"
+    assert sources[15.0] == "random2"
+    assert sources[16.0] == "random_discrete"
 
 
 def test_mod_routes_do_not_collide_with_existing_slots(init_data):
@@ -312,7 +369,9 @@ def test_unknown_mod_source_rejected(init_data):
     spec = PresetSpec(
         name="X",
         description="",
-        mod_routes=[ModRouteSpec(source="env0", destination="filter0.cutoff", amount=10.0)],
+        mod_routes=[
+            ModRouteSpec(source="release_velocity", destination="filter0.cutoff", amount=10.0)
+        ],
     )
     with pytest.raises(ValueError, match="unknown mod source"):
         apply_spec(init_data, spec)
@@ -417,6 +476,77 @@ def test_warp_mode_and_wtosc_mod_destinations(init_data):
     assert routes["oscillator0.warp_amount"].source == "macro0"
 
 
+def test_second_warp_lane_round_trips(init_data):
+    """warp_mode2/warp_amount2 -- a SECOND warp stage found live 2026-07-29:
+    a real preset's primary oscillator used kFM_NOISE (primary) then
+    kFilterLPF (secondary, taming it) -- missing this entirely made a
+    recreation sound harsh/'8-bit' despite the primary warp matching. Unset
+    (None) must not write kParamWarpMenu2 at all -- most oscillators only
+    use one warp lane."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(
+                enabled=True,
+                warp_mode="kFM_NOISE",
+                warp_amount=0.16,
+                warp_mode2="filter_lpf",
+                warp_amount2=0.56,
+            ),
+            OscillatorSpec(enabled=True),  # no second lane
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    wt0 = data["Oscillator0"]["WTOsc0"]["plainParams"]
+    assert wt0["kParamWarpMenu"] == "kFM_NOISE"
+    assert wt0["kParamWarp"] == 0.16
+    assert wt0["kParamWarpMenu2"] == "kFilterLPF"
+    assert wt0["kParamWarp2"] == 0.56
+    assert wt0["kParamXfadeMode"] == 1.0
+
+    wt1 = data["Oscillator1"]["WTOsc1"]["plainParams"]
+    assert "kParamWarpMenu2" not in wt1
+    assert "kParamWarp2" not in wt1
+
+    extracted = extract_spec(data)
+    assert extracted.oscillators[0].warp_mode2 == "filter_lpf"
+    assert extracted.oscillators[0].warp_amount2 == 0.56
+    assert extracted.oscillators[1].warp_mode2 is None
+
+
+def test_warp_var2_round_trips_and_is_a_mod_destination(init_data):
+    """kParamWarpVar2 -- a THIRD, separate warp-related float, distinct
+    from kParamWarp2. Found live 2026-07-29 as a real, previously-invisible
+    mod-matrix destination (lfo -> oscillator0.warp_var2) on the same real
+    preset's primary oscillator -- confirmed destModuleParamID=4."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(enabled=True, warp_var2=0.5),
+            OscillatorSpec(enabled=True),  # no warp_var2 at all
+        ],
+        mod_routes=[
+            ModRouteSpec(source="lfo0", destination="oscillator0.warp_var2", amount=-28.0)
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["Oscillator0"]["WTOsc0"]["plainParams"]["kParamWarpVar2"] == 0.5
+    assert "kParamWarpVar2" not in data["Oscillator1"]["WTOsc1"]["plainParams"]
+    assert data["ModSlot0"]["destModuleTypeString"] == "WTOsc"
+    assert data["ModSlot0"]["destModuleParamName"] == "kParamWarpVar2"
+    assert data["ModSlot0"]["destModuleParamID"] == 4
+
+    extracted = extract_spec(data)
+    assert extracted.oscillators[0].warp_var2 == 0.5
+    assert extracted.oscillators[1].warp_var2 is None
+    routes = {r.destination: r.source for r in extracted.mod_routes}
+    assert routes["oscillator0.warp_var2"] == "lfo0"
+
+
 def test_filter_stereo_env_hold_global_portamento(init_data):
     spec = PresetSpec(
         name="X",
@@ -437,6 +567,107 @@ def test_filter_stereo_env_hold_global_portamento(init_data):
     assert extracted.global_.portamento_time == 0.3
 
 
+def test_filter_var_key_track_wet_level_out_round_trip(init_data):
+    """kParamVar/kParamKeyTrack/kParamWet/kParamLevelOut -- documented in
+    schema.py but never wired into FilterSpec until found live 2026-07-29:
+    a real comb-filter preset (var=65, key_track=on) sounded harsh/aliased
+    when recreated with these left at 0/off, since 'Var' is comb spacing
+    for that filter type -- not a minor knob."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        filters=[
+            FilterSpec(
+                enabled=True,
+                type="comb",
+                var=65.0,
+                key_track=True,
+                wet=80.0,
+                level_out=0.6,
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    fp = data["VoiceFilter0"]["plainParams"]
+    assert fp["kParamVar"] == 65.0
+    assert fp["kParamKeyTrack"] == 1.0
+    assert type(fp["kParamKeyTrack"]) is float
+    assert fp["kParamWet"] == 80.0
+    assert fp["kParamLevelOut"] == 0.6
+
+    extracted = extract_spec(data)
+    assert extracted.filters[0].var == 65.0
+    assert extracted.filters[0].key_track is True
+    assert extracted.filters[0].wet == 80.0
+    assert extracted.filters[0].level_out == 0.6
+
+
+def test_filter_default_wet_omitted_not_written_explicitly(init_data):
+    """Same absent-means-100 pattern as FX units (see
+    test_extract_spec_treats_absent_fx_wet_as_100_regardless_of_type) --
+    confirmed live 2026-07-29 against UN_PLACES_PL_Dreams's real
+    VoiceFilter0/1, neither of which has a kParamWet key at all despite
+    both being fully wet. Writing it explicitly at 100.0 was the likely
+    remaining cause of a persistent fuzzy/buzzy character."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        filters=[FilterSpec(type="comb", var=65.0)],
+    )
+    data = apply_spec(init_data, spec)
+
+    fp = data["VoiceFilter0"]["plainParams"]
+    assert "kParamWet" not in fp
+
+    extracted = extract_spec(data)
+    assert extracted.filters[0].wet == 100.0
+
+
+def test_filter_default_level_out_omitted_not_written_explicitly(init_data):
+    """Same presence-forces-the-DSP-stage pattern as kParamWet (see
+    test_filter_default_wet_omitted_not_written_explicitly) -- found live
+    2026-07-29 chasing a loudness (not tone) regression that survived the
+    wet fix: UN_PLACES_PL_Dreams's real VoiceFilter0 has no kParamLevelOut
+    key at all. Writing the schema default (0.5) explicitly measurably
+    quieted that filter's output vs leaving it untouched."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        filters=[FilterSpec(type="comb", var=65.0)],
+    )
+    data = apply_spec(init_data, spec)
+
+    fp = data["VoiceFilter0"]["plainParams"]
+    assert "kParamLevelOut" not in fp
+
+    extracted = extract_spec(data)
+    assert extracted.filters[0].level_out == 0.5
+
+
+def test_filter_default_drive_and_stereo_omitted_not_written_explicitly(init_data):
+    """Same presence-forces-the-DSP-stage pattern as kParamWet/kParamLevelOut
+    (see the two tests above) -- found live 2026-07-29 continuing the same
+    loudness-regression hunt: UN_PLACES_PL_Dreams's real VoiceFilter0/1 never
+    have kParamDrive or kParamStereo at all. A real-corpus survey found
+    kParamStereo absent in 1162/1300 (89%) real filters -- the strongest skew
+    of any VoiceFilter param besides wet/level_out."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        filters=[FilterSpec(type="comb", var=65.0)],
+    )
+    data = apply_spec(init_data, spec)
+
+    fp = data["VoiceFilter0"]["plainParams"]
+    assert "kParamDrive" not in fp
+    assert "kParamStereo" not in fp
+
+    extracted = extract_spec(data)
+    assert extracted.filters[0].drive == 0.0
+    assert extracted.filters[0].stereo == 50.0
+
+
 def test_oscillator_semitone_round_trips(init_data):
     spec = PresetSpec(
         name="X",
@@ -449,6 +680,70 @@ def test_oscillator_semitone_round_trips(init_data):
 
     extracted = extract_spec(data)
     assert extracted.oscillators[0].semitone == -7.0
+
+
+def test_oscillator_fine_round_trips(init_data):
+    """kParamFine -- cents-level micro-tuning, distinct from both octave and
+    semitone. Found live 2026-07-29 comparing a recreation's Osc A/B
+    byte-for-byte against a real preset: both used this (-3/+4 cents) and
+    it had never been exposed as a settable base value, only as a mod
+    destination."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, fine=-3.08)],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["Oscillator0"]["plainParams"]["kParamFine"] == -3.08
+
+    extracted = extract_spec(data)
+    assert extracted.oscillators[0].fine == -3.08
+
+
+def test_envelope_curve_shapes_round_trip(init_data):
+    """kParamCurve1/2/3 -- found live 2026-07-29, present on 97% of all
+    real envelopes surveyed (3242/3333) -- effectively always set, not an
+    optional/rare field."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        envelopes=[
+            EnvelopeSpec(
+                attack=0.01, decay=1, sustain=1, release=1,
+                attack_curve=40.0, decay_curve=60.0, release_curve=58.1,
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    ep = data["Env0"]["plainParams"]
+    assert ep["kParamCurve1"] == 40.0
+    assert ep["kParamCurve2"] == 60.0
+    assert ep["kParamCurve3"] == 58.1
+
+    extracted = extract_spec(data)
+    assert extracted.envelopes[0].attack_curve == 40.0
+    assert extracted.envelopes[0].decay_curve == 60.0
+    assert extracted.envelopes[0].release_curve == 58.1
+
+
+def test_global_limit_same_note_polyphony_round_trips(init_data):
+    """kParamLimitSameNotePolyphony -- found live 2026-07-29, present on
+    39% of real Global0 slots surveyed (always True when present)."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        **{"global": GlobalSpec(limit_same_note_polyphony=True)},
+    )
+    data = apply_spec(init_data, spec)
+
+    gp = data["Global0"]["plainParams"]
+    assert gp["kParamLimitSameNotePolyphony"] == 1.0
+    assert type(gp["kParamLimitSameNotePolyphony"]) is float
+
+    extracted = extract_spec(data)
+    assert extracted.global_.limit_same_note_polyphony is True
 
 
 def test_extract_spec_skips_unmodeled_fx_routing_types_without_crashing(init_data):
@@ -468,6 +763,25 @@ def test_extract_spec_skips_unmodeled_fx_routing_types_without_crashing(init_dat
 
     assert [fx.type for fx in spec.fx_chain] == ["FXEQ", "FXDelay"]
     assert count_unmodeled_fx_units(data) == 1
+
+
+def test_extract_spec_treats_absent_fx_wet_as_100_regardless_of_type(init_data):
+    """Found live 2026-07-29: kParamWet absent means fully wet (100.0) for
+    every FX type -- a 100% consistent pattern, not per-type. extract_spec
+    used to fall back to each FX_PARAMS type's own schema default (e.g.
+    FXDelay's 30.0, only what's typically OBSERVED when present) instead,
+    silently misreporting untouched wet knobs on round-trip."""
+    data = copy.deepcopy(init_data)
+    data["FXRack0"] = {
+        "FX": [
+            {"FXDelay": {"plainParams": {"kParamFeedback": 10.0}}, "type": 4},
+        ]
+    }
+
+    spec = extract_spec(data)
+
+    assert spec.fx_chain[0].type == "FXDelay"
+    assert spec.fx_chain[0].wet == 100.0
 
 
 def test_count_unmodeled_fx_units_zero_for_a_normal_preset(init_data):
@@ -703,6 +1017,79 @@ def test_lfo_extras_and_poly_count(init_data):
     assert extracted.global_.poly_count == 4.0
 
 
+def test_lfo_shape_round_trips(init_data):
+    """kParamType -- named algorithmic LFO shapes (random_sh/rossler/lorenz/
+    path), found live 2026-07-29 diagnosing why a recreated preset sounded
+    nothing like the real one (its busiest LFO was Sample & Hold, not a
+    plain curve). Unset (None) must stay absent from plainParams -- it's a
+    real, common state (plain/curve-drawn LFO), not a value to default."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        lfos=[
+            LfoSpec(rate=100.0, shape="random_sh"),
+            LfoSpec(rate=10.0, shape="rossler"),
+            LfoSpec(rate=5.0),  # unset -- must not write kParamType at all
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["LFO0"]["plainParams"]["kParamType"] == "RandomSH"
+    assert data["LFO1"]["plainParams"]["kParamType"] == "Rossler"
+    assert "kParamType" not in data["LFO2"]["plainParams"]
+
+    extracted = extract_spec(data)
+    assert extracted.lfos[0].shape == "random_sh"
+    assert extracted.lfos[1].shape == "rossler"
+    assert extracted.lfos[2].shape is None
+
+
+def test_lfo_mono_and_swing_round_trip(init_data):
+    """kParamMono -- found live 2026-07-29 diagnosing the same recreated
+    preset: a real fast LFO stayed visibly moving even with no note held
+    (kParamMono=1.0), while the recreation's LFO appeared frozen -- a
+    per-voice (non-mono) LFO restarts its phase at every note-on, so under
+    a fast arpeggiator it barely completes any cycle before being reset."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        lfos=[LfoSpec(rate=100.0, mono=True, swing=1.0)],
+    )
+    data = apply_spec(init_data, spec)
+
+    lfo0 = data["LFO0"]["plainParams"]
+    assert lfo0["kParamMono"] == 1.0
+    assert type(lfo0["kParamMono"]) is float
+    assert lfo0["kParamSwing"] == 1.0
+
+    extracted = extract_spec(data)
+    assert extracted.lfos[0].mono is True
+    assert extracted.lfos[0].swing == 1.0
+
+
+def test_lfo_dotted_triplets_rate10x_round_trip(init_data):
+    """kParamDotted/kParamTriplets/kParamRate10x -- found live 2026-07-29
+    diffing every module's raw plainParams against a real preset. dotted/
+    triplets mirror the arpeggiator's identically-named fields; rate10x is
+    LFO-specific, presumed a x10 multiplier."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        lfos=[LfoSpec(rate=0.1, shape="rossler", dotted=True, triplets=True, rate10x=True)],
+    )
+    data = apply_spec(init_data, spec)
+
+    lfo0 = data["LFO0"]["plainParams"]
+    assert lfo0["kParamDotted"] == 1.0
+    assert lfo0["kParamTriplets"] == 1.0
+    assert lfo0["kParamRate10x"] == 1.0
+
+    extracted = extract_spec(data)
+    assert extracted.lfos[0].dotted is True
+    assert extracted.lfos[0].triplets is True
+    assert extracted.lfos[0].rate10x is True
+
+
 def test_fxeq_can_be_generated(init_data):
     """Regression test: FXEQ has no kParamWet, but _build_fx_entry used to
     force one into every FX type's plainParams unconditionally, so FXEQ
@@ -752,6 +1139,107 @@ def test_fx_wet_and_lfo_macro_mod_destinations(init_data):
     assert routes["fx0.wet"] == "macro0"
     assert routes["lfo1.rate"] == "lfo0"
     assert routes["macro0.value"] == "macro1"
+
+
+def test_fx_chain_across_multiple_racks(init_data):
+    """Serum can run up to 3 FX racks in PARALLEL -- found live 2026-07-29
+    in a real Unmute preset with a second, independent chain (incl. a
+    reverb and a bode shifter) this project had never read or written
+    before. destModuleID for an FX unit is rack*100 + position-within-rack
+    (confirmed against that real preset's raw ModSlot data)."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        fx_chain=[
+            FxUnitSpec(type="FXComp", wet=100.0),  # rack 0, position 0
+            FxUnitSpec(type="FXEQ", wet=100.0),  # rack 0, position 1
+            FxUnitSpec(type="FXReverb", wet=25.0, rack=1),  # rack 1, position 0
+            FxUnitSpec(type="FXDelay", wet=30.0, rack=1),  # rack 1, position 1
+        ],
+        mod_routes=[
+            ModRouteSpec(source="macro0", destination="fx0.wet", amount=10.0),  # FXComp, rack0
+            ModRouteSpec(source="macro1", destination="fx2.wet", amount=20.0),  # FXReverb, rack1
+            ModRouteSpec(source="macro2", destination="fx3.wet", amount=30.0),  # FXDelay, rack1
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert [fx["type"] for fx in data["FXRack0"]["FX"]] == [5, 7]  # FXComp, FXEQ
+    assert [fx["type"] for fx in data["FXRack1"]["FX"]] == [6, 4]  # FXReverb, FXDelay
+
+    # fx0 (FXComp, rack0 pos0) -> destModuleID 0; fx2 (FXReverb, rack1 pos0)
+    # -> destModuleID 100; fx3 (FXDelay, rack1 pos1) -> destModuleID 101.
+    dest_by_source = {
+        tuple(v["source"]): (v["destModuleTypeString"], v["destModuleID"])
+        for k, v in data.items()
+        if isinstance(k, str) and k.startswith("ModSlot") and v.get("source")
+    }
+    assert dest_by_source[(25, 0)] == ("FXComp", 0)  # macro0
+    assert dest_by_source[(26, 0)] == ("FXReverb", 100)  # macro1
+    assert dest_by_source[(27, 0)] == ("FXDelay", 101)  # macro2
+
+    extracted = extract_spec(data)
+    assert [(fx.type, fx.rack) for fx in extracted.fx_chain] == [
+        ("FXComp", 0),
+        ("FXEQ", 0),
+        ("FXReverb", 1),
+        ("FXDelay", 1),
+    ]
+    routes = {r.destination: r.source for r in extracted.mod_routes}
+    assert routes["fx0.wet"] == "macro0"
+    assert routes["fx2.wet"] == "macro1"
+    assert routes["fx3.wet"] == "macro2"
+
+
+def test_global_voice_amp_and_fx_balance_mod_destinations(init_data):
+    """Global.kParamVoiceAmp and FXUtils.kParamBalance -- found live
+    2026-07-29 recreating two different real Unmute presets (both used
+    key_track -> Global.kParamVoiceAmp; one also used lfo -> FXUtils.
+    kParamBalance), the last 2 of Dreams's 14 real mod routes this project
+    couldn't reproduce until now (14/14 after this fix)."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        fx_chain=[FxUnitSpec(type="FXUtils", wet=100.0)],
+        mod_routes=[
+            ModRouteSpec(source="key_track", destination="global.voice_amp", amount=-51.9),
+            ModRouteSpec(source="lfo2", destination="fx0.balance", amount=39.7),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["ModSlot0"]["destModuleTypeString"] == "Global"
+    assert data["ModSlot0"]["destModuleID"] == 0
+    assert data["ModSlot0"]["destModuleParamName"] == "kParamVoiceAmp"
+    assert data["ModSlot0"]["destModuleParamID"] == 2
+
+    assert data["ModSlot1"]["destModuleTypeString"] == "FXUtils"
+    assert data["ModSlot1"]["destModuleParamName"] == "kParamBalance"
+    assert data["ModSlot1"]["destModuleParamID"] == 4
+
+    extracted = extract_spec(data)
+    routes = {r.destination: r.source for r in extracted.mod_routes}
+    assert routes["global.voice_amp"] == "key_track"
+    assert routes["fx0.balance"] == "lfo2"
+
+
+def test_fx_chain_edit_only_touches_racks_present(init_data):
+    """A rack with zero entries in spec.fx_chain must be left untouched --
+    most callers don't know rack 1/2 exist, so an edit that only mentions
+    rack 0 must not silently wipe a real rack-1 chain that was already
+    there."""
+    init_data["FXRack1"] = {
+        "FX": [{"type": 6, "kUIParamMixOrGain": 0.0, "FXReverb": {"plainParams": {}}}]
+    }
+    spec = PresetSpec(
+        name="X",
+        description="",
+        fx_chain=[FxUnitSpec(type="FXComp", wet=100.0)],  # rack 0 only
+    )
+    data = apply_spec(init_data, spec)
+
+    assert [fx["type"] for fx in data["FXRack0"]["FX"]] == [5]
+    assert [fx["type"] for fx in data["FXRack1"]["FX"]] == [6]  # untouched
 
 
 def test_fx_wet_mod_destination_errors(init_data):

@@ -12,6 +12,11 @@ wheels/
 # Reference clones used for research only, not part of this project
 .refs/
 
+# Real-Serum UI screenshots taken during live debugging sessions -- kept
+# locally as visual reference (see reference/serum_ui_screenshots/README.md),
+# not part of the project's source/docs.
+reference/
+
 # Claude Code local project state (settings.local.json, etc.) -- but keep
 # project skills, they're shared tooling worth versioning with the repo.
 .claude/*

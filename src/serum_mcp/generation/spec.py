@@ -52,6 +52,17 @@ class OscillatorSpec(BaseModel):
         "correct a mismatch (e.g. two layers a tritone apart) rather than assuming they "
         "already agree.",
     )
+    fine: float = Field(
+        0.0,
+        ge=-80.0,
+        le=80.0,
+        description="cents (approx.), independent of both octave and semitone -- a "
+        "smaller-than-a-semitone micro-tuning control, the same 'Coarse + Fine' pattern "
+        "as most synths. Found live 2026-07-29: a real preset used this on 2 of its "
+        "active oscillators (-3/+4 cents) for subtle detuning/beating between layers "
+        "that this project had never exposed as a settable base value (only as a mod "
+        "destination, oscillator{i}.fine).",
+    )
     volume: float = Field(0.75, ge=0.0, le=1.0, description="0=silent, 1=unity gain")
     pan: float = Field(0.0, ge=-50.0, le=50.0)
     unison: float = Field(
@@ -180,6 +191,34 @@ class OscillatorSpec(BaseModel):
         "fm",
         description=f"slots 0-2 only, one of: {', '.join(sorted(SIMPLE_WARP_MODES))}",
     )
+    warp_amount2: float = Field(
+        0.0, ge=0.0, le=1.0, description="amount for the SECOND warp lane, slots 0-2 only "
+        "-- see warp_mode2"
+    )
+    warp_mode2: str | None = Field(
+        None,
+        description=(
+            "slots 0-2 only, one of the same values as warp_mode, or None (default) for "
+            "no second warp lane at all -- most oscillators only use one. A SECOND, "
+            "independent warp stage applied after the first (e.g. warp_mode='fm' for an "
+            "FM character, THEN warp_mode2='filter_lpf' to tame/soften it) -- found live "
+            "2026-07-29: a real preset's primary oscillator used exactly this pattern "
+            "(kFM_NOISE then kFilterLPF at 56%), and a recreation missing the second lane "
+            "sounded harsh/aliased/'8-bit' despite the primary warp matching. If a "
+            "request implies a raw/digital/FM/noise character should still sound musical "
+            "rather than harsh, consider pairing it with warp_mode2='filter_lpf' or "
+            "'filter_hpf' to shape it, the same way real content commonly does."
+        ),
+    )
+    warp_var2: float | None = Field(
+        None,
+        ge=0.0,
+        le=1.0,
+        description="slots 0-2 only. A rarer, distinct third warp-related control -- not "
+        "the same as warp_amount2. Uncertain exact role (found live 2026-07-29 only as "
+        "a mod-matrix destination target, not independently understood); leave unset "
+        "unless specifically matching a real reference preset's value for this field.",
+    )
     noise_type: str = Field(
         "White", description="slot 3 (Noise) only, one of: White, Pink, Brown, Geiger"
     )
@@ -207,6 +246,33 @@ class FilterSpec(BaseModel):
         "VoiceFilter's per-channel processing. Values away from 50 in either direction "
         "shift the balance.",
     )
+    var: float = Field(
+        0.0,
+        ge=0.0,
+        le=100.0,
+        description="the 'Var' knob -- meaning changes per filter TYPE (e.g. comb "
+        "spacing for comb filters, formant blend for formant filters). Found live "
+        "2026-07-29: for `type='comb'` (or any DistComb/RMT-style raw type), this is a "
+        "MAJOR contributor to the filter's character, not a minor tweak -- a real comb "
+        "preset with var=65 sounded harsh/aliased/'8-bit' when this was left at the 0 "
+        "default. Check a real reference preset's value for this filter type rather "
+        "than assuming 0 is fine.",
+    )
+    key_track: bool = Field(
+        False, description="cutoff tracks the played note's pitch (higher notes = brighter)"
+    )
+    wet: float = Field(
+        100.0,
+        ge=0.0,
+        le=100.0,
+        description="this filter's own dry/wet mix -- distinct from the fx_chain's FX "
+        "wet knobs. Most filter uses want fully wet (the default); a low value "
+        "approaches an all-pass/bypass character while keeping resonance/drive coloring "
+        "subtle.",
+    )
+    level_out: float = Field(
+        0.5, ge=0.0, le=1.0, description="output level trim applied after the filter"
+    )
 
 
 class EnvelopeSpec(BaseModel):
@@ -215,6 +281,23 @@ class EnvelopeSpec(BaseModel):
     decay: float = Field(1.0, ge=0.0, le=32.0, description="seconds")
     sustain: float = Field(1.0, ge=0.0, le=1.0)
     release: float = Field(0.015, ge=0.0, le=32.0, description="seconds")
+    attack_curve: float = Field(
+        50.0,
+        ge=0.0,
+        le=100.0,
+        description="shape (linear/exponential/logarithmic-ish) of the attack ramp, "
+        "0-100. Found live 2026-07-29 present on 97% of all real envelopes surveyed "
+        "(3242/3333) -- effectively always set, not a rare/optional field, default "
+        "~50 is by far the most common real value. Segment mapping (attack/decay/"
+        "release, matching kParamCurve1/2/3's declaration order) is inferred, not "
+        "independently confirmed.",
+    )
+    decay_curve: float = Field(
+        66.6, ge=0.0, le=100.0, description="shape of the decay ramp, 0-100 -- see attack_curve"
+    )
+    release_curve: float = Field(
+        66.6, ge=0.0, le=100.0, description="shape of the release ramp, 0-100 -- see attack_curve"
+    )
 
 
 class LfoSpec(BaseModel):
@@ -232,6 +315,59 @@ class LfoSpec(BaseModel):
     smooth: float = Field(
         0.0, ge=0.0, le=100.0, description="% lag smoothing, higher = less steppy/more glidey"
     )
+    shape: str | None = Field(
+        None,
+        description=(
+            "one of: random_sh, rossler, lorenz, path -- named algorithmic LFO shapes "
+            "(chaotic attractors / randomization), NOT a plain sine/triangle/square/saw "
+            "(those are stored as hand-drawn curve data this project can't generate yet, "
+            "so leave this unset for a normal-shaped LFO -- unset keeps whatever curve "
+            "the base preset already has, it does NOT mean 'off'). random_sh ('S&H' in "
+            "Serum's UI) is a stepped-random hold, good for glitchy/robotic movement; "
+            "rossler/lorenz are smooth-but-unpredictable organic chaotic modulation, "
+            "good for 'evolving'/'alive' textures; path is unconfirmed in character. "
+            "NOT yet confirmed live for generation (only confirmed reading real files) "
+            "-- treat as experimental until tested."
+        ),
+    )
+    mono: bool = Field(
+        False,
+        description="a single shared LFO instance running continuously, independent of "
+        "note-on events, instead of a per-voice LFO that restarts its phase at every "
+        "note-on. Found live 2026-07-29: matters a lot for a FAST lfo under a fast "
+        "arpeggiator/sequencer -- a per-voice LFO barely completes any of its cycle "
+        "before being reset by the next note, which can read as choppy/'too fast' and "
+        "'frozen when nothing is playing'; mono=True keeps it running and visibly "
+        "moving regardless of note activity, closer to a genuinely independent, "
+        "continuously-evolving modulation source. Use for a fast/busy LFO (e.g. "
+        "shape='random_sh') paired with a fast arp/sequence, where the LFO is meant to "
+        "feel alive on its own rather than reset in lockstep with every note.",
+    )
+    swing: float = Field(
+        0.0,
+        ge=0.0,
+        le=1.0,
+        description="shuffle/swing amount for a stepped LFO (e.g. shape='random_sh'). "
+        "Only ever observed at 1.0 in real content -- uncertain exactly what "
+        "intermediate values do; leave at 0 unless specifically asked for a swung/"
+        "shuffled feel.",
+    )
+    dotted: bool = Field(
+        False,
+        description="dotted-rhythm timing for the LFO's rate, mirroring the "
+        "arpeggiator's identically-named field. Found live 2026-07-29, present on 16% "
+        "of real LFOs surveyed.",
+    )
+    triplets: bool = Field(
+        False, description="triplet timing for the LFO's rate -- see dotted."
+    )
+    rate10x: bool = Field(
+        False,
+        description="presumed x10 rate multiplier (not independently confirmed). Found "
+        "live 2026-07-29 on real chaotic-shape LFOs (rossler/lorenz) with a very low "
+        "base rate -- may matter for whether a slow chaos LFO actually reads as "
+        "'moving' at a musically useful speed.",
+    )
 
 
 class MacroSpec(BaseModel):
@@ -243,6 +379,19 @@ class FxUnitSpec(BaseModel):
     type: str = Field(description="one of the FX_TYPE_IDS names, e.g. 'FXReverb'")
     wet: float = Field(50.0, ge=0.0, le=100.0)
     params: dict[str, float | str] = Field(default_factory=dict)
+    rack: int = Field(
+        0,
+        ge=0,
+        le=2,
+        description="which of Serum's 3 PARALLEL fx racks this unit sits in. 0 is what "
+        "nearly every preset uses (a single serial chain) -- only set 1 or 2 for a "
+        "second/third independent signal path that processes in parallel with rack 0, "
+        "not after it (e.g. a dry chain in rack 0 and a separate wet/send chain in rack "
+        "1). Units within the same rack still process in list order. Found live "
+        "2026-07-29 in a real Unmute preset (a second rack with its own EQ/comp/reverb/"
+        "bode-shifter running alongside rack 0) -- this project had never read or "
+        "written anything but rack 0 before that.",
+    )
 
 
 class GlobalSpec(BaseModel):
@@ -252,21 +401,45 @@ class GlobalSpec(BaseModel):
         0.0, ge=0.0, le=3.0, description="glide time between notes, seconds"
     )
     poly_count: float = Field(8.0, ge=1.0, le=32.0, description="max simultaneous voices")
+    limit_same_note_polyphony: bool = Field(
+        False,
+        description="limit voice-stacking when the SAME note is retriggered rapidly (e.g. "
+        "under a fast arp/sequence) instead of letting overlapping voices for one note "
+        "pile up. Found live 2026-07-29, present on 39% of real presets surveyed.",
+    )
 
 
 class ModRouteSpec(BaseModel):
     """One mod-matrix route: ``source`` modulates ``destination`` by ``amount``.
 
-    Only two source families are currently supported -- ``lfo0``..``lfo9``
-    and ``macro0``..``macro7`` -- and only the destinations enumerated in
-    ``preset.schema.MOD_DEST_TARGETS`` (oscillator volume/pan/octave/pitch/
-    fine, filter cutoff/resonance/drive, envelope attack/decay/sustain/
-    release). Other mod sources (envelopes, velocity, mod wheel, aftertouch,
-    ...) exist in Serum but their internal source IDs are not decoded yet --
-    see docs/PARAMETER_SCHEMA.md.
+    Supported sources -- ``lfo0``..``lfo9``, ``macro0``..``macro7``,
+    ``velocity``, ``mod_wheel``, ``pitch_bend``, ``key_track`` (note number),
+    ``aftertouch``, ``poly_aftertouch``, ``env0``..``env3`` (an envelope's
+    own output used as a source, distinct from routing something INTO that
+    envelope), and three independent per-note random sources (``random1``,
+    ``random2``, ``random_discrete``) -- routed to the destinations
+    enumerated in ``preset.schema.MOD_DEST_TARGETS`` (oscillator volume/pan/
+    octave/pitch/fine, filter cutoff/resonance/drive, envelope attack/decay/
+    sustain/release). ``velocity`` is a good fit for envelope attack/decay/
+    release (classic velocity-sensitivity) or filter cutoff (velocity-
+    sensitive brightness); ``key_track`` for filter cutoff that opens up on
+    higher notes; ``aftertouch``/``poly_aftertouch`` for post-note-on
+    expressive control (e.g. pressure adding vibrato or opening the filter);
+    ``random1``/``random2``/``random_discrete`` for per-note humanization
+    (e.g. small pan or pitch variation) -- all confirmed live 2026-07-29 via
+    direct probing of a real Serum 2 instance. This covers every mod source
+    this project originally set out to decode; a few more exist in Serum
+    (release velocity, per-voice sources) but weren't part of that scope and
+    aren't decoded -- see docs/PARAMETER_SCHEMA.md §6.
     """
 
-    source: str = Field(description="'lfo0'..'lfo9' or 'macro0'..'macro7'")
+    source: str = Field(
+        description=(
+            "'lfo0'..'lfo9', 'macro0'..'macro7', 'velocity', 'mod_wheel', "
+            "'pitch_bend', 'key_track', 'aftertouch', 'poly_aftertouch', "
+            "'env0'..'env3', 'random1', 'random2', or 'random_discrete'"
+        )
+    )
     destination: str = Field(description="e.g. 'filter0.cutoff', 'oscillator0.pitch', 'env0.decay'")
     amount: float = Field(0.0, ge=-100.0, le=100.0)
     bipolar: bool = False
@@ -407,12 +580,18 @@ class PresetSpec(BaseModel):
     fx_chain: list[FxUnitSpec] = Field(
         default_factory=list,
         max_length=32,
-        description="effects, in order, on FX rack 1. Cap raised from an earlier 12 after "
-        "finding real third-party presets with up to 19 flattened units (their actual FX "
-        "racks use parallel/multiband routing this project doesn't model yet -- see "
-        "docs/PARAMETER_SCHEMA.md -- so the flat count runs higher than a simple serial "
-        "chain would suggest). This is a technical ceiling, not a recommendation: most "
-        "good presets use far fewer, see server.py's generation guidance.",
+        description="effects, across all 3 of Serum's fx racks -- see FxUnitSpec.rack. "
+        "Almost always just rack 0 (a single serial chain); only use rack 1/2 for a "
+        "genuinely separate PARALLEL signal path. Editing an existing preset: only the "
+        "racks actually represented among this list's entries get replaced -- a rack "
+        "with zero entries here is left untouched, so you don't need to know about "
+        "(or accidentally wipe) a rack you didn't intend to touch. Mod routes address "
+        "entries by their position in THIS flat list ('fx0.wet' = fx_chain[0]), "
+        "regardless of which rack they're in. Cap raised from an earlier 12 after "
+        "finding real third-party presets with up to 19 units in one rack; a preset "
+        "using multiple racks can have more total units than that across all of them. "
+        "This is a technical ceiling, not a recommendation: most good presets use far "
+        "fewer, see server.py's generation guidance.",
     )
     mod_routes: list[ModRouteSpec] = Field(
         default_factory=list,

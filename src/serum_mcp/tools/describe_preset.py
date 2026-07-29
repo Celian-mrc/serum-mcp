@@ -25,6 +25,7 @@ def describe_preset(preset_path: str) -> str:
         state = "ON " if osc.enabled else "off"
         common = f"octave={osc.octave:+.0f}  volume={osc.volume:.2f}  pan={osc.pan:+.0f}"
         if i in (0, 1, 2):
+            warp2 = f"  warp2={osc.warp_mode2}({osc.warp_amount2:.2f})" if osc.warp_mode2 else ""
             if osc.sample_playback_source:
                 loop = (
                     f"  loop={osc.sample_loop}"
@@ -34,12 +35,12 @@ def describe_preset(preset_path: str) -> str:
                 )
                 extra = (
                     f"sample={osc.sample_playback_source}  "
-                    f"warp={osc.warp_mode}({osc.warp_amount:.2f}){loop}"
+                    f"warp={osc.warp_mode}({osc.warp_amount:.2f}){warp2}{loop}"
                 )
             else:
                 extra = (
                     f"wavetable={osc.wavetable}  table_pos={osc.table_position:.1f}  "
-                    f"warp={osc.warp_mode}({osc.warp_amount:.2f})"
+                    f"warp={osc.warp_mode}({osc.warp_amount:.2f}){warp2}"
                 )
             if osc.unison > 1:
                 extra += f"  unison={osc.unison:.0f}  detune={osc.detune:.2f}"
@@ -53,9 +54,11 @@ def describe_preset(preset_path: str) -> str:
     for i, flt in enumerate(spec.filters, start=1):
         state = "ON " if flt.enabled else "off"
         stereo = f"  stereo={flt.stereo:.0f}%" if flt.stereo else ""
+        var = f"  var={flt.var:.0f}%" if flt.var else ""
+        key_track = "  key_track" if flt.key_track else ""
         lines.append(
             f"Filter {i}: {state}  type={flt.type}  cutoff={flt.cutoff:.2f}  "
-            f"resonance={flt.resonance:.0f}%  drive={flt.drive:.0f}%{stereo}"
+            f"resonance={flt.resonance:.0f}%  drive={flt.drive:.0f}%{stereo}{var}{key_track}"
         )
 
     lines.append("")
@@ -67,14 +70,20 @@ def describe_preset(preset_path: str) -> str:
         )
 
     active_lfos = [
-        (i, lfo) for i, lfo in enumerate(spec.lfos, start=1) if lfo.rate or lfo.mode != "Free"
+        (i, lfo)
+        for i, lfo in enumerate(spec.lfos, start=1)
+        if lfo.rate or lfo.mode != "Free" or lfo.shape
     ]
     if active_lfos:
         lines.append("")
         for i, lfo in active_lfos:
             sync = "  beat_sync" if lfo.beat_sync else ""
             delay = f"  delay={lfo.delay:.2f}s" if lfo.delay else ""
-            lines.append(f"LFO {i}: rate={lfo.rate:.0f}  mode={lfo.mode}{sync}{delay}")
+            shape = f"  shape={lfo.shape}" if lfo.shape else ""
+            mono = "  mono" if lfo.mono else ""
+            lines.append(
+                f"LFO {i}: rate={lfo.rate:.0f}  mode={lfo.mode}{sync}{delay}{shape}{mono}"
+            )
 
     active_macros = [(i, m) for i, m in enumerate(spec.macros, start=1) if m.value or m.name]
     if active_macros:

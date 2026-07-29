@@ -33,6 +33,7 @@ _REVERSE_WARP_MODES = {v: k for k, v in schema.SIMPLE_WARP_MODES.items()}
 _REVERSE_ARP_SHAPES = {v: k for k, v in schema.SIMPLE_ARP_SHAPES.items()}
 _REVERSE_WAVETABLES = {wt.relative_path: name for name, wt in schema.SIMPLE_WAVETABLES.items()}
 _REVERSE_SAMPLE_LOOP_MODES = {v: k for k, v in schema.SIMPLE_SAMPLE_LOOP_MODES.items()}
+_REVERSE_LFO_TYPES = {v: k for k, v in schema.SIMPLE_LFO_TYPES.items()}
 _REVERSE_MOD_SOURCE_IDS = {v: k for k, v in schema.MOD_SOURCE_IDS.items()}
 _REVERSE_MOD_DEST_TARGETS = {
     (d.dest_type, d.dest_id, d.param_name): name for name, d in schema.MOD_DEST_TARGETS.items()
@@ -156,6 +157,7 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             enabled=bool(enabled),
             octave=_resolve(pp, "kParamOctave", schema.OSCILLATOR_PARAMS),
             semitone=_resolve(pp, "kParamPitch", schema.OSCILLATOR_PARAMS),
+            fine=_resolve(pp, "kParamFine", schema.OSCILLATOR_PARAMS),
             volume=_resolve(pp, "kParamVolume", schema.OSCILLATOR_PARAMS),
             pan=_resolve(pp, "kParamPan", schema.OSCILLATOR_PARAMS),
             unison=_resolve(pp, "kParamUnison", schema.OSCILLATOR_PARAMS),
@@ -209,6 +211,18 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                 kwargs["warp_mode"] = _REVERSE_WARP_MODES.get(raw_warp_mode, raw_warp_mode)
                 raw_path = wt_container.get("relativePathToWT")
                 kwargs["wavetable"] = _REVERSE_WAVETABLES.get(raw_path, raw_path or "default")
+                # kParamWarpMenu2's own ParamDef default ("kFM_OSC") isn't a
+                # safe "absent" sentinel here (unlike LFO kParamType's None
+                # default) -- check the raw dict directly so an oscillator
+                # with no second warp lane at all doesn't get one invented.
+                raw_warp_mode2 = wt_pp.get("kParamWarpMenu2") if isinstance(wt_pp, dict) else None
+                if raw_warp_mode2 is not None:
+                    kwargs["warp_mode2"] = _REVERSE_WARP_MODES.get(raw_warp_mode2, raw_warp_mode2)
+                    kwargs["warp_amount2"] = _resolve(wt_pp, "kParamWarp2", schema.WTOSC_PARAMS)
+                # kParamWarpVar2 is a DIFFERENT, sparser field than
+                # kParamWarp2 -- same "check presence directly" reasoning.
+                if isinstance(wt_pp, dict) and "kParamWarpVar2" in wt_pp:
+                    kwargs["warp_var2"] = wt_pp["kParamWarpVar2"]
         elif i == 3:
             noise_pp = _sub_plain_params(container, f"NoiseOsc{i}")
             kwargs["noise_type"] = _resolve(noise_pp, "kParamNoiseType", schema.NOISEOSC_PARAMS)
@@ -231,6 +245,10 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                 resonance=_resolve(pp, "kParamReso", schema.VOICE_FILTER_PARAMS),
                 drive=_resolve(pp, "kParamDrive", schema.VOICE_FILTER_PARAMS),
                 stereo=_resolve(pp, "kParamStereo", schema.VOICE_FILTER_PARAMS),
+                var=_resolve(pp, "kParamVar", schema.VOICE_FILTER_PARAMS),
+                key_track=bool(_resolve(pp, "kParamKeyTrack", schema.VOICE_FILTER_PARAMS)),
+                wet=_resolve(pp, "kParamWet", schema.VOICE_FILTER_PARAMS),
+                level_out=_resolve(pp, "kParamLevelOut", schema.VOICE_FILTER_PARAMS),
             )
         )
 
@@ -244,12 +262,16 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                 decay=_resolve(pp, "kParamDecay", schema.ENV_PARAMS),
                 sustain=_resolve(pp, "kParamSustain", schema.ENV_PARAMS),
                 release=_resolve(pp, "kParamRelease", schema.ENV_PARAMS),
+                attack_curve=_resolve(pp, "kParamCurve1", schema.ENV_PARAMS),
+                decay_curve=_resolve(pp, "kParamCurve2", schema.ENV_PARAMS),
+                release_curve=_resolve(pp, "kParamCurve3", schema.ENV_PARAMS),
             )
         )
 
     lfos = []
     for i in range(10):
         pp = (data.get(f"LFO{i}", {}) or {}).get("plainParams")
+        raw_lfo_type = _resolve(pp, "kParamType", schema.LFO_PARAMS)
         lfos.append(
             LfoSpec(
                 rate=_resolve(pp, "kParamRate", schema.LFO_PARAMS),
@@ -258,6 +280,14 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                 delay=_resolve(pp, "kParamDelay", schema.LFO_PARAMS),
                 rise=_resolve(pp, "kParamRise", schema.LFO_PARAMS),
                 smooth=_resolve(pp, "kParamSmooth", schema.LFO_PARAMS),
+                shape=_REVERSE_LFO_TYPES.get(raw_lfo_type, raw_lfo_type)
+                if raw_lfo_type is not None
+                else None,
+                mono=bool(_resolve(pp, "kParamMono", schema.LFO_PARAMS)),
+                swing=_resolve(pp, "kParamSwing", schema.LFO_PARAMS),
+                dotted=bool(_resolve(pp, "kParamDotted", schema.LFO_PARAMS)),
+                triplets=bool(_resolve(pp, "kParamTriplets", schema.LFO_PARAMS)),
+                rate10x=bool(_resolve(pp, "kParamRate10x", schema.LFO_PARAMS)),
             )
         )
 
@@ -273,44 +303,75 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         )
 
     fx_chain = []
-    for entry in (data.get("FXRack0", {}) or {}).get("FX", []) or []:
-        type_id = entry.get("type")
-        fx_name = schema.FX_TYPE_IDS.get(type_id)
-        if fx_name is None or fx_name not in entry or fx_name not in schema.FX_PARAMS:
-            # fx_name not in schema.FX_PARAMS: a structural/routing type (e.g.
-            # FXSplit/FXSplit3/FXSplitMS -- parallel/multiband FX routing,
-            # found live in a real third-party bank) rather than an audio
-            # effect with a param table. These don't carry a kParamWet or
-            # any other modeled param, and the units nested inside their
-            # branch aren't distinguishable from top-level ones without also
-            # decoding branch boundaries (observed kParamModuleCount1/2/3
-            # fields, semantics not yet reverse-engineered -- see
-            # docs/PARAMETER_SCHEMA.md) -- skip rather than crash or
-            # misrepresent a parallel chain as sequential. count_unmodeled_fx
-            # exists so callers can at least surface that something was
-            # skipped instead of silently under-reporting the FX chain.
-            continue
-        pp = entry[fx_name].get("plainParams")
-        if not isinstance(pp, dict):
-            # Real-world finding: an FX unit's plainParams can be the raw
-            # string sentinel "default" (same pattern as VoiceFilter0/1 when
-            # never touched, see _sub_plain_params) instead of a dict --
-            # `.get("plainParams", {}) or {}` doesn't catch this since a
-            # non-empty string is truthy, and used to crash with
-            # AttributeError on the next line.
-            pp = {}
-        wet_default = schema.FX_PARAMS[fx_name].get("kParamWet")
-        wet = pp.get("kParamWet", wet_default.default if wet_default else 100.0)
-        params = {k: v for k, v in pp.items() if k != "kParamWet"}
-        fx_chain.append(FxUnitSpec(type=fx_name, wet=wet, params=params))
+    # module_id_by_flat_index[i] = fx_chain[i]'s real destModuleID
+    # (rack*100 + position-within-that-rack, see mapping._fx_dest_module_id)
+    # -- needed below to match ModSlot destinations, which is NOT the same
+    # as i once more than one rack is in use.
+    module_id_by_flat_index: list[int] = []
+    for rack in range(3):
+        position_in_rack = 0
+        for entry in (data.get(f"FXRack{rack}", {}) or {}).get("FX", []) or []:
+            type_id = entry.get("type")
+            fx_name = schema.FX_TYPE_IDS.get(type_id)
+            if fx_name is None or fx_name not in entry or fx_name not in schema.FX_PARAMS:
+                # fx_name not in schema.FX_PARAMS: a structural/routing type
+                # (e.g. FXSplit/FXSplit3/FXSplitMS -- parallel/multiband FX
+                # routing, found live in a real third-party bank) rather
+                # than an audio effect with a param table. These don't
+                # carry a kParamWet or any other modeled param, and the
+                # units nested inside their branch aren't distinguishable
+                # from top-level ones without also decoding branch
+                # boundaries (observed kParamModuleCount1/2/3 fields,
+                # semantics not yet reverse-engineered -- see
+                # docs/PARAMETER_SCHEMA.md) -- skip rather than crash or
+                # misrepresent a parallel chain as sequential.
+                # count_unmodeled_fx exists so callers can at least surface
+                # that something was skipped instead of silently
+                # under-reporting the FX chain. Still counts towards this
+                # rack's position (Serum itself counts it), so later real
+                # units' destModuleID stays correctly aligned.
+                position_in_rack += 1
+                continue
+            pp = entry[fx_name].get("plainParams")
+            if not isinstance(pp, dict):
+                # Real-world finding: an FX unit's plainParams can be the raw
+                # string sentinel "default" (same pattern as VoiceFilter0/1
+                # when never touched, see _sub_plain_params) instead of a
+                # dict -- `.get("plainParams", {}) or {}` doesn't catch this
+                # since a non-empty string is truthy, and used to crash with
+                # AttributeError on the next line.
+                pp = {}
+            # kParamWet absent means fully wet (100.0) for every FX type,
+            # confirmed live 2026-07-29 -- see mapping.build_fx_unit. Each
+            # FX_PARAMS type's own schema default (e.g. FXDelay's 30.0) is
+            # only what's typically OBSERVED when the key is present, not
+            # the true absent-state value, so it must not be used here.
+            wet = pp.get("kParamWet", 100.0)
+            params = {k: v for k, v in pp.items() if k != "kParamWet"}
+            fx_chain.append(FxUnitSpec(type=fx_name, wet=wet, params=params, rack=rack))
+            module_id_by_flat_index.append(rack * 100 + position_in_rack)
+            position_in_rack += 1
 
     # fx{i}.wet destinations aren't in the static _REVERSE_MOD_DEST_TARGETS
     # table -- an FX rack slot's destModuleTypeString is whichever FX type
     # is actually there, only known from this preset's own fx_chain (see
-    # mapping._resolve_mod_destination).
+    # mapping._resolve_mod_destination). Keyed by the real destModuleID
+    # (module_id_by_flat_index[idx]), not the flat index idx itself, since
+    # those diverge once rack 1/2 are in use -- but still NAMED "fx{idx}.wet"
+    # using the flat index, matching how generation addresses fx_chain.
     fx_wet_dest_by_key = {
-        (fx.type, idx, "kParamWet"): f"fx{idx}.wet" for idx, fx in enumerate(fx_chain)
+        (fx.type, module_id_by_flat_index[idx], "kParamWet"): f"fx{idx}.wet"
+        for idx, fx in enumerate(fx_chain)
     }
+    # Mirrors mapping._resolve_mod_destination's FX_EXTRA_MOD_DEST_PARAMS
+    # handling on the write side -- confirmed non-wet FX params, per type.
+    for idx, fx in enumerate(fx_chain):
+        for suffix, (param_name, _param_id) in schema.FX_EXTRA_MOD_DEST_PARAMS.get(
+            fx.type, {}
+        ).items():
+            fx_wet_dest_by_key[(fx.type, module_id_by_flat_index[idx], param_name)] = (
+                f"fx{idx}.{suffix}"
+            )
 
     # Only routes whose source AND destination are both in our resolved
     # vocabulary (see schema.MOD_SOURCE_IDS / MOD_DEST_TARGETS) round-trip
@@ -359,6 +420,9 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         mono=bool(_resolve(global_pp, "kParamMonoToggle", schema.GLOBAL_PARAMS)),
         portamento_time=_resolve(global_pp, "kParamPortamentoTime", schema.GLOBAL_PARAMS),
         poly_count=_resolve(global_pp, "kParamPolyCount", schema.GLOBAL_PARAMS),
+        limit_same_note_polyphony=bool(
+            _resolve(global_pp, "kParamLimitSameNotePolyphony", schema.GLOBAL_PARAMS)
+        ),
     )
 
     arp_pp = (data.get("Arp0", {}) or {}).get("plainParams")

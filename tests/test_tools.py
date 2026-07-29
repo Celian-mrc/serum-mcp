@@ -141,3 +141,17 @@ def test_list_parameters_is_valid_json_with_expected_sections():
     assert "mod_source_ids" in parsed
     assert "mod_dest_targets" in parsed
     assert "kParamFreq" in parsed["voice_filter"]
+
+    roles = parsed["role_starting_points"]
+    assert set(roles) == {
+        "bass",
+        "pluck",
+        "lead",
+        "pad",
+        "chords",
+        "synth",
+        "arp",
+        "sequence",
+    }
+    assert roles["bass"]["mono"] is True
+    assert roles["pluck"]["envelope"]["sustain"] == 0.0

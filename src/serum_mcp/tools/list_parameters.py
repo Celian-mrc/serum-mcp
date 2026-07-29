@@ -18,6 +18,18 @@ def list_parameters() -> str:
 
     Intended for a client to consult before proposing an edit, so it knows
     what parameter names and ranges are actually valid.
+
+    Also includes ``role_starting_points``: condensed per-role generation
+    starting values (envelope shape, filter type/resonance, dominant
+    warp_mode, typical mod_route pattern) derived from analyzing a real
+    180-preset commercial bank -- see ``docs/SOUND_DESIGN_REFERENCE.md`` for
+    the full prose writeup this is transcribed from. Deliberately included
+    here (not just in that doc) so it reaches the calling model via a call
+    it's already instructed to make before generating, rather than depending
+    on a separate decision to go read a markdown file. Check it whenever a
+    generation request has an identifiable role (bass/pluck/lead/pad/
+    chords/synth/arp/sequence) instead of guessing envelope/filter/mod-route
+    values from scratch.
     """
     result = {
         "oscillator": _dump(schema.OSCILLATOR_PARAMS),
@@ -50,5 +62,6 @@ def list_parameters() -> str:
         "arp": _dump(schema.ARP_PARAMS),
         "arp_clip": _dump(schema.ARPCLIP_PARAMS),
         "simple_arp_shapes": schema.SIMPLE_ARP_SHAPES,
+        "role_starting_points": schema.ROLE_STARTING_POINTS,
     }
     return json.dumps(result, indent=2)

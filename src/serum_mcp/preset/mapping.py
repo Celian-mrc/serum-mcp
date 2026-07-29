@@ -26,6 +26,7 @@ _CUSTOM_SAMPLE_SUBDIR = ("User", "serum-mcp")
 _OSC_KEYS = {
     "octave": "kParamOctave",
     "semitone": "kParamPitch",
+    "fine": "kParamFine",
     "volume": "kParamVolume",
     "pan": "kParamPan",
     "unison": "kParamUnison",
@@ -54,6 +55,9 @@ _FILTER_KEYS = {
     "resonance": "kParamReso",
     "drive": "kParamDrive",
     "stereo": "kParamStereo",
+    "var": "kParamVar",
+    "wet": "kParamWet",
+    "level_out": "kParamLevelOut",
 }
 _ENV_KEYS = {
     "attack": "kParamAttack",
@@ -61,6 +65,9 @@ _ENV_KEYS = {
     "decay": "kParamDecay",
     "sustain": "kParamSustain",
     "release": "kParamRelease",
+    "attack_curve": "kParamCurve1",
+    "decay_curve": "kParamCurve2",
+    "release_curve": "kParamCurve3",
 }
 _LFO_KEYS = {
     "rate": "kParamRate",
@@ -68,6 +75,11 @@ _LFO_KEYS = {
     "delay": "kParamDelay",
     "rise": "kParamRise",
     "smooth": "kParamSmooth",
+    "mono": "kParamMono",
+    "swing": "kParamSwing",
+    "dotted": "kParamDotted",
+    "triplets": "kParamTriplets",
+    "rate10x": "kParamRate10x",
 }
 
 
@@ -323,7 +335,19 @@ def _build_fx_entry(fx: FxUnitSpec) -> dict[str, Any]:
     # Not every FX type has a wet/mix knob (FXEQ doesn't) -- forcing one in
     # unconditionally made FXEQ impossible to generate at all.
     plain_params: dict[str, Any] = {}
-    if "kParamWet" in fx_schema:
+    if "kParamWet" in fx_schema and fx.wet != 100.0:
+        # Found live 2026-07-29 tracking down a persistent "distorted/
+        # saturated" character on an isolated oscillator: across all 11 FX
+        # units in a real preset, kParamWet was ABSENT whenever it would be
+        # 100 (fully wet) and explicit ONLY for other values (60.4, 0, 0) --
+        # a 100% consistent pattern, not per-type. Writing an explicit
+        # kParamWet=100.0 (mathematically "the same") audibly differed from
+        # leaving it out -- Serum likely skips the wet/dry crossfade stage
+        # entirely when the key is absent, vs. actually running a 100/0 mix
+        # when it's explicitly present, which apparently isn't fully
+        # transparent. Each FX_PARAMS type's own `kParamWet` default (e.g.
+        # FXDelay's 30.0) is what's typically OBSERVED when present, not
+        # confirmed as this true absent-state value -- 100.0 is.
         plain_params["kParamWet"] = fx.wet
     plain_params.update(fx.params)
     # allow_unknown=True: fx.params often isn't calling-model-authored from
@@ -342,6 +366,19 @@ def _build_fx_entry(fx: FxUnitSpec) -> dict[str, Any]:
         "kUIParamMixOrGain": 0.0,
         fx_module_key: {"plainParams": plain_params},
     }
+
+
+def _fx_dest_module_id(fx_chain: list[FxUnitSpec], index: int) -> int:
+    """Serum encodes an FX unit's ``destModuleID`` (for mod-matrix routing)
+    as ``rack * 100 + position_within_that_rack`` -- confirmed live
+    2026-07-29 against a real preset with units in rack 1 (e.g. an FXBode at
+    rack-1 position 4 had destModuleID 104). ``index`` is the unit's
+    position in the flat ``fx_chain`` list (spans all racks); this counts
+    how many earlier entries share its rack to get the position within that
+    specific rack."""
+    rack = fx_chain[index].rack
+    position_in_rack = sum(1 for fx in fx_chain[:index] if fx.rack == rack)
+    return rack * 100 + position_in_rack
 
 
 def _resolve_mod_destination(destination: str, fx_chain: list[FxUnitSpec]) -> schema.ModDestDef:
@@ -371,11 +408,30 @@ def _resolve_mod_destination(destination: str, fx_chain: list[FxUnitSpec]) -> sc
                 raise ValueError(f"{fx_type!r} (fx_chain[{index}]) has no kParamWet to modulate")
             # kParamWet -> destModuleParamID 1 is confirmed for every FX
             # type that has a wet knob at all (see docs/PARAMETER_SCHEMA.md).
-            return schema.ModDestDef(fx_type, index, "kParamWet", 1)
+            return schema.ModDestDef(fx_type, _fx_dest_module_id(fx_chain, index), "kParamWet", 1)
+
+    if destination.startswith("fx") and "." in destination:
+        index_part, _, suffix = destination[len("fx") :].partition(".")
+        if index_part.isdigit():
+            index = int(index_part)
+            if index >= len(fx_chain):
+                raise ValueError(
+                    f"mod destination {destination!r} references fx_chain[{index}], "
+                    f"but fx_chain only has {len(fx_chain)} entries"
+                )
+            fx_type = fx_chain[index].type
+            extra = schema.FX_EXTRA_MOD_DEST_PARAMS.get(fx_type, {}).get(suffix)
+            if extra is not None:
+                param_name, param_id = extra
+                return schema.ModDestDef(
+                    fx_type, _fx_dest_module_id(fx_chain, index), param_name, param_id
+                )
 
     raise ValueError(
         f"unknown mod destination {destination!r}; expected one of "
-        f"{sorted(schema.MOD_DEST_TARGETS)}, or 'fx{{i}}.wet' for an index into fx_chain"
+        f"{sorted(schema.MOD_DEST_TARGETS)}, 'fx{{i}}.wet', or one of "
+        f"{sorted({s for d in schema.FX_EXTRA_MOD_DEST_PARAMS.values() for s in d})} "
+        "for an FX type that supports it"
     )
 
 
@@ -544,6 +600,17 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                 wtosc_params["kParamWarpMenu"] = schema.SIMPLE_WARP_MODES.get(
                     osc.warp_mode, osc.warp_mode
                 )
+                if osc.warp_mode2 is not None:
+                    wtosc_params["kParamWarp2"] = osc.warp_amount2
+                    wtosc_params["kParamWarpMenu2"] = schema.SIMPLE_WARP_MODES.get(
+                        osc.warp_mode2, osc.warp_mode2
+                    )
+                    # Only ever observed at 1.0 across 46 real samples
+                    # whenever a second warp lane is in use -- see
+                    # schema.WTOSC_PARAMS["kParamXfadeMode"].
+                    wtosc_params["kParamXfadeMode"] = 1.0
+                if osc.warp_var2 is not None:
+                    wtosc_params["kParamWarpVar2"] = osc.warp_var2
                 validate_params(f"WTOsc{i}", wtosc_params, schema.WTOSC_PARAMS, allow_unknown=True)
         elif i == _NOISE_SLOT:
             noise_params = _plain_params(osc_container, f"NoiseOsc{i}")
@@ -558,8 +625,39 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
     for i, flt in enumerate(spec.filters):
         filter_params = _plain_params(data, f"VoiceFilter{i}")
         filter_params["kParamEnable"] = flt.enabled
+        filter_params["kParamKeyTrack"] = flt.key_track
         filter_params["kParamType"] = schema.SIMPLE_FILTER_TYPES.get(flt.type, flt.type)
         for spec_key, param_key in _FILTER_KEYS.items():
+            if param_key == "kParamWet" and flt.wet == 100.0:
+                # Same absent-means-100 pattern confirmed on FX units above
+                # (build_fx_unit) -- confirmed here too 2026-07-29 against
+                # UN_PLACES_PL_Dreams's real VoiceFilter0/1, neither of
+                # which has a kParamWet key at all. Writing it explicitly
+                # at 100.0 is the likely remaining cause of a persistent
+                # fuzzy/buzzy character that survived every other fix.
+                continue
+            if param_key == "kParamLevelOut" and flt.level_out == 0.5:
+                # Same pattern again, found live 2026-07-29 chasing a
+                # loudness (not tone) regression that survived the wet fix:
+                # UN_PLACES_PL_Dreams's real VoiceFilter0 has no kParamLevelOut
+                # key at all, unlike VoiceFilter1 which explicitly sets one.
+                # Writing the schema default (0.5) explicitly measurably
+                # quieted that filter's output vs leaving it untouched.
+                continue
+            if param_key == "kParamDrive" and flt.drive == 0.0:
+                # Same pattern again -- UN_PLACES_PL_Dreams's real
+                # VoiceFilter0/1 never have kParamDrive at all. A real-corpus
+                # survey (2026-07-29) found it absent in 589/1300 real
+                # filters, too common to dismiss as noise.
+                continue
+            if param_key == "kParamStereo" and flt.stereo == 50.0:
+                # Same pattern again -- absent in 1162/1300 (89%) real
+                # filters, the strongest skew of any VoiceFilter param besides
+                # wet/level_out. Stacks with the EARLIER-confirmed finding
+                # (2026-07-28) that kParamStereo=0 is not neutral (hard-left
+                # bias) -- this filter is evidently sensitive to explicit
+                # writes of this param in more than one way.
+                continue
             filter_params[param_key] = getattr(flt, spec_key)
         validate_params(
             f"VoiceFilter{i}", filter_params, schema.VOICE_FILTER_PARAMS, allow_unknown=True
@@ -576,6 +674,8 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         for spec_key, param_key in _LFO_KEYS.items():
             lfo_params[param_key] = getattr(lfo, spec_key)
         lfo_params["kParamMode"] = lfo.mode
+        if lfo.shape is not None:
+            lfo_params["kParamType"] = schema.SIMPLE_LFO_TYPES.get(lfo.shape, lfo.shape)
         validate_params(f"LFO{i}", lfo_params, schema.LFO_PARAMS, allow_unknown=True)
 
     for i, macro in enumerate(spec.macros):
@@ -587,8 +687,20 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         validate_params(f"Macro{i}", macro_params, schema.MACRO_PARAMS, allow_unknown=True)
 
     if spec.fx_chain:
-        fx_rack = data.setdefault("FXRack0", {})
-        fx_rack["FX"] = [_build_fx_entry(fx) for fx in spec.fx_chain]
+        # Group by rack (0-2) instead of always writing FXRack0 -- Serum can
+        # run up to 3 FX racks in PARALLEL (found live 2026-07-29 in a real
+        # preset with a second, independent chain including a reverb and a
+        # bode shifter, entirely invisible to this project before that). A
+        # rack with zero entries in spec.fx_chain is left untouched (not
+        # cleared) -- most callers don't know rack 1/2 exist at all, and
+        # silently wiping one just because an edit only mentioned rack 0
+        # would be a surprising, hard-to-notice destructive side effect.
+        by_rack: dict[int, list[FxUnitSpec]] = {}
+        for fx in spec.fx_chain:
+            by_rack.setdefault(fx.rack, []).append(fx)
+        for rack, units in by_rack.items():
+            fx_rack = data.setdefault(f"FXRack{rack}", {})
+            fx_rack["FX"] = [_build_fx_entry(fx) for fx in units]
 
     if spec.mod_routes:
         indices = _resolve_modslot_indices(data, spec.mod_routes, spec.fx_chain)
@@ -608,6 +720,7 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         global_params["kParamMonoToggle"] = spec.global_.mono
         global_params["kParamPortamentoTime"] = spec.global_.portamento_time
         global_params["kParamPolyCount"] = spec.global_.poly_count
+        global_params["kParamLimitSameNotePolyphony"] = spec.global_.limit_same_note_polyphony
         validate_params("Global0", global_params, schema.GLOBAL_PARAMS, allow_unknown=True)
 
     # Like `global`, arp is a single nested object (not a list), and unset

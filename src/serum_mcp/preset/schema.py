@@ -334,7 +334,63 @@ WTOSC_PARAMS: dict[str, ParamDef] = {
         max=100.0,
         unit="%",
     ),
+    # A SECOND, independent warp lane -- found live 2026-07-29 diagnosing why
+    # a recreated preset ("Galaxy") kept sounding harsh/"8-bit" despite
+    # every other parameter this project modeled matching the original
+    # closely: Osc A's raw data had a second warp stage (kFM_NOISE primary,
+    # THEN kFilterLPF secondary at 56%) taming the otherwise-raw FM-by-noise
+    # character -- completely absent from the recreation since neither this
+    # key nor kParamWarpMenu2 was exposed via OscillatorSpec, only
+    # kParamWarp2 had a (never-wired-up) ParamDef. Surveyed across all 886
+    # real presets: 193 WTOsc slots use it, with the identical raw enum
+    # catalog as the primary kParamWarpMenu (same WTOSC_PARAMS["kParamWarpMenu"]
+    # .enum_values) -- not a special/reduced set.
+    "kParamXfadeMode": ParamDef(
+        "kParamXfadeMode",
+        "float",
+        default=1.0,
+        min=0.0,
+        max=1.0,
+        confidence="observed",
+        notes="How the primary/secondary warp lanes combine. Only ever observed at 1.0 "
+        "(46 samples) whenever a second lane is in use -- written automatically "
+        "alongside kParamWarp2/kParamWarpMenu2 rather than exposed as its own "
+        "OscillatorSpec field, since no other value has ever been seen.",
+    ),
 }
+# enum_values can't reference a sibling dict entry inline above (WTOSC_PARAMS
+# isn't finished building yet at that point) -- patched in immediately after.
+WTOSC_PARAMS["kParamWarpMenu2"] = ParamDef(
+    "kParamWarpMenu2",
+    "enum",
+    default="kFM_OSC",
+    confidence="observed",
+    enum_values=WTOSC_PARAMS["kParamWarpMenu"].enum_values,
+    notes="Second warp lane's mode -- same raw enum as kParamWarpMenu (confirmed: "
+    "every value observed here across 886 real presets is already in that enum).",
+)
+# A THIRD, separate warp-related float -- genuinely distinct from
+# kParamWarp2 (confirmed: both keys co-occur in the same real WTOsc
+# plainParams dict in some samples). Rarer (14 WTOsc slots observed vs 193
+# for kParamWarp2) and its exact role is unconfirmed -- possibly a
+# secondary-lane-specific fine control, by analogy with kParamWarp2 sharing
+# a "2" suffix pattern with kParamWarpMenu2. Found live 2026-07-29 as a
+# real, unreproduced mod-matrix DESTINATION on a real preset's primary
+# oscillator (lfo -> kParamWarpVar2, destModuleParamID confirmed 4) even
+# though that specific oscillator had no explicit BASE value for it in
+# plainParams -- Serum evidently has its own internal default when the key
+# is absent, same as any other engine param.
+WTOSC_PARAMS["kParamWarpVar2"] = ParamDef(
+    "kParamWarpVar2",
+    "float",
+    default=0.0,
+    min=0.0,
+    max=1.0,
+    unit="normalized",
+    confidence="uncertain",
+    notes="Only 3 distinct base values observed (~0.19-0.55) across 14 WTOsc slots; "
+    "exact role vs. kParamWarp2 unconfirmed.",
+)
 
 # Friendly names -> WTOSC_PARAMS["kParamWarpMenu"] enum values, curated to a
 # musically-distinct spread (FM/AM, sync, PWM, wavefolding/distortion
@@ -774,9 +830,29 @@ ENV_PARAMS: dict[str, ParamDef] = {
 }
 
 # ---------------------------------------------------------------------------
-# LFOs (LFO0..LFO9 -- 10 slots). Free-shape/curve-drawn LFOs (`curveData`)
-# exist alongside these plain params but are not modeled/generated in V1 --
-# only rate/mode/basic timing are.
+# LFOs (LFO0..LFO9 -- 10 slots). Free-shape/curve-drawn LFOs (`curveData`,
+# point-based: {curveVals, numPoints, xVals, yVals}) exist alongside these
+# plain params and are still NOT modeled/generated -- most basic shapes
+# (sine/triangle/square/saw/etc) are stored purely as curve points, not a
+# named type, and decoding that point format is out of scope for now.
+#
+# `kParamType`, found live 2026-07-29 while diagnosing why a recreated
+# preset ("Galaxy") sounded nothing like the real one despite every other
+# parameter matching -- the real preset's busiest LFO turned out to be set
+# to Sample & Hold, which the UI shows as "S&H" but the raw file calls
+# `kParamType: "RandomSH"`. This is DIFFERENT from a hand-drawn curve: it's
+# one of a handful of named, purely-algorithmic LFO shapes Serum computes
+# procedurally (no curveData needed for most of them), so -- unlike the
+# general curve-shape gap above -- these ARE cheaply generatable. Surveyed
+# across all 886 real .SerumPreset files on this machine: exactly 4 named
+# values appear (`Rossler`/363, `Lorenz`/337, `RandomSH`/127, `Path`/36,
+# all chaotic-attractor or randomization algorithms -- Rossler/Lorenz are
+# genuine strange attractors used for organic modulation, "Path" is
+# unconfirmed but likely a traced-path oscillator). The key is ABSENT
+# (not some other value) in the other ~3500 LFO slots sampled -- 2851 use
+# curveData instead (a real hand-drawn or built-in-preset curve), 656 are
+# plain/untouched defaults. `default=None` here (not a string) to preserve
+# that three-way distinction -- see SIMPLE_LFO_TYPES.
 # ---------------------------------------------------------------------------
 
 LFO_PARAMS: dict[str, ParamDef] = {
@@ -812,6 +888,73 @@ LFO_PARAMS: dict[str, ParamDef] = {
     ),
     "kParamSmooth": ParamDef("kParamSmooth", "float", default=0.0, min=0.0, max=100.0, unit="%"),
     "kParamDelay": ParamDef("kParamDelay", "float", default=0.0, min=0.0, max=3.6, unit="seconds"),
+    "kParamType": ParamDef(
+        "kParamType",
+        "enum",
+        default=None,
+        confidence="observed",
+        enum_values=("Rossler", "Lorenz", "RandomSH", "Path"),
+        notes="Named algorithmic LFO shape -- absent (None) is a real, common state "
+        "(plain/curve-drawn LFO), not 'unset'/'default Rossler' or similar. See the "
+        "module comment above for the 886-preset survey this came from. NOT yet "
+        "confirmed live for GENERATION (only observed being read from real files) -- "
+        "whether writing kParamType alone, without any curveData, is sufficient for "
+        "Serum to render it correctly hasn't been tested in real Serum yet.",
+    ),
+    "kParamMono": ParamDef(
+        "kParamMono",
+        "bool",
+        default=False,
+        confidence="observed",
+        notes="Found live 2026-07-29 diagnosing a recreated preset that still sounded "
+        "'8-bit' after fixing the LFO shape/filter/warp-lane gaps: the real preset's "
+        "user reported its LFO visibly kept moving even with no note held, while the "
+        "recreation's didn't -- traced to this key, present (always =1.0 when present, "
+        "63/4374 real LFO slots surveyed) only on that preset's busiest LFO (rate 100, "
+        "RandomSH shape, driving a fast-arpeggiated oscillator). Hypothesis: a "
+        "non-mono/per-voice LFO restarts its phase at every note-on, so under a fast "
+        "arp it gets reset almost every step and never completes a meaningful cycle -- "
+        "'mono' instead runs one shared, continuously-free-running instance "
+        "independent of note-on events, which would also read as 'moving without "
+        "notes' and, since it isn't constantly reset, less choppy/'faster'-feeling.",
+    ),
+    "kParamSwing": ParamDef(
+        "kParamSwing",
+        "float",
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        confidence="uncertain",
+        notes="Only ever observed at 1.0 (9/4374 real LFO slots). Presumed to affect "
+        "timing/shuffle of a stepped (e.g. RandomSH) LFO's steps, by analogy with "
+        "'swing' elsewhere in music software, but not independently confirmed.",
+    ),
+    # Found live 2026-07-29, same session as mono/swing above -- always 1.0
+    # when present (never 0.0), same "sentinel bool" pattern. dotted/
+    # triplets mirror the arpeggiator's own identically-named fields
+    # (ARPCLIP_PARAMS); rate10x is LFO-specific, presumed a x10 rate
+    # multiplier (unconfirmed) -- meaningful for the very-low-rate chaotic
+    # LFO shapes (Rossler/Lorenz), where it could be the difference between
+    # a near-static and a clearly-moving modulation.
+    "kParamDotted": ParamDef("kParamDotted", "bool", default=False, confidence="observed"),
+    "kParamTriplets": ParamDef("kParamTriplets", "bool", default=False, confidence="observed"),
+    "kParamRate10x": ParamDef(
+        "kParamRate10x", "bool", default=False, confidence="uncertain",
+        notes="Presumed x10 rate multiplier, not independently confirmed. 599/4384 real "
+        "LFO slots surveyed (14%), always 1.0 when present.",
+    ),
+}
+
+# Friendly names -> LFO_PARAMS["kParamType"].enum_values, offered to
+# generation instead of the raw "kXxx"-less raw strings (these ones happen
+# to already be readable Serum-internal names, unlike most other raw enums
+# in this schema, but kept lowercase/snake_case for consistency with every
+# other SIMPLE_* dict).
+SIMPLE_LFO_TYPES: dict[str, str] = {
+    "random_sh": "RandomSH",
+    "rossler": "Rossler",
+    "lorenz": "Lorenz",
+    "path": "Path",
 }
 
 # ---------------------------------------------------------------------------
@@ -845,6 +988,17 @@ GLOBAL_PARAMS: dict[str, ParamDef] = {
         unit="seconds",
         notes="Max corrected from 2.6 to 3.0 after finding a real Factory preset "
         "(FX - BHouse Glide - 04) with portamento_time=2.61 in the raw CBOR.",
+    ),
+    "kParamLimitSameNotePolyphony": ParamDef(
+        "kParamLimitSameNotePolyphony",
+        "bool",
+        default=False,
+        confidence="observed",
+        notes="Found live 2026-07-29 comparing a recreated preset's Global0 against the "
+        "original's -- present (always True when present) on 325/832 real Global0 slots "
+        "surveyed (39%). Presumed to limit voice-stacking when the SAME note is "
+        "retriggered rapidly (e.g. under a fast arp) rather than letting overlapping "
+        "voices for one note pile up -- not independently confirmed.",
     ),
 }
 
@@ -1068,12 +1222,27 @@ ARPCLIP_PARAMS["kParamWrapTranspose"] = ParamDef(
 # with an internally consistent usage/bipolar signature and a
 # monotonically-decreasing per-slot usage curve (slot 1 used most, matching
 # the "reach for the first knob" convention seen everywhere else in the
-# factory content). This is `observed`, not `confirmed` -- it was not
-# cross-checked against Xfer's own source or docs, only statistical
-# clustering. Envelope, Velocity, Mod Wheel, Aftertouch, Pitch Bend, Key
-# Track and Random/S&H sources remain UNRESOLVED: several candidate IDs
-# exist (1-5, 16-24, 34+) but did not cluster into an evidence-backed block.
-# See docs/PARAMETER_SCHEMA.md for the full methodology and numbers.
+# factory content). This was `observed` (statistical clustering only) until
+# 2026-07-29, when two rounds of a direct-UI-probe method resolved thirteen
+# more IDs: a real Serum 2 instance was used to wire up one route per known
+# source by hand (round 1: Note > Velo, Mod Wheel, Pitch Bend, Note > Note#,
+# Note > NoteOn Rand1/Rand2/(Discrete), Envelopes > Env 1; round 2:
+# Aftertouch, Poly Aftertouch, Envelopes > Env 2/3/4) and the resulting file
+# inspected raw each time. Results: Velocity=16, Mod Wheel=1 (resolving the
+# earlier id-1-vs-16 ambiguity in favor of Mod Wheel, not Velocity), Env1-4
+# as sources=2/3/4/5 (a contiguous block, confirming what was first just a
+# guess from Env1 alone), Note#/Key Track=17, Aftertouch=18, Poly
+# Aftertouch=19, NoteOn Rand1=21, NoteOn Rand2=22, Pitch Bend=33 (immediately
+# after the Macro block), NoteOn Rand (Discrete)=59. All `confirmed`-
+# confidence (direct probe, not statistics) -- this closes out every source
+# in this project's original gap list (Envelope/Velocity/Mod Wheel/
+# Aftertouch/Pitch Bend/Key Track/Random). Remaining unresolved sources
+# (`Release Velo`, `Active Voices`, `Voice Index`, `Voice Mod 1`/`2`,
+# `Oscillators`/`Filters`/`Note Expression` as self-mod sources) are ones
+# this project only learned existed by seeing Serum 2's real source picker --
+# not part of the original scope, low priority unless a use case comes up.
+# See docs/PARAMETER_SCHEMA.md §6 for the full methodology, and
+# CONTRIBUTING.md -- the same probe method is fast and reusable if needed.
 # `subIndex` (source[1]) is not understood at all -- always written as 0.
 MODSLOT_PARAMS: dict[str, ParamDef] = {
     "kParamAmount": ParamDef(
@@ -1089,10 +1258,29 @@ MODSLOT_PARAMS: dict[str, ParamDef] = {
 }
 
 # source name -> ModSlot.source[0]. subIndex (source[1]) is always 0 for
-# these two families in every sample observed.
+# these families in every sample observed.
 MOD_SOURCE_IDS: dict[str, int] = {
     **{f"lfo{i}": 6 + i for i in range(10)},
     **{f"macro{i}": 25 + i for i in range(8)},
+    "velocity": 16,
+    # Confirmed 2026-07-29 via the same direct-UI-probe method as velocity
+    # (see the comment above MODSLOT_PARAMS and docs/PARAMETER_SCHEMA.md §6).
+    "mod_wheel": 1,
+    # "Env N" used AS A SOURCE (distinct from env0.decay etc as a
+    # destination) -- contiguous block, directly probed for all 4, confirming
+    # the contiguity guess this project originally flagged as unconfirmed.
+    "env0": 2,
+    "env1": 3,
+    "env2": 4,
+    "env3": 5,
+    "key_track": 17,  # Serum's own UI calls this "Note#", not "Key Track" --
+    # named key_track here for generation ergonomics; same concept.
+    "aftertouch": 18,
+    "poly_aftertouch": 19,
+    "random1": 21,  # Serum UI: "NoteOn Rand1"
+    "random2": 22,  # Serum UI: "NoteOn Rand2"
+    "pitch_bend": 33,
+    "random_discrete": 59,  # Serum UI: "NoteOn Rand (Discrete)"
 }
 
 
@@ -1137,11 +1325,35 @@ for _i in range(3):
         "WTOsc", _i, "kParamTablePos", 6
     )
     MOD_DEST_TARGETS[f"oscillator{_i}.warp_amount"] = ModDestDef("WTOsc", _i, "kParamWarp", 0)
+    # destModuleParamID 4 confirmed live 2026-07-29 against a real preset's
+    # raw ModSlot (see schema.WTOSC_PARAMS["kParamWarpVar2"]).
+    MOD_DEST_TARGETS[f"oscillator{_i}.warp_var2"] = ModDestDef("WTOsc", _i, "kParamWarpVar2", 4)
 for _i in range(10):
     MOD_DEST_TARGETS[f"lfo{_i}.rate"] = ModDestDef("LFO", _i, "kParamRate", 0)
 for _i in range(8):
     MOD_DEST_TARGETS[f"macro{_i}.value"] = ModDestDef("Macro", _i, "kParamValue", 0)
 del _i
+# `Global` is a singleton (destModuleID always 0), unlike everything above
+# which is per-slot. Confirmed live 2026-07-29 against TWO independent real
+# presets (both used key_track -> Global.kParamVoiceAmp, at -61% and -52%
+# respectively) -- destModuleParamID 2.
+MOD_DEST_TARGETS["global.voice_amp"] = ModDestDef("Global", 0, "kParamVoiceAmp", 2)
+
+# Non-`kParamWet` FX mod destinations -- unlike kParamWet (destModuleParamID
+# 1, confirmed universal across every FX type that has a wet knob), every
+# other FX-internal param's destModuleParamID is type-SPECIFIC and only
+# added here once directly confirmed against a real preset's raw ModSlot,
+# one at a time -- do not extrapolate an ID from one FX type to another.
+# `mapping._resolve_mod_destination` looks up `fx{i}.<suffix>` against the
+# fx_chain[i] type actually in use, the same way it already does for
+# `fx{i}.wet`.
+FX_EXTRA_MOD_DEST_PARAMS: dict[str, dict[str, tuple[str, int]]] = {
+    "FXUtils": {
+        # Confirmed live 2026-07-29 against a real preset's raw ModSlot
+        # (lfo -> FXUtils.kParamBalance).
+        "balance": ("kParamBalance", 4),
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Effects. Each FXRack (FXRack0..FXRack2) holds an ordered `FX` list; each
@@ -1461,5 +1673,93 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
 # effect but a container for further FX lists. Cataloged in FX_TYPE_IDS
 # (round-trips fine) but NOT modeled in FX_PARAMS; generation cannot target
 # them. A real implementation would need a recursive FxUnitSpec.
+
+# ---------------------------------------------------------------------------
+# Role starting points -- a condensed, structured transcription of
+# docs/SOUND_DESIGN_REFERENCE.md's per-role statistics (derived from
+# analyzing all 180 presets in Unmute's "Places For Serum 2" commercial
+# bank, broken down by role). Exists so this data reaches the calling model
+# via list_parameters() -- a call server.py's guidance already establishes
+# as a habitual first step before generating -- instead of depending on the
+# model separately deciding to Read a markdown file each session. The full
+# prose doc has more qualitative nuance and caveats (sample sizes, "treat as
+# anecdotal" warnings for small categories); this is the numeric skeleton
+# for quick lookup, not a replacement for it. Ranges are `min..max (median)`
+# or a single median where the doc only gives one; times are seconds to
+# match EnvelopeSpec's own units. `confidence` here is `observed` for all of
+# it -- statistical patterns in one professional bank, not confirmed against
+# Xfer documentation.
+# ---------------------------------------------------------------------------
+
+ROLE_STARTING_POINTS: dict[str, dict] = {
+    "bass": {
+        "sample_size": 26,
+        "mono": True,  # 25/26
+        "envelope": {"attack": 0.004, "release": 0.045, "sustain": 0.84},
+        "filter": {"type": "moog_lowpass_12", "resonance": 7, "drive": 14},
+        "oscillator_count": 2,
+        "warp_mode": "fm",
+        "mod_route_pattern": "macro -> oscillator / macro -> env, not LFO-driven",
+        "fx_backbone": "FXComp + FXEQ ahead of character effects (reverb/delay/dist)",
+        "note": "held, punchy tone (fast attack, short release, high sustain) -- not a pluck",
+    },
+    "pluck": {
+        "sample_size": 24,
+        "envelope": {"attack": 0.006, "decay": 0.232, "sustain": 0.0},
+        "filter": {"type": "moog_lowpass_12", "resonance": 10},
+        "warp_mode": "bend",  # not fm -- a real difference from bass/chords/synth
+        "mod_route_pattern": "macro -> env (decay/release feel) then macro -> fx",
+        "note": "sustain=0 is the single clearest role-defining signal in the whole "
+        "dataset -- a real decaying pluck, not a held note",
+    },
+    "lead": {
+        "sample_size": 22,
+        "mono": True,  # mostly, 20/22
+        "envelope": {"attack": 0.026, "decay": 1.08, "release": 0.38, "sustain": 0.74},
+        "warp_mode": "bend",
+        "mod_route_pattern": "macro -> fx (effect intensity) then lfo -> oscillator "
+        "(vibrato/movement)",
+        "note": "sustained melodic voice, not a pluck",
+    },
+    "pad": {
+        "sample_size": 12,  # smaller sample, treat as more anecdotal than others
+        "envelope": {"attack": 0.664, "decay": 1.75, "release": 1.1},
+        "oscillator_count": 3,  # 8/12
+        "warp_mode": "fm",
+        "mod_route_pattern": "lfo -> oscillator (continuous evolving movement, not macro-driven "
+        "like bass/lead)",
+    },
+    "chords": {
+        "sample_size": 23,
+        "mono": False,  # 100% polyphonic, 0/23 mono
+        "filter_count": 2,  # active in 19/23 -- richer layering than most roles
+        "oscillator_count": 3,  # most common, 14/23
+        "warp_mode": "fm",
+        "mod_route_pattern": "lfo -> oscillator, close behind macro -> oscillator",
+    },
+    "synth": {
+        "sample_size": 28,  # largest category
+        "oscillator_count": "2-3",
+        "envelope": {"decay": 0.81},
+        "warp_mode": "fm",
+        "note": "heaviest and most evenly-spread macro usage across fx/env/oscillator/"
+        "filter of any category -- the most 'built for live tweaking' role",
+    },
+    "arp": {
+        "sample_size": 16,
+        "mono": False,  # mostly polyphonic (12/16) despite the role name
+        "envelope": "short attack/release",
+        "warp_mode": "fm",
+        "mod_route_pattern": "lfo -> oscillator",
+    },
+    "sequence": {
+        "sample_size": 14,
+        "envelope": {"attack": 0.001},
+        "note": "long decay/sustain held near max -- built to be gated/retriggered "
+        "rhythmically rather than shaped by its own envelope",
+        "mod_route_pattern": "by far the heaviest lfo -> oscillator usage of any category "
+        "-- strong rhythmic pitch/timbre modulation is a defining trait here",
+    },
+}
 
 ALL_FX_TYPES: tuple[str, ...] = tuple(FX_TYPE_IDS.values())
