@@ -575,6 +575,38 @@ NOISEOSC_PARAMS: dict[str, ParamDef] = {
 # `_plain_params`'s allow_unknown merge) but not independently generatable.
 # NOT yet confirmed live for generation (only confirmed reading real
 # files) -- treat as experimental until tested, same caveat as LfoSpec.shape.
+#
+# kParamDensity/kParamGrainLength's raw<->UI-displayed relationships --
+# decoded live 2026-07-30 after the FIRST real-Serum test of GranularOsc
+# came back broken ("plays like a sample, extremely filtered"). Root cause:
+# both params were being written as if OscillatorSpec's value WAS the raw
+# CBOR value directly (matching every other already-modeled param in this
+# project), but neither actually is -- confirmed by asking the user to type
+# exact DENS/LENGTH-knob values into a real Serum 2 instance and reading
+# back the resulting saved file's raw value for each:
+#   - kParamDensity: raw = displayed**4 / 810 (a clean QUARTIC curve,
+#     confirmed EXACT across 3 points: displayed 5/15/25 -> raw
+#     0.7716/62.5/482.25). The knob's own confirmed display range is 0-30;
+#     30**4/810 == 1000 exactly, a suspiciously round number strongly
+#     suggesting 1000 is the true raw ceiling -- NOT the 850ish this
+#     project had previously guessed purely from corpus min/max
+#     observations (which was simply wrong, an artifact of never having
+#     confirmed the curve shape).
+#   - kParamGrainLength: raw = displayed / 1000 (LINEAR, confirmed exact
+#     across displayed 0.05/0.3/1.0 -> raw 0.00005/0.0003/0.001). The
+#     original bug in one sentence: writing OscillatorSpec.
+#     granular_grain_length=0.15 (intended as "0.15 seconds") directly as
+#     the raw value actually displays as 150 in Serum's own UI -- an
+#     absurdly long, almost certainly clamped grain length that made the
+#     engine effectively play large continuous chunks of the source
+#     instead of short grains, the direct cause of "plays like a sample."
+# OscillatorSpec.granular_density/granular_grain_length are the UI-
+# displayed numbers (what a user would type into Serum), NOT the raw CBOR
+# values -- mapping.py/introspect.py apply these conversions at the
+# read/write boundary so PresetSpec stays in the same "matches what you'd
+# see in Serum's own UI" convention as every other already-modeled param.
+GRANULAR_DENSITY_CURVE_DIVISOR = 810.0
+GRANULAR_GRAIN_LENGTH_DIVISOR = 1000.0
 GRANULAROSC_PARAMS: dict[str, ParamDef] = {
     "kParamWarp": ParamDef(
         "kParamWarp", "float", default=0.0, min=0.0, max=1.0, confidence="observed",
@@ -606,17 +638,28 @@ GRANULAROSC_PARAMS: dict[str, ParamDef] = {
     "kParamWarpVar": ParamDef("kParamWarpVar", "float", default=0.0, min=0.0, max=1.0, confidence="uncertain"),
     "kParamWarpVar2": ParamDef("kParamWarpVar2", "float", default=0.0, min=0.0, max=1.0, confidence="uncertain"),
     "kParamDensity": ParamDef(
-        "kParamDensity", "float", default=20.0, min=0.0, max=850.0, unit="Hz (approx.)",
-        confidence="observed",
-        notes="Grain trigger rate. 89% presence (59/66 real samples), real range "
-        "7.6e-6-800.0. Interpretation depends on kParamDensityMode (Free Hz/BPM-synced/"
-        "direct grain count) -- only kDensityFree confirmed as the overwhelmingly common "
-        "real default (3/66 used a non-default mode).",
+        "kParamDensity", "float", default=0.0247, min=0.0, max=1000.0, unit="raw (see "
+        "GRANULAR_DENSITY_CURVE_DIVISOR)", confidence="confirmed",
+        notes="Grain trigger rate. 89% presence (59/66 real samples), real raw range "
+        "7.6e-6-800.0. THIS IS THE RAW STORAGE VALUE, not what Serum's DENS knob "
+        "displays -- confirmed live 2026-07-30: raw = displayed**4 / 810 (quartic), "
+        "displayed range 0-30. Interpretation depends on kParamDensityMode (Free Hz/"
+        "BPM-synced/direct grain count) -- only kDensityFree confirmed as the "
+        "overwhelmingly common real default (3/66 used a non-default mode).",
     ),
     "kParamGrainLength": ParamDef(
-        "kParamGrainLength", "float", default=0.1, min=0.0, max=10.0, unit="seconds (approx.)",
-        confidence="observed",
-        notes="83% presence (55/66), real range 0.0-10.0.",
+        "kParamGrainLength", "float", default=0.0002, min=0.0, max=10.0, unit="raw (see "
+        "GRANULAR_GRAIN_LENGTH_DIVISOR)", confidence="confirmed",
+        notes="83% presence (55/66), real raw range 0.0-10.0 -- the calibration below was "
+        "only confirmed in the LOW end of that range (displayed 0.05-1.0); whether the "
+        "same linear formula holds all the way to raw=10.0 (displayed=10000, an oddly "
+        "large number) or the curve changes shape/kParamLengthMode alters the "
+        "interpretation at higher real-world values is unconfirmed. THIS IS THE RAW "
+        "STORAGE VALUE, not what Serum's LENGTH knob displays -- confirmed live "
+        "2026-07-30 in the tested range: raw = displayed / 1000 (linear). Getting this "
+        "backwards (writing the intended displayed number directly as raw) was the root "
+        "cause of GranularOsc's first live test sounding broken -- see the module "
+        "comment above this table.",
     ),
     "kParamGrainReverse": ParamDef("kParamGrainReverse", "bool", default=False, confidence="uncertain"),
     "kParamRandomOffset": ParamDef(

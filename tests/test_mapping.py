@@ -2193,6 +2193,55 @@ def test_sample_playback_source_writes_sampleosc_and_engine_selector(
     assert osc0["WTOsc0"] == init_data["Oscillator0"]["WTOsc0"]
 
 
+def test_granular_density_and_grain_length_curves_match_real_serum_calibration(
+    init_data, tables_dir, samples_dir, tmp_path
+):
+    """Locks in the exact curves against the real (displayed, raw) pairs
+    collected live 2026-07-30 by typing exact DENS/LENGTH-knob values into
+    a real Serum 2 instance and reading back the saved file's raw CBOR
+    value -- not just the formula's own self-consistency. kParamDensity:
+    quartic (raw = displayed**4 / 810); kParamGrainLength: linear
+    (raw = displayed / 1000). See docs/PARAMETER_SCHEMA.md item 3 for the
+    full story (this fixed a real bug found live: the original
+    grain-length code wrote the intended displayed number directly as the
+    raw value, which is 1000x too large)."""
+    source = tmp_path / "texture.wav"
+    _write_wav_fixture(source)
+
+    real_density_pairs = [(5.0, 0.7716049382716046), (15.0, 62.49999999999999), (25.0, 482.2530864197531)]
+    real_grain_length_pairs = [(0.05, 5.000000000000001e-05), (0.3, 0.0003), (1.0, 0.001)]
+
+    for displayed_density, real_raw_density in real_density_pairs:
+        spec = PresetSpec(
+            name="X",
+            description="",
+            oscillators=[
+                OscillatorSpec(
+                    enabled=True, granular_source=str(source), granular_density=displayed_density
+                )
+            ],
+        )
+        data = apply_spec(init_data, spec)
+        assert data["Oscillator0"]["GranularOsc0"]["plainParams"]["kParamDensity"] == pytest.approx(
+            real_raw_density
+        )
+
+    for displayed_length, real_raw_length in real_grain_length_pairs:
+        spec = PresetSpec(
+            name="X",
+            description="",
+            oscillators=[
+                OscillatorSpec(
+                    enabled=True, granular_source=str(source), granular_grain_length=displayed_length
+                )
+            ],
+        )
+        data = apply_spec(init_data, spec)
+        assert data["Oscillator0"]["GranularOsc0"]["plainParams"]["kParamGrainLength"] == pytest.approx(
+            real_raw_length
+        )
+
+
 def test_granular_source_writes_granularosc_and_engine_selector(
     init_data, tables_dir, samples_dir, tmp_path
 ):
@@ -2211,7 +2260,7 @@ def test_granular_source_writes_granularosc_and_engine_selector(
                 enabled=True,
                 granular_source=str(source),
                 granular_density=15.0,
-                granular_grain_length=0.2,
+                granular_grain_length=0.3,
                 granular_random_pitch=3.0,
                 granular_random_pan=40.0,
                 granular_random_grain_length=25.0,
@@ -2230,8 +2279,14 @@ def test_granular_source_writes_granularosc_and_engine_selector(
     assert granular0["sampleRate"] == 44100
     assert granular0["numFrames"] == 4410
     assert granular0["samplePathRelative"].startswith("User/serum-mcp/smp_")
-    assert granular0["plainParams"]["kParamDensity"] == 15.0
-    assert granular0["plainParams"]["kParamGrainLength"] == 0.2
+    # kParamDensity/kParamGrainLength store the RAW value, NOT what
+    # Serum's DENS/LENGTH knobs display -- confirmed live 2026-07-30 by
+    # reading back real Serum-saved values for known knob positions (see
+    # schema.GRANULAR_DENSITY_CURVE_DIVISOR's module comment). 15.0
+    # displayed density -> 15**4/810 raw; 0.3 displayed grain length ->
+    # 0.3/1000 raw exactly.
+    assert granular0["plainParams"]["kParamDensity"] == pytest.approx(15.0**4 / 810.0)
+    assert granular0["plainParams"]["kParamGrainLength"] == pytest.approx(0.0003)
     assert granular0["plainParams"]["kParamRandomPitch"] == 3.0
     assert granular0["plainParams"]["kParamRandomPan"] == 40.0
     assert granular0["plainParams"]["kParamRandomGrainLength"] == 25.0
@@ -2248,8 +2303,8 @@ def test_granular_source_writes_granularosc_and_engine_selector(
     extracted = extract_spec(data)
     ex_osc = extracted.oscillators[0]
     assert ex_osc.granular_source is not None
-    assert ex_osc.granular_density == 15.0
-    assert ex_osc.granular_grain_length == 0.2
+    assert ex_osc.granular_density == pytest.approx(15.0)
+    assert ex_osc.granular_grain_length == pytest.approx(0.3)
     assert ex_osc.granular_random_pitch == 3.0
     assert ex_osc.granular_random_pan == 40.0
     assert ex_osc.granular_random_grain_length == 25.0

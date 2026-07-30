@@ -72,8 +72,11 @@ _ENGINE_TYPE_WT = "kOsc_WT"
 _ENGINE_TYPE_SAMPLE = "kOsc_Sample"
 _ENGINE_TYPE_GRANULAR = "kOsc_Granular"
 _GRANULAROSC_KEYS = {
-    "granular_density": "kParamDensity",
-    "granular_grain_length": "kParamGrainLength",
+    # kParamDensity/kParamGrainLength deliberately excluded -- both need a
+    # nonlinear conversion from the UI-displayed number OscillatorSpec
+    # exposes to the raw CBOR value Serum actually stores, see
+    # _GRANULAR_DENSITY_DIVISOR/_granular_grain_length_to_raw below. Handled
+    # explicitly at the call site instead of this generic 1:1 dict.
     "granular_random_pitch": "kParamRandomPitch",
     "granular_random_pan": "kParamRandomPan",
     "granular_random_grain_length": "kParamRandomGrainLength",
@@ -801,6 +804,12 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                 granular_params = _plain_params(osc_container, granular_key)
                 for spec_key, param_key in _GRANULAROSC_KEYS.items():
                     granular_params[param_key] = getattr(osc, spec_key)
+                granular_params["kParamDensity"] = (
+                    osc.granular_density**4 / schema.GRANULAR_DENSITY_CURVE_DIVISOR
+                )
+                granular_params["kParamGrainLength"] = (
+                    osc.granular_grain_length / schema.GRANULAR_GRAIN_LENGTH_DIVISOR
+                )
                 granular_params["kParamWarp"] = osc.warp_amount
                 granular_params["kParamWarpMenu"] = schema.SIMPLE_WARP_MODES.get(
                     osc.warp_mode, osc.warp_mode

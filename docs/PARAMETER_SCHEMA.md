@@ -1108,7 +1108,65 @@ improve generation quality if resolved:
    independently generatable this round. **Not yet confirmed live** — only
    confirmed reading real files and a full write→extract round-trip test
    (including an actual file copy into a temp Samples folder), same
-   "experimental until tested" caveat as `LfoSpec.shape`. MultiSampleOsc
+   "experimental until tested" caveat as `LfoSpec.shape`.
+
+   **Update 2026-07-30, first live test found (and fixed) two real
+   bugs.** Loaded a generated `GranularOsc` preset in real Serum 2: engine
+   selector correctly showed "Granular" (confirming `kParamType` round-
+   trips correctly), but the sound was described as "plays like a sample"
+   and "extremely filtered" with the filter fully open — genuinely broken,
+   not just unfamiliar-sounding. Root-caused via a live-calibration method
+   (typing exact knob values into Serum, reading back the saved file's raw
+   CBOR): **`kParamDensity` and `kParamGrainLength` are NOT the raw
+   storage value** — this project had been writing `OscillatorSpec`'s
+   `granular_density`/`granular_grain_length` directly as the raw CBOR
+   value, matching how every other already-modeled param works, but these
+   two specifically need a conversion:
+   - `kParamDensity`: `raw = displayed**4 / 810` (a clean QUARTIC curve,
+     confirmed EXACT across 3 real data points: displayed 5/15/25 → raw
+     0.7716/62.5/482.25). The DENS knob's own real display range is 0-30
+     (confirmed by turning it to both extremes); `30**4/810 == 1000`
+     exactly, a suspiciously round number strongly suggesting 1000 is the
+     true raw ceiling — the project's EARLIER guess of a linear ~0-850
+     range (from corpus min/max alone, no calibration) was simply wrong.
+   - `kParamGrainLength`: `raw = displayed / 1000` (LINEAR, confirmed
+     exact across displayed 0.05/0.3/1.0 → raw 0.00005/0.0003/0.001).
+     **This was the dominant bug**: the original code wrote
+     `granular_grain_length=0.15` (intended as "0.15" on Serum's own
+     scale) directly as raw — but 0.15 raw actually displays as **150**
+     in Serum's UI, an absurdly long, almost certainly clamped grain
+     length that made the engine effectively play large continuous
+     chunks of the source instead of short grains — matching "plays like
+     a sample" exactly, and plausibly explaining the filtered character
+     too (heavy overlap/smearing at that extreme length).
+
+   Fixed: `mapping.py`/`introspect.py` now apply these conversions at the
+   read/write boundary (`schema.GRANULAR_DENSITY_CURVE_DIVISOR`/
+   `GRANULAR_GRAIN_LENGTH_DIVISOR`), so `OscillatorSpec.granular_density`/
+   `granular_grain_length` are the numbers you'd actually type into
+   Serum's UI, restoring the same convention every other field in this
+   project already follows. Locked in with a dedicated regression test
+   asserting the exact real (displayed, raw) pairs collected live, not
+   just the formula's own self-consistency. **Still unconfirmed**: whether
+   `kParamGrainLength`'s linear formula holds all the way to its real
+   corpus-observed raw max (10.0, implying displayed=10000 if linear
+   everywhere — untested, possibly a different regime or
+   `kParamLengthMode` interaction at high values); whether this same
+   live test's report is now actually fixed (a corrected test preset was
+   generated and passed the automated CBOR scan, but a fresh real-Serum
+   listen wasn't re-confirmed as of this write-up); and the newly-
+   discovered `kParamScanRate`/`kParamPosition` system (present in 77%/
+   57% of real Granular/Spectral oscillators, an outer `Oscillator{i}`-
+   level "SCAN" position/speed control this project completely missed
+   until seeing a real screenshot) remains entirely unwired — ruled out
+   as the primary cause of THIS bug (manually sweeping the SCAN knob from
+   -200% to +200% made no audible difference, and its own
+   `kParamManualPositionMode` gate is absent in 92%+ of real content,
+   contradicting an initial "stuck in manual mode" hypothesis) but still a
+   real, undocumented gap worth closing later. `SpectralOsc`'s equivalent
+   controls (`spectral_warp_freq_lo`/`freq_hi`) were NOT part of this live
+   test and their calibration is unverified — treat with the same
+   suspicion until separately confirmed. MultiSampleOsc
    (used for realistic multisampled instrument patches, e.g. real
    pianos/guitars) is now the highest-value remaining gap — its own
    structure (`embedded_sfz` text + a `files` dict of per-sample metadata +

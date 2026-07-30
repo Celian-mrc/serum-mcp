@@ -227,14 +227,26 @@ class OscillatorSpec(BaseModel):
         "docs/PARAMETER_SCHEMA.md.",
     )
     granular_density: float = Field(
-        20.0, ge=0.0, le=850.0, description="granular_source only. Grain trigger rate in "
-        "Hz (approx.) -- higher = denser/smoother/more continuous-sounding grain cloud, "
-        "lower = sparser/more rhythmic/glitchy individual grains audible.",
+        10.0, ge=0.0, le=30.0, description="granular_source only. Grain trigger rate, on "
+        "the SAME 0-30 scale as Serum's own DENS knob (higher = denser/smoother/more "
+        "continuous-sounding grain cloud, lower = sparser/more rhythmic/glitchy individual "
+        "grains audible) -- confirmed live 2026-07-30 by reading back real Serum-saved "
+        "values (the raw storage format is a much steeper, unrelated quartic curve; this "
+        "field matches the UI number, not raw storage, same convention as every other "
+        "field in this project).",
     )
     granular_grain_length: float = Field(
-        0.1, ge=0.0, le=10.0, description="granular_source only. Length of each individual "
-        "grain in seconds (approx.) -- shorter = more textural/granular-sounding, longer = "
-        "closer to overlapping mini-loops of the source.",
+        0.3, ge=0.0, le=10.0, description="granular_source only. Length of each individual "
+        "grain, on the SAME scale as Serum's own LENGTH knob -- confirmed live 2026-07-30 "
+        "(only in the 0.05-1.0 range; higher values are extrapolated, unconfirmed whether "
+        "the same linear scale holds all the way to 10.0). Shorter = more textural/"
+        "granular-sounding, longer = closer to overlapping mini-loops of the source. "
+        "IMPORTANT: earlier versions of this project wrote this number directly as "
+        "Serum's raw storage value, which is 1000x smaller -- e.g. 0.15 here used to "
+        "silently become an effectively-unbounded ~150 in Serum's own UI (almost "
+        "certainly clamped), making the engine play large continuous chunks instead of "
+        "short grains. That bug is fixed; this field is now the number you'd actually "
+        "type into Serum.",
     )
     granular_random_pitch: float = Field(
         0.0, ge=0.0, le=12.0, description="granular_source only. Random per-grain pitch "

@@ -213,11 +213,21 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                 kwargs["warp_amount"] = _resolve(granular_pp, "kParamWarp", schema.GRANULAROSC_PARAMS)
                 raw_warp_mode = _resolve(granular_pp, "kParamWarpMenu", schema.GRANULAROSC_PARAMS)
                 kwargs["warp_mode"] = _REVERSE_WARP_MODES.get(raw_warp_mode, raw_warp_mode)
-                kwargs["granular_density"] = _resolve(
-                    granular_pp, "kParamDensity", schema.GRANULAROSC_PARAMS
-                )
-                kwargs["granular_grain_length"] = _resolve(
+                # kParamDensity/kParamGrainLength store the RAW value, not
+                # what Serum's UI displays -- invert the confirmed curves
+                # (see schema.GRANULAR_DENSITY_CURVE_DIVISOR's module
+                # comment) so extract_spec reports the same number a user
+                # would see in Serum, matching every other already-modeled
+                # param's convention.
+                raw_density = _resolve(granular_pp, "kParamDensity", schema.GRANULAROSC_PARAMS)
+                kwargs["granular_density"] = (
+                    raw_density * schema.GRANULAR_DENSITY_CURVE_DIVISOR
+                ) ** 0.25
+                raw_grain_length = _resolve(
                     granular_pp, "kParamGrainLength", schema.GRANULAROSC_PARAMS
+                )
+                kwargs["granular_grain_length"] = (
+                    raw_grain_length * schema.GRANULAR_GRAIN_LENGTH_DIVISOR
                 )
                 kwargs["granular_random_pitch"] = _resolve(
                     granular_pp, "kParamRandomPitch", schema.GRANULAROSC_PARAMS
