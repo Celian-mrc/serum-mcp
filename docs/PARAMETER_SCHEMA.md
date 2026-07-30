@@ -908,10 +908,25 @@ directly rather than trusting the extracted `PresetSpec` was complete:
     patches made recreating Dreams (`RoutingSlot2`:
     `kParamFilterBalance=100.0` + `kParamRoutingDest='kRoutingDestFilter'`
     round-trips to `filter_routing="filter"`, `filter_balance=100.0`) and
-    Beyond. `kParamFXBus1Level`/`kParamFXBus2Level` (each source's aux send
-    into the FX bus system, see `GLOBAL_PARAMS['kParamFXBus1Vol']`) remain
-    unwired -- lower confidence / rarer real-world use, not attempted this
-    round.
+    Beyond.
+
+18. **The FX-bus send system is now wired end-to-end, closing out the last
+    open piece of items 16/17.** `oscillators[i].fx_bus1_send`/
+    `fx_bus2_send` and `filters[i].fx_bus1_send`/`fx_bus2_send` (0-100) set
+    `kParamFXBus1Level`/`kParamFXBus2Level` on that source's own
+    `RoutingSlot` -- a genuine aux send, independent of and not mutually
+    exclusive with `filter_routing`/`output_routing`'s main destination.
+    `GlobalSpec.fx_bus1_volume`/`fx_bus2_volume` set the bus's own aggregate
+    level (`kParamFXBus1Vol`/`kParamFXBus2Vol` on `Global0`, CAN exceed 1.0 —
+    a real boost stage, real values seen 0.26-1.75) and
+    `GlobalSpec.direct_volume` sets `kParamDirectVol` (the level for any
+    source routed with `filter_routing`/`output_routing='direct'`, real
+    values seen well below unity, 0.21-0.43, reason unconfirmed). All four
+    are `None` by default and write nothing unless explicitly set, matching
+    Serum's real absent-state default. `kParamFXBus1Dest`/`kParamFXBus2Dest`
+    (which enum value routes each bus's processed signal back into the main
+    path) remain unwired -- still `confidence="uncertain"`, the integer-per-
+    destination mapping was never decoded.
 
 **Fixture bug, not a schema gap** (fixed): `fixtures/init_preset.SerumPreset`
 — the blank template every `generate_preset`/`edit_preset` call starts

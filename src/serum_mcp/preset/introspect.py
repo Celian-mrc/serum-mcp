@@ -246,6 +246,10 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             }.get(raw_osc_routing_dest)
             if "kParamFilterBalance" in osc_routing_pp:
                 kwargs["filter_balance"] = osc_routing_pp["kParamFilterBalance"]
+            if "kParamFXBus1Level" in osc_routing_pp:
+                kwargs["fx_bus1_send"] = osc_routing_pp["kParamFXBus1Level"]
+            if "kParamFXBus2Level" in osc_routing_pp:
+                kwargs["fx_bus2_send"] = osc_routing_pp["kParamFXBus2Level"]
 
         oscillators.append(OscillatorSpec(**kwargs))
 
@@ -278,6 +282,8 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                 wet=_resolve(pp, "kParamWet", schema.VOICE_FILTER_PARAMS),
                 level_out=_resolve(pp, "kParamLevelOut", schema.VOICE_FILTER_PARAMS),
                 output_routing=output_routing,
+                fx_bus1_send=routing_pp.get("kParamFXBus1Level") if isinstance(routing_pp, dict) else None,
+                fx_bus2_send=routing_pp.get("kParamFXBus2Level") if isinstance(routing_pp, dict) else None,
             )
         )
 
@@ -452,6 +458,9 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         limit_same_note_polyphony=bool(
             _resolve(global_pp, "kParamLimitSameNotePolyphony", schema.GLOBAL_PARAMS)
         ),
+        fx_bus1_volume=global_pp.get("kParamFXBus1Vol") if isinstance(global_pp, dict) else None,
+        fx_bus2_volume=global_pp.get("kParamFXBus2Vol") if isinstance(global_pp, dict) else None,
+        direct_volume=global_pp.get("kParamDirectVol") if isinstance(global_pp, dict) else None,
     )
 
     arp_pp = (data.get("Arp0", {}) or {}).get("plainParams")

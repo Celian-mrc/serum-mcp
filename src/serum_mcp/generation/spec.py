@@ -253,6 +253,21 @@ class OscillatorSpec(BaseModel):
         "believed to lean toward Filter 2 (see docs/PARAMETER_SCHEMA.md). Leave unset to "
         "use Serum's own default balance.",
     )
+    fx_bus1_send: float | None = Field(
+        None,
+        ge=0.0,
+        le=100.0,
+        description="% of this oscillator's signal sent to FX Bus 1, independent of "
+        "filter_routing's main destination -- a genuine aux send, not mutually exclusive "
+        "with it. See GlobalSpec.fx_bus1_volume for the bus's own aggregate level. Leave "
+        "unset for no send (Serum's real default).",
+    )
+    fx_bus2_send: float | None = Field(
+        None,
+        ge=0.0,
+        le=100.0,
+        description="Same as fx_bus1_send, for FX Bus 2.",
+    )
 
 
 class FilterSpec(BaseModel):
@@ -316,6 +331,21 @@ class FilterSpec(BaseModel):
         "raises an error rather than producing a silently broken preset. Backed by "
         "RoutingSlot5/RoutingSlot6, a top-level structure outside VoiceFilter this "
         "project only partially understands -- see docs/PARAMETER_SCHEMA.md §5.",
+    )
+    fx_bus1_send: float | None = Field(
+        None,
+        ge=0.0,
+        le=100.0,
+        description="% of this filter's signal sent to FX Bus 1, independent of "
+        "output_routing's main destination -- a genuine aux send, not mutually "
+        "exclusive with it. See GlobalSpec.fx_bus1_volume for the bus's own aggregate "
+        "level. Leave unset for no send (Serum's real default).",
+    )
+    fx_bus2_send: float | None = Field(
+        None,
+        ge=0.0,
+        le=100.0,
+        description="Same as fx_bus1_send, for FX Bus 2.",
     )
 
 
@@ -450,6 +480,29 @@ class GlobalSpec(BaseModel):
         description="limit voice-stacking when the SAME note is retriggered rapidly (e.g. "
         "under a fast arp/sequence) instead of letting overlapping voices for one note "
         "pile up. Found live 2026-07-29, present on 39% of real presets surveyed.",
+    )
+    fx_bus1_volume: float | None = Field(
+        None,
+        ge=0.0,
+        description="Aggregate volume for FX Bus 1, fed by any oscillator's/filter's own "
+        "fx_bus1_send. CAN exceed 1.0 (a real boost/gain stage, not just 0-100%% "
+        "attenuation like most params in this schema) -- real values seen 0.26-1.75. "
+        "Leave unset to use Serum's own default (unity) rather than writing it "
+        "explicitly; only meaningful when at least one source has a nonzero "
+        "fx_bus1_send.",
+    )
+    fx_bus2_volume: float | None = Field(
+        None,
+        ge=0.0,
+        description="Same as fx_bus1_volume, for FX Bus 2.",
+    )
+    direct_volume: float | None = Field(
+        None,
+        ge=0.0,
+        description="Volume for signal from any source routed with "
+        "filter_routing/output_routing='direct' (bypasses both filters AND the FX bus "
+        "system entirely). Real values seen 0.21-0.43 -- well below the presumed unity "
+        "default, uncertain why. Leave unset unless deliberately using 'direct' routing.",
     )
 
 

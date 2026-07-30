@@ -709,13 +709,18 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             validate_params(f"SubOsc{i}", sub_params, schema.SUBOSC_PARAMS, allow_unknown=True)
         validate_params(f"Oscillator{i}", osc_params, schema.OSCILLATOR_PARAMS, allow_unknown=True)
 
-        if osc.filter_routing is not None or osc.filter_balance is not None:
+        if (
+            osc.filter_routing is not None
+            or osc.filter_balance is not None
+            or osc.fx_bus1_send is not None
+            or osc.fx_bus2_send is not None
+        ):
             # RoutingSlot0-4 -- this oscillator's own INPUT routing choice
             # (distinct from RoutingSlot5/6, each filter's OWN output
             # routing, see FilterSpec.output_routing below). Only written
-            # when explicitly requested; leaving both fields unset matches
-            # Serum's real default (through the filters, kRoutingDestFilter)
-            # without writing anything.
+            # when explicitly requested; leaving all fields unset matches
+            # Serum's real default (through the filters, kRoutingDestFilter,
+            # no aux sends) without writing anything.
             routing_params: dict[str, Any] = {}
             if osc.filter_routing is not None:
                 routing_params["kParamRoutingDest"] = {
@@ -726,6 +731,10 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                 }[osc.filter_routing]
             if osc.filter_balance is not None:
                 routing_params["kParamFilterBalance"] = osc.filter_balance
+            if osc.fx_bus1_send is not None:
+                routing_params["kParamFXBus1Level"] = osc.fx_bus1_send
+            if osc.fx_bus2_send is not None:
+                routing_params["kParamFXBus2Level"] = osc.fx_bus2_send
             validate_params(
                 f"RoutingSlot{i}", routing_params, schema.ROUTING_SLOT_PARAMS, allow_unknown=True
             )
@@ -768,23 +777,36 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         validate_params(
             f"VoiceFilter{i}", filter_params, schema.VOICE_FILTER_PARAMS, allow_unknown=True
         )
-        if flt.output_routing is not None and i < 2:
+        if (
+            (flt.output_routing is not None or flt.fx_bus1_send is not None or flt.fx_bus2_send is not None)
+            and i < 2
+        ):
             # RoutingSlot5/RoutingSlot6 -- each filter's OWN output routing
             # (distinct from RoutingSlot0-4, the 5 oscillators' routing
             # INTO the filters). Found live 2026-07-29 recreating two real
             # presets that used opposite directions of this -- see
             # docs/PARAMETER_SCHEMA.md §5 items 11-12. Only written when
-            # explicitly requested; leaving it unset matches Serum's real
-            # default (parallel/kRoutingDestMaster) without writing
-            # anything, now that fixtures/init_preset.SerumPreset's own
-            # fixture bug (RoutingSlot5 stuck on the cascade value) is
-            # fixed.
-            routing_slot = data.setdefault(f"RoutingSlot{5 + i}", {})
-            routing_slot["plainParams"] = {
-                "kParamRoutingDest": (
+            # explicitly requested; leaving all fields unset matches Serum's
+            # real default (parallel/kRoutingDestMaster, no aux sends)
+            # without writing anything, now that fixtures/init_preset.
+            # SerumPreset's own fixture bug (RoutingSlot5 stuck on the
+            # cascade value) is fixed.
+            filter_routing_params: dict[str, Any] = {}
+            if flt.output_routing is not None:
+                filter_routing_params["kParamRoutingDest"] = (
                     "kRoutingDestMaster" if flt.output_routing == "parallel" else "kRoutingDestFilter"
                 )
-            }
+            if flt.fx_bus1_send is not None:
+                filter_routing_params["kParamFXBus1Level"] = flt.fx_bus1_send
+            if flt.fx_bus2_send is not None:
+                filter_routing_params["kParamFXBus2Level"] = flt.fx_bus2_send
+            validate_params(
+                f"RoutingSlot{5 + i}",
+                filter_routing_params,
+                schema.ROUTING_SLOT_PARAMS,
+                allow_unknown=True,
+            )
+            data.setdefault(f"RoutingSlot{5 + i}", {})["plainParams"] = filter_routing_params
 
     for i, env in enumerate(spec.envelopes):
         env_params = _plain_params(data, f"Env{i}")
@@ -864,6 +886,12 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         global_params["kParamPortamentoTime"] = spec.global_.portamento_time
         global_params["kParamPolyCount"] = spec.global_.poly_count
         global_params["kParamLimitSameNotePolyphony"] = spec.global_.limit_same_note_polyphony
+        if spec.global_.fx_bus1_volume is not None:
+            global_params["kParamFXBus1Vol"] = spec.global_.fx_bus1_volume
+        if spec.global_.fx_bus2_volume is not None:
+            global_params["kParamFXBus2Vol"] = spec.global_.fx_bus2_volume
+        if spec.global_.direct_volume is not None:
+            global_params["kParamDirectVol"] = spec.global_.direct_volume
         validate_params("Global0", global_params, schema.GLOBAL_PARAMS, allow_unknown=True)
 
     # Like `global`, arp is a single nested object (not a list), and unset

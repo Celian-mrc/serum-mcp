@@ -869,6 +869,76 @@ def test_oscillator_filter_routing_and_balance_round_trip(init_data):
     assert extracted.oscillators[2].filter_balance == 100.0
 
 
+def test_fx_bus_sends_unset_write_no_routing_slot(init_data):
+    """oscillators[].fx_bus1_send/fx_bus2_send and filters[].fx_bus1_send/
+    fx_bus2_send=None (the default) must not touch RoutingSlot0-4/5-6 at
+    all -- a genuine aux send, independent of filter_routing/output_routing,
+    that's absent unless explicitly requested."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True)],
+        filters=[FilterSpec()],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["RoutingSlot0"]["plainParams"] == "default"
+    assert data["RoutingSlot5"]["plainParams"] == "default"
+
+
+def test_fx_bus_sends_round_trip_on_oscillator_and_filter(init_data):
+    """kParamFXBus1Level/kParamFXBus2Level on RoutingSlot0-4 (oscillator aux
+    send) and RoutingSlot5/6 (filter aux send) -- distinct from
+    kParamRoutingDest's main destination, see GLOBAL_PARAMS['kParamFXBus1Vol']
+    for the bus's own aggregate level."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True, fx_bus1_send=25.0, fx_bus2_send=10.0)],
+        filters=[FilterSpec(fx_bus1_send=50.0)],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["RoutingSlot0"]["plainParams"] == {
+        "kParamFXBus1Level": 25.0,
+        "kParamFXBus2Level": 10.0,
+    }
+    assert data["RoutingSlot5"]["plainParams"] == {"kParamFXBus1Level": 50.0}
+
+    extracted = extract_spec(data)
+    assert extracted.oscillators[0].fx_bus1_send == 25.0
+    assert extracted.oscillators[0].fx_bus2_send == 10.0
+    assert extracted.filters[0].fx_bus1_send == 50.0
+    assert extracted.filters[0].fx_bus2_send is None
+
+
+def test_global_fx_bus_volumes_and_direct_volume_round_trip(init_data):
+    """GlobalSpec.fx_bus1_volume/fx_bus2_volume/direct_volume -- the
+    aggregate-level counterparts to each RoutingSlot's own per-source aux
+    send, found live 2026-07-30 via a VST3 binary string dump. Unset (the
+    default) writes nothing, matching Serum's real absent-state default."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        **{
+            "global": GlobalSpec(
+                fx_bus1_volume=1.5, fx_bus2_volume=0.8, direct_volume=0.3
+            )
+        },
+    )
+    data = apply_spec(init_data, spec)
+
+    global_pp = data["Global0"]["plainParams"]
+    assert global_pp["kParamFXBus1Vol"] == 1.5
+    assert global_pp["kParamFXBus2Vol"] == 0.8
+    assert global_pp["kParamDirectVol"] == 0.3
+
+    extracted = extract_spec(data)
+    assert extracted.global_.fx_bus1_volume == 1.5
+    assert extracted.global_.fx_bus2_volume == 0.8
+    assert extracted.global_.direct_volume == 0.3
+
+
 def test_lfo_default_rate_and_beat_sync_omitted_not_written_explicitly(init_data):
     """kParamRate=0.0 is a literal 0Hz freeze, not a neutral value -- found
     live 2026-07-29 (UN_PLACES_BA_Beyond): its real LFO0 has neither
