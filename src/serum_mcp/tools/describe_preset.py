@@ -41,7 +41,7 @@ def describe_preset(preset_path: str) -> str:
                 extra = (
                     f"granular={osc.granular_source}  "
                     f"density={osc.granular_density:.1f}Hz  "
-                    f"grain_len={osc.granular_grain_length:.2f}s  "
+                    f"grain_len={osc.granular_grain_length:.1f}ms  "
                     f"warp={osc.warp_mode}({osc.warp_amount:.2f}){warp2}"
                 )
             elif osc.spectral_source:

@@ -648,18 +648,21 @@ GRANULAROSC_PARAMS: dict[str, ParamDef] = {
         "overwhelmingly common real default (3/66 used a non-default mode).",
     ),
     "kParamGrainLength": ParamDef(
-        "kParamGrainLength", "float", default=0.0002, min=0.0, max=10.0, unit="raw (see "
-        "GRANULAR_GRAIN_LENGTH_DIVISOR)", confidence="confirmed",
-        notes="83% presence (55/66), real raw range 0.0-10.0 -- the calibration below was "
-        "only confirmed in the LOW end of that range (displayed 0.05-1.0); whether the "
-        "same linear formula holds all the way to raw=10.0 (displayed=10000, an oddly "
-        "large number) or the curve changes shape/kParamLengthMode alters the "
-        "interpretation at higher real-world values is unconfirmed. THIS IS THE RAW "
-        "STORAGE VALUE, not what Serum's LENGTH knob displays -- confirmed live "
-        "2026-07-30 in the tested range: raw = displayed / 1000 (linear). Getting this "
-        "backwards (writing the intended displayed number directly as raw) was the root "
-        "cause of GranularOsc's first live test sounding broken -- see the module "
-        "comment above this table.",
+        "kParamGrainLength", "float", default=0.124, min=0.0, max=10.0, unit="raw (see "
+        "GRANULAR_GRAIN_LENGTH_DIVISOR; displayed unit is MILLISECONDS)",
+        confidence="confirmed",
+        notes="83% presence (55/66), real raw range 0.0-10.0. THIS IS THE RAW STORAGE "
+        "VALUE, not what Serum's LENGTH knob displays -- confirmed live 2026-07-30: "
+        "raw = displayed_ms / 1000 (linear), confirmed via BOTH the original 3-point "
+        "calibration (displayed 0.05/0.3/1.0ms) AND independently cross-validated "
+        "against a real Factory preset (808 - Texture's Osc B: raw 0.1243 -> predicted "
+        "displayed 124.3ms, user-reported real value 124ms -- matches to within "
+        "rounding). The displayed unit is confirmed MILLISECONDS (not seconds, an "
+        "earlier wrong assumption) -- so real raw=10.0 implies displayed=10000ms=10s, "
+        "plausible as an extreme long-grain/pad setting, not necessarily broken. Getting "
+        "the raw<->displayed conversion backwards (writing the intended displayed number "
+        "directly as raw) was the root cause of GranularOsc's first live test sounding "
+        "broken -- see the module comment above this table.",
     ),
     "kParamGrainReverse": ParamDef("kParamGrainReverse", "bool", default=False, confidence="uncertain"),
     "kParamRandomOffset": ParamDef(

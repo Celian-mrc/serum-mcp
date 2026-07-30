@@ -236,17 +236,19 @@ class OscillatorSpec(BaseModel):
         "field in this project).",
     )
     granular_grain_length: float = Field(
-        0.3, ge=0.0, le=10.0, description="granular_source only. Length of each individual "
-        "grain, on the SAME scale as Serum's own LENGTH knob -- confirmed live 2026-07-30 "
-        "(only in the 0.05-1.0 range; higher values are extrapolated, unconfirmed whether "
-        "the same linear scale holds all the way to 10.0). Shorter = more textural/"
-        "granular-sounding, longer = closer to overlapping mini-loops of the source. "
-        "IMPORTANT: earlier versions of this project wrote this number directly as "
-        "Serum's raw storage value, which is 1000x smaller -- e.g. 0.15 here used to "
-        "silently become an effectively-unbounded ~150 in Serum's own UI (almost "
-        "certainly clamped), making the engine play large continuous chunks instead of "
-        "short grains. That bug is fixed; this field is now the number you'd actually "
-        "type into Serum.",
+        100.0, ge=0.0, le=10000.0, description="granular_source only. Length of each "
+        "individual grain in MILLISECONDS, on the SAME scale as Serum's own LENGTH knob "
+        "-- confirmed live 2026-07-30 by reading back a real Factory preset's own raw "
+        "value (808 - Texture's Osc B: raw 0.1243 -> displayed 124ms, matching this "
+        "formula to within rounding) in addition to the original 3-point calibration "
+        "(0.05/0.3/1.0 -> 50/300/1000x smaller raw). Shorter = more textural/glitchy, "
+        "longer = closer to overlapping mini-loops of the source; the real Factory "
+        "reference above used 124ms for a smooth/rich texture. IMPORTANT: earlier "
+        "versions of this project wrote this number directly as Serum's raw storage "
+        "value AND assumed the unit was seconds, not ms -- e.g. writing 0.15 intending "
+        "'150ms' actually produced 0.15ms (absurdly short) after the first fix and "
+        "'150 real seconds' (absurdly long, clamped) before it. Both bugs are now fixed; "
+        "this field is the literal millisecond number you'd type into Serum.",
     )
     granular_random_pitch: float = Field(
         0.0, ge=0.0, le=12.0, description="granular_source only. Random per-grain pitch "

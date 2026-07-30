@@ -1166,7 +1166,37 @@ improve generation quality if resolved:
    real, undocumented gap worth closing later. `SpectralOsc`'s equivalent
    controls (`spectral_warp_freq_lo`/`freq_hi`) were NOT part of this live
    test and their calibration is unverified — treat with the same
-   suspicion until separately confirmed. MultiSampleOsc
+   suspicion until separately confirmed.
+
+   **Update 2026-07-30, independently cross-validated against a real
+   Factory preset, and the grain-length UNIT corrected too.** After the
+   fix above, the corrected test preset genuinely sounded granular in
+   Serum (user-confirmed), closing the main bug. Comparing side-by-side
+   against a real Xfer-designed Granular preset (`808 - Texture`, Osc B)
+   surfaced one more correction: **`kParamGrainLength`'s displayed unit is
+   MILLISECONDS, not seconds** as this project had assumed — the real
+   preset's raw value (`0.1243`) predicted a displayed value of `124.3ms`
+   via the confirmed linear formula, and the user independently read
+   Serum's own UI as showing exactly `124ms`; `kParamDensity`'s predicted
+   `0.90` similarly matched the UI's `0.90` exactly. Both formulas now
+   have TWO independent confirmations (the original synthetic calibration
+   AND this real-preset cross-check), not just internal self-consistency.
+   `OscillatorSpec.granular_grain_length`'s default was raised from `0.3`
+   to `100.0` (ms) to land in a musically sensible range instead of the
+   sub-millisecond range the old "seconds" assumption implied. Also
+   surfaced in the same comparison: `808 - Texture`'s DENS/LENGTH are
+   themselves real mod-matrix destinations (`Assigned Modulators: LFO1,
+   Macro 8` for density; `LFO1, LFO2, Macro 8` for length) — neither is in
+   `MOD_DEST_TARGETS` yet, a real but lower-priority gap (the same
+   category of fix as item 1b's mod-destination additions, just not yet
+   done for `GranularOsc`/`SpectralOsc`'s own params). Also noted: the
+   reference preset plays its Osc B in REVERSE (a deliberate Xfer sound-
+   design choice, likely `kParamReverse` or a negative `kParamScanRate`)
+   and Osc C (a `SampleOsc`, unrelated to this investigation) audibly
+   slows its scan position over the note's duration, presumably via the
+   same `kParamScanRate`/`kParamPosition` system flagged above as still
+   unwired and now confirmed to matter for real, intentional sound design
+   -- not just an edge case. MultiSampleOsc
    (used for realistic multisampled instrument patches, e.g. real
    pianos/guitars) is now the highest-value remaining gap — its own
    structure (`embedded_sfz` text + a `files` dict of per-sample metadata +
