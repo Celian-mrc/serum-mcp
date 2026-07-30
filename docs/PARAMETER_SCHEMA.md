@@ -1315,6 +1315,36 @@ improve generation quality if resolved:
      check) — still not wired into `OscillatorSpec`, now a well-evidenced
      rather than purely theoretical next step.
 
+   **Update 2026-07-31, `kParamScanRate` precisely calibrated** using a
+   purpose-built synthetic source: a linear chirp WAV (200Hz→4000Hz over
+   5 seconds), where the INSTANTANEOUS detected pitch of the render
+   directly encodes which timestamp in the source is currently being
+   read. Running frame-by-frame pitch tracking (`librosa.pyin`) across a
+   3-second render and fitting a line to (render-time, decoded-source-
+   time) gives the scan speed as a real playback-rate multiplier
+   directly, not just a qualitative "moves more" signal:
+
+   | raw `kParamScanRate` | measured scan speed |
+   |---|---|
+   | 0 | 0.000× (frozen — exact) |
+   | 25 | 0.143× (reproduced identically on retest) |
+   | 50 | 0.527× |
+   | 75 | 0.875× |
+   | 100 | 1.000× (exactly real-time — exact) |
+   | -50 | -0.505× (mirrors +50) |
+
+   `0` and `100` land on clean, exact reference values (frozen / real-time
+   forward playback), and negative values mirror positive ones
+   (reverse-direction scanning), but the curve between them is NOT a
+   simple `raw / 100` line — `25` measured well below what linear would
+   predict (0.143 vs 0.25) while `50`/`75` are close to linear. Genuinely
+   warped curve vs. a measurement confound (grain overlap at the fixed
+   `grain_length=30ms`/`density=15` used for this sweep could bias pitch-
+   tracking differently at different scan speeds) is not yet
+   disambiguated — treat this table as the current best reference, same
+   caveat as the filter cutoff table above, rather than a closed-form
+   formula. Not yet wired into `OscillatorSpec`.
+
    This audio-analysis pipeline is now the go-to way to close open
    calibration questions going forward — it turns "does this sound right"
    from something only a human's ears could answer into something a
