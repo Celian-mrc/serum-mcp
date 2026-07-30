@@ -682,13 +682,18 @@ class ModRouteSpec(BaseModel):
     pitch). Originally found narrowly on ``fixed`` routes and assumed to be
     a `fixed`-only mechanism; the survey showed that was just the first
     example encountered, not the whole feature. ``aux_inverted`` (rare, 2.8%
-    of aux-paired routes, always literally "on" when present) presumably
-    flips the aux source before it scales ``amount``. **Still unresolved**:
-    the exact DSP formula combining ``amount`` with the aux source's live
-    value (simple ``amount * aux``? something else?) -- not decoded, so
-    treat the audible depth as approximate when using this. A rarer curve
-    -shaping param (``kParamAuxCurve``) exists but is basically never used
-    in real content (0.16% of aux-paired routes) and isn't exposed here.
+    of aux-paired routes, always literally "on" when present) flips the aux
+    source before it scales ``amount``. **Combination formula confirmed
+    2026-07-31** via automated audio-rendering measurement (see
+    docs/PARAMETER_SCHEMA.md item 14): ``effective_amount = amount *
+    (aux_value / 100)``, or with ``aux_inverted=True``, ``effective_amount =
+    amount * (1 - aux_value / 100)`` -- a clean linear percentage scale,
+    verified by sweeping an aux macro's own value 0/25/50/75/100 and
+    measuring the resulting filter cutoff shift. A rarer curve-shaping param
+    (``kParamAuxCurve``) exists but is basically never used in real content
+    (0.16% of aux-paired routes) and isn't exposed here -- the linear
+    formula above is what applies whenever it's absent, i.e. essentially
+    always.
     """
 
     source: str = Field(

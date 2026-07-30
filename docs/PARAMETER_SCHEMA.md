@@ -868,10 +868,28 @@ directly rather than trusting the extracted `PresetSpec` was complete:
     presence rate confirmed at 2.8% of aux-paired routes (36/1276, always
     literally "on" when present, never explicitly "off") and
     `kParamAuxCurve` at 0.16% (2/1276) — curve-shaping is essentially never
-    used in real content, so it stays unexposed. **Still unresolved**: the
-    exact DSP formula combining `kParamAmount` with the aux source's live
-    value (simple `amount * aux`? something else?) — not decoded; treat the
-    audible modulation depth as approximate when using `aux_source`.
+    used in real content, so it stays unexposed.
+
+    **RESOLVED 2026-07-31, via the automated audio-rendering pipeline** (see
+    [[reference-serum-verify-audio-pipeline]]) — the DSP combination formula
+    that resisted every static-analysis attempt turned out to be exactly the
+    simplest hypothesis: **`effective_amount = kParamAmount × (aux_value /
+    100)`**, and with `kParamAuxInverted=True`, **`effective_amount =
+    kParamAmount × (1 − aux_value / 100)`**. Confirmed by routing
+    `source='fixed'` (`amount=50.0`) at `filter0.cutoff` with `aux_source=
+    'macro0'`, sweeping the macro's own value 0/25/50/75/100, and measuring
+    the RESULTING cutoff via spectral rolloff against the freshly-calibrated
+    filter cutoff curve (item 2) — a clean, monotonic, near-exactly-linear
+    relationship (aux=0 → 0% of the full shift, exactly matching the
+    unmodulated base; aux=50 → 50.0% of the full shift, landing exactly on
+    the cutoff=0.75 calibration point; aux=100 → 100%, exactly matching the
+    same result as no aux source at all). `aux_inverted=True` at aux=0/100
+    produced the exact mirror image (100%/0% respectively), confirming both
+    directions. This closes the very first item on this project's original
+    "biggest remaining gaps" list — years (well, days) of static analysis
+    couldn't crack it, but a handful of rendered-audio measurements did in
+    one pass. `ModRouteSpec.aux_source`/`aux_inverted`'s docstrings no
+    longer need to hedge on this.
 
 15. **RoutingSlot and ModSlot's full private param lists, mined from the
     VST3 binary's own debug strings 2026-07-30** (the same technique that
