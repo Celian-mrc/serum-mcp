@@ -1957,12 +1957,102 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
     },
 }
 
-# FXSplit / FXSplit3 / FXSplitMS (band-splitter racks: each holds N nested
-# sub-effect-chains, one per frequency band, via kParamModuleCount1/2/3) are
-# structurally different from every other FX type -- not a flat plainParams
-# effect but a container for further FX lists. Cataloged in FX_TYPE_IDS
-# (round-trips fine) but NOT modeled in FX_PARAMS; generation cannot target
-# them. A real implementation would need a recursive FxUnitSpec.
+# FXSplit / FXSplit3 / FXSplitMS -- multi-band split/merge FX units, decoded
+# 2026-07-30 via a 626-preset corpus survey (77 real occurrences: 43/19/15).
+# Despite the "structurally different, needs a recursive FxUnitSpec" note
+# this comment used to carry, they turned out to have an ORDINARY flat
+# plainParams dict, same as every other FX type -- no nested container at
+# all. What actually differs is how the SUBSEQUENT entries in that same
+# rack's flat FX list are interpreted:
+#   - FXSplit (2 bands): kParamModuleCount1/kParamModuleCount2 (each
+#     optional, default/absent = 0) give branch 1's and branch 2's own unit
+#     counts. Reading the flat list AFTER the split entry in order: the
+#     first kParamModuleCount1 entries belong to band 1 (below kParamFreq),
+#     the next kParamModuleCount2 entries belong to band 2 (above
+#     kParamFreq) -- confirmed against 43 real examples with ZERO
+#     exceptions, e.g. `BA - Dual MG Bass.SerumPreset`
+#     (kParamModuleCount1=1, kParamModuleCount2=1, followed by exactly
+#     [FXDistortion, FXDelay]: branch1=[FXDistortion], branch2=[FXDelay]).
+#   - FXSplit3 (3 bands): same idea with kParamModuleCount1/2/3 and TWO
+#     crossover frequencies (kParamFreq = low/mid boundary, kParamFreq2 =
+#     mid/high boundary) -- confirmed against 19 real examples, e.g.
+#     `KIT - 808 Basic Kit.SerumPreset` (all three counts=1, followed by
+#     [FXComp, FXComp, FXComp, FXConv, FXComp]: 3 bands of 1 unit each,
+#     then 2 more units continuing AFTER the split/remerge point).
+#   - FXSplitMS (Mid/Side split, no crossover frequency -- channel-based,
+#     not frequency-based): kParamModuleCount1/kParamModuleCount2 for the
+#     Mid and Side branches respectively -- confirmed against 15 real
+#     examples, same consumption rule.
+# In every type, once all bands' counts are consumed, ANY remaining entries
+# in that rack continue as ordinary SERIAL processing on the recombined
+# signal (the bands implicitly remerge back into one signal after their own
+# branch chains) -- e.g. the `KIT - 808 Basic Kit` example's trailing
+# [FXConv, FXComp] process the merged 3-band output further. This needs NO
+# special code: it's the exact same flat, ordered `fx_chain` list every
+# other FX type already uses -- `FxUnitSpec(type='FXSplit', params={
+# 'kParamFreq': ..., 'kParamModuleCount1': ..., 'kParamModuleCount2': ...})`
+# followed by that many further `FxUnitSpec` entries in the SAME rack IS a
+# correctly-formed split. The calling model is responsible for setting the
+# counts to match how many entries it actually places in each band (see
+# server.py's fx_chain guidance) -- nothing here validates that a count
+# matches reality, the same trust level as every other free-form field.
+# None of the three has a `kParamWet`/mix knob (absent from every real
+# sample) -- omitted here the same way FXEQ omits it.
+FX_PARAMS["FXSplit"] = {
+    "kParamFreq": ParamDef(
+        "kParamFreq", "float", default=1000.0, min=20.0, max=20000.0, unit="Hz",
+        confidence="observed",
+        notes="Crossover between band 1 (below) and band 2 (above). Real range "
+        "observed 30.8-3517.9 Hz across 54 samples (shared with FXSplit3's kParamFreq).",
+    ),
+    "kParamModuleCount1": ParamDef(
+        "kParamModuleCount1", "float", default=0.0, min=0.0, max=16.0, confidence="observed",
+        notes="How many of the flat fx_chain entries immediately following this one "
+        "(within the same rack) belong to band 1 -- see the module-level comment above "
+        "this table. Absent/0 means band 1 has no additional processing.",
+    ),
+    "kParamModuleCount2": ParamDef(
+        "kParamModuleCount2", "float", default=0.0, min=0.0, max=16.0, confidence="observed",
+        notes="Same as kParamModuleCount1, for band 2 -- consumed from the flat list "
+        "right after band 1's entries.",
+    ),
+}
+FX_PARAMS["FXSplit3"] = {
+    "kParamFreq": ParamDef(
+        "kParamFreq", "float", default=300.0, min=20.0, max=20000.0, unit="Hz",
+        confidence="observed", notes="Crossover between band 1 (low) and band 2 (mid).",
+    ),
+    "kParamFreq2": ParamDef(
+        "kParamFreq2", "float", default=3000.0, min=20.0, max=20000.0, unit="Hz",
+        confidence="observed",
+        notes="Crossover between band 2 (mid) and band 3 (high). Real range observed "
+        "309.5-9000.0 Hz across 17 samples.",
+    ),
+    "kParamModuleCount1": ParamDef(
+        "kParamModuleCount1", "float", default=0.0, min=0.0, max=16.0, confidence="observed",
+        notes="Band 1 (low)'s own unit count -- see FXSplit's kParamModuleCount1 note; "
+        "same consumption rule, 3 bands instead of 2.",
+    ),
+    "kParamModuleCount2": ParamDef(
+        "kParamModuleCount2", "float", default=0.0, min=0.0, max=16.0, confidence="observed",
+        notes="Band 2 (mid)'s own unit count.",
+    ),
+    "kParamModuleCount3": ParamDef(
+        "kParamModuleCount3", "float", default=0.0, min=0.0, max=16.0, confidence="observed",
+        notes="Band 3 (high)'s own unit count.",
+    ),
+}
+FX_PARAMS["FXSplitMS"] = {
+    "kParamModuleCount1": ParamDef(
+        "kParamModuleCount1", "float", default=0.0, min=0.0, max=16.0, confidence="observed",
+        notes="Mid branch's own unit count -- no crossover frequency (channel-based "
+        "split, not frequency-based); same consumption rule as FXSplit.",
+    ),
+    "kParamModuleCount2": ParamDef(
+        "kParamModuleCount2", "float", default=0.0, min=0.0, max=16.0, confidence="observed",
+        notes="Side branch's own unit count.",
+    ),
+}
 
 # ---------------------------------------------------------------------------
 # Role starting points -- a condensed, structured transcription of

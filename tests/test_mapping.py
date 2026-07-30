@@ -1277,15 +1277,45 @@ def test_global_limit_same_note_polyphony_round_trips(init_data):
     assert extracted.global_.limit_same_note_polyphony is True
 
 
-def test_extract_spec_skips_unmodeled_fx_routing_types_without_crashing(init_data):
+def test_extract_spec_round_trips_fxsplit_as_an_ordinary_flat_fx_unit(init_data):
+    """FXSplit/FXSplit3/FXSplitMS -- decoded 2026-07-30 (see
+    docs/PARAMETER_SCHEMA.md item 5): despite once being assumed to need a
+    nested/recursive FxUnitSpec, they turned out to have an ORDINARY flat
+    plainParams dict, no different from any other FX type. Whether the
+    kParamModuleCount1/2/(3) entries actually match the following units'
+    real intent isn't validated here (same trust level as any other
+    free-form field) -- extract_spec just reports what's really there."""
     data = copy.deepcopy(init_data)
     data["FXRack0"] = {
         "FX": [
             {"FXEQ": {"plainParams": {"kParamWet": 100.0}}, "type": 7},
-            # FXSplit has no kParamWet/param schema at all -- this used to
-            # raise a raw KeyError from extract_spec (found live against a
-            # real third-party bank where most presets use this).
-            {"FXSplit": {"plainParams": {"kParamModuleCount2": 3.0}}, "type": 13},
+            {
+                "FXSplit": {
+                    "plainParams": {"kParamFreq": 500.0, "kParamModuleCount2": 3.0}
+                },
+                "type": 13,
+            },
+            {"FXDelay": {"plainParams": {"kParamWet": 25.0}}, "type": 4},
+        ]
+    }
+
+    spec = extract_spec(data)
+
+    assert [fx.type for fx in spec.fx_chain] == ["FXEQ", "FXSplit", "FXDelay"]
+    assert spec.fx_chain[1].params == {"kParamFreq": 500.0, "kParamModuleCount2": 3.0}
+    assert count_unmodeled_fx_units(data) == 0
+
+
+def test_extract_spec_skips_genuinely_unknown_fx_types_without_crashing(init_data):
+    """A real FX type ID this project has never seen/modeled at all (not one
+    of the 16 known FX_TYPE_IDS) -- extract_spec must skip it gracefully,
+    not raise a raw KeyError, and count_unmodeled_fx_units must surface
+    that something was dropped."""
+    data = copy.deepcopy(init_data)
+    data["FXRack0"] = {
+        "FX": [
+            {"FXEQ": {"plainParams": {"kParamWet": 100.0}}, "type": 7},
+            {"SomeFutureFXType": {"plainParams": {}}, "type": 255},
             {"FXDelay": {"plainParams": {"kParamWet": 25.0}}, "type": 4},
         ]
     }
@@ -1293,7 +1323,7 @@ def test_extract_spec_skips_unmodeled_fx_routing_types_without_crashing(init_dat
     spec = extract_spec(data)
 
     assert [fx.type for fx in spec.fx_chain] == ["FXEQ", "FXDelay"]
-    assert count_unmodeled_fx_units(data) == 1
+    assert count_unmodeled_fx_units(data) == 0
 
 
 def test_extract_spec_treats_absent_fx_wet_as_100_regardless_of_type(init_data):

@@ -1132,12 +1132,31 @@ improve generation quality if resolved:
    `drive`/`stereo`) filter model — unconfirmed whether that's a real
    5th parameter or a relabeling of an existing one, but a plausible
    secondary contributor, not yet investigated.
-5. **3 of 16 FX types lack param schemas**: `FXSplit`/`FXSplit3`/`FXSplitMS`
-   — structurally different (nested band-splitter containers, not a flat
-   `plainParams` dict), see §4. The other 13 are fully modeled. (Separate
-   from this: `FXRack0`/`1`/`2` — the 3 *parallel racks* each of these 16
-   types can sit in — are now all supported, as of 2026-07-29; don't
-   confuse "unmodeled FX type" with the now-fixed "unmodeled rack".)
+5. **RESOLVED 2026-07-30, all 16 FX types now have param schemas.**
+   `FXSplit`/`FXSplit3`/`FXSplitMS` were assumed to need "nested
+   band-splitter containers, not a flat `plainParams` dict" — a 626-preset
+   corpus survey (77 real occurrences: 43/19/15) found that assumption was
+   wrong. They have an ORDINARY flat `plainParams` dict like every other FX
+   type; what actually differs is purely INTERPRETIVE, no new data structure
+   needed: `kParamModuleCount1`/`2`/(`3`) say how many of the FOLLOWING flat
+   `fx_chain` entries (same rack) belong to each frequency/channel band, in
+   order — confirmed against every one of the 77 real examples with zero
+   exceptions (e.g. `BA - Dual MG Bass.SerumPreset`: `kParamModuleCount1=1,
+   kParamModuleCount2=1`, followed by exactly `[FXDistortion, FXDelay]`).
+   Any entries left over after all bands' counts are consumed continue as
+   ordinary serial processing on the recombined signal. `FXSplit` crosses
+   over at `kParamFreq` (2 bands); `FXSplit3` adds `kParamFreq2` (3 bands);
+   `FXSplitMS` has no frequency at all (Mid/Side channel split, not
+   frequency-based). None have a wet/mix knob (absent from every real
+   sample, same as `FXEQ`). Needed zero code changes beyond the schema
+   entries themselves — `_build_fx_entry`/`extract_spec` already treat every
+   FX type generically via the same flat, ordered `fx_chain` list; the
+   calling model is responsible for setting the counts to match how many
+   units it actually places in each band (see server.py's fx_chain
+   guidance), same trust level as any other free-form field. (Separate from
+   this: `FXRack0`/`1`/`2` — the 3 *parallel racks* each of these 16 types
+   can sit in — are supported since 2026-07-29; don't confuse "unmodeled FX
+   type" with "unmodeled rack".)
 6. Several numeric ranges are marked `uncertain` in `schema.py` (e.g. unison
    voice count ceiling, LFO/Chorus/Delay times where only normalized values
    were observed without a confirmed Hz/ms curve) — these are *observed*

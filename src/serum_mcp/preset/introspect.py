@@ -53,14 +53,19 @@ def _sub_plain_params(container: dict[str, Any], key: str) -> Any:
 
 
 def count_unmodeled_fx_units(data: dict[str, Any]) -> int:
-    """How many entries across FXRack0/1/2 are a structural FX routing type
-    (FXSplit/FXSplit3/FXSplitMS -- parallel/multiband chains, found live in
-    a real third-party bank) that :func:`extract_spec` silently skips rather
-    than crashing on. Lets a caller like ``describe_preset`` surface that
-    its reported ``fx_chain`` is incomplete instead of quietly under-
-    reporting it -- these presets' FX racks aren't actually simpler than
-    what's shown, this project just can't decode the branch structure yet
-    (see docs/PARAMETER_SCHEMA.md)."""
+    """How many entries across FXRack0/1/2 are a KNOWN FX type ID (in
+    FX_TYPE_IDS) with no FX_PARAMS schema entry, which :func:`extract_spec`
+    silently skips rather than crashing on. All 16 currently-known FX types
+    are fully modeled as of 2026-07-30 (FXSplit/FXSplit3/FXSplitMS -- once
+    the last unmodeled ones, assumed to need a nested/recursive FxUnitSpec --
+    turned out to have an ordinary flat plainParams dict after all, see
+    docs/PARAMETER_SCHEMA.md item 5), so this should always return 0 against
+    real content today; it stays in place as a safety net for a genuinely
+    NEW FX type Xfer adds in a future Serum version, before this project
+    catches up and adds its schema. An entirely UNKNOWN type ID (not even in
+    FX_TYPE_IDS) is a different, ungracefully-unrecoverable case -- also
+    skipped by extract_spec, but not counted here since there's no type name
+    to report it under."""
     count = 0
     for rack_key in ("FXRack0", "FXRack1", "FXRack2"):
         for entry in (data.get(rack_key, {}) or {}).get("FX", []) or []:
@@ -349,22 +354,17 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             type_id = entry.get("type")
             fx_name = schema.FX_TYPE_IDS.get(type_id)
             if fx_name is None or fx_name not in entry or fx_name not in schema.FX_PARAMS:
-                # fx_name not in schema.FX_PARAMS: a structural/routing type
-                # (e.g. FXSplit/FXSplit3/FXSplitMS -- parallel/multiband FX
-                # routing, found live in a real third-party bank) rather
-                # than an audio effect with a param table. These don't
-                # carry a kParamWet or any other modeled param, and the
-                # units nested inside their branch aren't distinguishable
-                # from top-level ones without also decoding branch
-                # boundaries (observed kParamModuleCount1/2/3 fields,
-                # semantics not yet reverse-engineered -- see
-                # docs/PARAMETER_SCHEMA.md) -- skip rather than crash or
-                # misrepresent a parallel chain as sequential.
-                # count_unmodeled_fx exists so callers can at least surface
-                # that something was skipped instead of silently
-                # under-reporting the FX chain. Still counts towards this
-                # rack's position (Serum itself counts it), so later real
-                # units' destModuleID stays correctly aligned.
+                # fx_name is None: a genuinely unknown FX type ID (not even
+                # in FX_TYPE_IDS) -- e.g. a future Serum version's new FX
+                # type this project hasn't caught up on. fx_name not in
+                # schema.FX_PARAMS: a KNOWN type ID with no schema entry yet
+                # (see count_unmodeled_fx_units) -- as of 2026-07-30 all 16
+                # known FX_TYPE_IDS are modeled (FXSplit/FXSplit3/FXSplitMS
+                # included, see docs/PARAMETER_SCHEMA.md item 5), so this
+                # branch is a forward-compat safety net today, not a real
+                # gap. Either way: skip rather than crash. Still counts
+                # towards this rack's position (Serum itself counts it), so
+                # later real units' destModuleID stays correctly aligned.
                 position_in_rack += 1
                 continue
             pp = entry[fx_name].get("plainParams")
