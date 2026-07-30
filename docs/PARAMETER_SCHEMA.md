@@ -1131,11 +1131,40 @@ improve generation quality if resolved:
    approach used for wavetables), no FLAC decoder needed for THIS. A
    one-off patch (`packer.unpack_file`/`pack_file`, bypassing
    `PresetSpec` entirely) reproduced this single oscillator exactly for
-   that one recreation, but this is not remotely enough evidence to design
-   a general `OscillatorSpec` `SpectralOsc` feature (one sample, `flex`'s
-   real meaning/range totally unexplored, `kParamFreqLo` suggests other
-   related params likely exist unseen) — would need the same kind of
-   corpus survey done for LFO shapes/second-warp-lane before generalizing.
+   that one recreation, but this was not remotely enough evidence to design
+   a general `OscillatorSpec` `SpectralOsc` feature at the time.
+
+   **Update 2026-07-30, now modeled** (the same session as Granular). A
+   53-preset corpus survey plus VST3 binary string mining found the full
+   automatable/private param enum (`kParamWarp`/`WarpVar`/`WarpMenu`/
+   `Warp2`/`WarpVar2`/`WarpMenu2`/`SpecFltShift`/`SpecFltWetDry`/`FreqLo`/
+   `FreqHi` automatable; `PhaseLock`/`Transients`/`LoHiIsPost`/
+   `LoHiIsSmooth`/`YAxisAssignment` private) and confirmed `SpectralOsc` is
+   ALSO structurally identical to `SampleOsc`'s file-reference shape, plus
+   the `flex` curve sibling (now decoded, see item 4). Its OWN warp-mode
+   vocabulary is a separate, much larger (~80-value) enum from
+   `SIMPLE_WARP_MODES` — genuinely different names (`kGate`/`kSmear`/
+   `kRobotize`/`kSpectralShift`/`kVocode_OSC`/`kMask_OSC`/`kShepardFilter`/
+   etc, spectral/FFT-domain effects), passed straight through via
+   `OscillatorSpec.warp_mode` when not a `SIMPLE_WARP_MODES` key, same
+   mechanism every warp-capable engine already used. Wired up as
+   `OscillatorSpec.spectral_source` + `spectral_warp_freq_lo`/`freq_hi`
+   (the frequency range the spectral effect applies to) +
+   `spectral_filter_shift`/`filter_wet`. **Important limitation, unlike
+   Granular**: 53% of real `SpectralOsc` instances carry a genuinely
+   non-trivial hand-drawn spectral filter curve (`flex.numPoints > 1`) —
+   curve GENERATION isn't implemented (see item 4), so a generated
+   `SpectralOsc` always gets the exact flat/neutral sentinel 24/25 real
+   no-curve instances use (`xVals=[0,1]`, `yVals=[0.5,0.5]`,
+   `curveVals=[0.5,0.5]`, confirmed via corpus survey to be the canonical
+   "untouched" value, not just "close enough") — written explicitly rather
+   than left absent, since genuine absence was never tested and every real
+   file has SOME `flex` present. An `edit_preset` call against an existing
+   SpectralOsc with a real curve correctly preserves it (only writes the
+   sentinel when nothing's there yet). Verified round-trip against real
+   Factory content (`BA - Classic Wubber.SerumPreset`, `warp_mode='kGate'`
+   extracted correctly via the passthrough). NOT yet confirmed live for
+   generation — same experimental caveat as Granular.
 4. **LFO curve shapes** (`curveData`) and **free-drawn envelope curves** are
    unmodeled — Serum 2's point-based custom curve editor data. Confirmed
    live 2026-07-29 that this isn't just a theoretical gap: attempting to

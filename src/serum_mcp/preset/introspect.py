@@ -240,6 +240,38 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                         # introspection must still succeed without a
                         # resolvable Samples folder.
                         pass
+            elif engine == "kOsc_Spectral":
+                spectral_container = container.get(f"SpectralOsc{i}") or {}
+                spectral_pp = spectral_container.get("plainParams")
+                kwargs["warp_amount"] = _resolve(spectral_pp, "kParamWarp", schema.SPECTRALOSC_PARAMS)
+                raw_warp_mode = _resolve(spectral_pp, "kParamWarpMenu", schema.SPECTRALOSC_PARAMS)
+                # SpectralOsc's own warp vocabulary barely overlaps
+                # SIMPLE_WARP_MODES -- _REVERSE_WARP_MODES.get falls through
+                # to the raw 'kXxx' string unchanged for anything not in
+                # that curated table, which is the correct/expected result
+                # here (see OscillatorSpec.warp_mode's spectral_source note).
+                kwargs["warp_mode"] = _REVERSE_WARP_MODES.get(raw_warp_mode, raw_warp_mode)
+                kwargs["spectral_warp_freq_lo"] = _resolve(
+                    spectral_pp, "kParamFreqLo", schema.SPECTRALOSC_PARAMS
+                )
+                kwargs["spectral_warp_freq_hi"] = _resolve(
+                    spectral_pp, "kParamFreqHi", schema.SPECTRALOSC_PARAMS
+                )
+                kwargs["spectral_filter_shift"] = _resolve(
+                    spectral_pp, "kParamSpecFltShift", schema.SPECTRALOSC_PARAMS
+                )
+                kwargs["spectral_filter_wet"] = _resolve(
+                    spectral_pp, "kParamSpecFltWetDry", schema.SPECTRALOSC_PARAMS
+                )
+
+                raw_spectral_path = spectral_container.get("samplePathRelative")
+                if raw_spectral_path:
+                    try:
+                        kwargs["spectral_source"] = str(
+                            config.get_samples_dir() / raw_spectral_path
+                        )
+                    except config.SamplesFolderNotFoundError:
+                        pass
             else:
                 wt_container = container.get(f"WTOsc{i}") or {}
                 wt_pp = wt_container.get("plainParams")

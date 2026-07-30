@@ -78,6 +78,13 @@ _GRANULAROSC_KEYS = {
     "granular_random_pan": "kParamRandomPan",
     "granular_random_grain_length": "kParamRandomGrainLength",
 }
+_ENGINE_TYPE_SPECTRAL = "kOsc_Spectral"
+_SPECTRALOSC_KEYS = {
+    "spectral_warp_freq_lo": "kParamFreqLo",
+    "spectral_warp_freq_hi": "kParamFreqHi",
+    "spectral_filter_shift": "kParamSpecFltShift",
+    "spectral_filter_wet": "kParamSpecFltWetDry",
+}
 _FILTER_KEYS = {
     "cutoff": "kParamFreq",
     "resonance": "kParamReso",
@@ -280,6 +287,51 @@ def _resolve_granular_playback(osc: OscillatorSpec) -> schema.SampleAudioDef:
     source_path = Path(osc.granular_source)
     if not source_path.is_file():
         raise ValueError(f"granular_source {osc.granular_source!r} does not exist")
+    dest = sample_library.copy_sample_to_library(
+        source_path, config.get_samples_dir(), _CUSTOM_SAMPLE_SUBDIR, center_pan=False
+    )
+    channels, sample_rate, num_frames = sample_library.read_wav_metadata(source_path)
+    relative_path = "/".join((*_CUSTOM_SAMPLE_SUBDIR, dest.name))
+    return schema.SampleAudioDef(relative_path, num_frames, sample_rate, channels)
+
+
+def _unchanged_spectral_reference(
+    spectral_container: dict[str, Any], osc: OscillatorSpec
+) -> schema.SampleAudioDef | None:
+    """Same fast path as ``_unchanged_granular_reference``, for
+    ``osc.spectral_source`` against a ``SpectralOsc{i}`` container."""
+    existing_relative = spectral_container.get("samplePathRelative")
+    if not existing_relative:
+        return None
+    try:
+        samples_dir = config.get_samples_dir()
+    except config.SamplesFolderNotFoundError:
+        return None
+    existing_absolute = (samples_dir / existing_relative).resolve()
+    try:
+        incoming_absolute = Path(osc.spectral_source).resolve()
+    except (OSError, ValueError):
+        return None
+    if existing_absolute != incoming_absolute:
+        return None
+    num_frames = spectral_container.get("numFrames")
+    sample_rate = spectral_container.get("sampleRate")
+    num_channels = spectral_container.get("numChannels")
+    if not (isinstance(num_frames, int | float) and sample_rate and num_channels):
+        return None
+    return schema.SampleAudioDef(
+        existing_relative, int(num_frames), int(sample_rate), int(num_channels)
+    )
+
+
+def _resolve_spectral_playback(osc: OscillatorSpec) -> schema.SampleAudioDef:
+    """Resolve an oscillator's ``spectral_source`` into a
+    :class:`schema.SampleAudioDef`, same mechanism as
+    ``_resolve_granular_playback`` (SpectralOsc's file-reference shape is
+    also structurally identical to SampleOsc's)."""
+    source_path = Path(osc.spectral_source)
+    if not source_path.is_file():
+        raise ValueError(f"spectral_source {osc.spectral_source!r} does not exist")
     dest = sample_library.copy_sample_to_library(
         source_path, config.get_samples_dir(), _CUSTOM_SAMPLE_SUBDIR, center_pan=False
     )
@@ -755,6 +807,48 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                 )
                 validate_params(
                     granular_key, granular_params, schema.GRANULAROSC_PARAMS, allow_unknown=True
+                )
+            elif osc.spectral_source:
+                # kParamType written explicitly every call, same staleness
+                # reasoning as the kOsc_Sample branch above.
+                osc_params["kParamType"] = _ENGINE_TYPE_SPECTRAL
+
+                spectral_key = f"SpectralOsc{i}"
+                spectral_container = osc_container.setdefault(spectral_key, {})
+                spectral_def = _unchanged_spectral_reference(
+                    spectral_container, osc
+                ) or _resolve_spectral_playback(osc)
+                spectral_container["samplePathRelative"] = spectral_def.relative_path
+                spectral_container["numFrames"] = spectral_def.num_frames
+                spectral_container["sampleRate"] = spectral_def.sample_rate
+                spectral_container["numChannels"] = spectral_def.num_channels
+                # Not just left absent: 24/25 real SpectralOsc instances with
+                # no custom spectral-filter curve use this EXACT flat/neutral
+                # sentinel (a genuinely canonical value, not just "close
+                # enough"), confirmed 2026-07-30 via a corpus survey.
+                # Whether Serum tolerates a genuinely ABSENT `flex` key was
+                # never tested -- writing the real content's own convention
+                # avoids that unverified risk (same reasoning as every other
+                # "match the real absent/neutral state exactly" finding in
+                # this project). Curve GENERATION (a real, non-flat shape)
+                # isn't implemented yet -- see docs/PARAMETER_SCHEMA.md item 4.
+                if not isinstance(spectral_container.get("flex"), dict):
+                    spectral_container["flex"] = {
+                        "numPoints": 1,
+                        "xVals": [0.0, 1.0],
+                        "yVals": [0.5, 0.5],
+                        "curveVals": [0.5, 0.5],
+                    }
+
+                spectral_params = _plain_params(osc_container, spectral_key)
+                for spec_key, param_key in _SPECTRALOSC_KEYS.items():
+                    spectral_params[param_key] = getattr(osc, spec_key)
+                spectral_params["kParamWarp"] = osc.warp_amount
+                spectral_params["kParamWarpMenu"] = schema.SIMPLE_WARP_MODES.get(
+                    osc.warp_mode, osc.warp_mode
+                )
+                validate_params(
+                    spectral_key, spectral_params, schema.SPECTRALOSC_PARAMS, allow_unknown=True
                 )
             else:
                 osc_params["kParamType"] = _ENGINE_TYPE_WT

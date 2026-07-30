@@ -706,6 +706,120 @@ GRANULAROSC_PARAMS: dict[str, ParamDef] = {
     "kParamLengthKeyTrack": ParamDef("kParamLengthKeyTrack", "bool", default=False, confidence="uncertain"),
 }
 
+# SpectralOsc's own warp-mode enum -- DIFFERENT from WTOsc/SampleOsc/
+# GranularOsc's (see SIMPLE_WARP_MODES) and much larger: mined from the
+# VST3 binary's own debug strings 2026-07-30, ~80 entries covering
+# spectral-domain processing (kDetune/kSmear/kSpread/kGate/kRobotize/
+# kSpectralShift/kMirror/kPeakFollow/kPeakOctave*/kPeakHarm*/kShepard*/
+# kSpectral*/kMask_*/kVocode_* -- none shared with the generic warp-mode
+# vocabulary) plus a shared tail (kFilterLPF/HPF, kDist*, kFM_*/kFMX_*/
+# kFMP_*/kAM_*/kRM_* per-target FM/AM/RM variants). Every value observed in
+# a 53-preset real corpus survey (kGate/kSmear/kAddsubharmonics/kDetune/
+# kSpread/kAM_OSC/kPeakOctaveUp/kPeakOctaveDown/kMask_OSC/kMask_NOISE/
+# kVocode_OSC/kVocode_NOISE/kShepardNarrow/kShepardFilter/kSpectralComb/
+# kSpectralShift/kSpectralPitchShift/kFilterLPF/kFilterHPF/kDistSoftClip/
+# kDistDiode1/kDistDiode2/kAddharmonics/kPeakHarmUp/kPeakHarmDown/kPD_OSC/
+# kPD_OSC2/kSelfPD/kSpectralPhaseTwist/kMirror/kDistTapeSat/kDistTube) is a
+# subset of this list, confirming it's complete/authoritative rather than
+# guessed.
+_SPECTRAL_WARP_MODES: tuple[str, ...] = (
+    "kNoWarp", "kDetune", "kSmear", "kSpread", "kAddharmonics", "kAddsubharmonics",
+    "kGate", "kRobotize", "kSpectralShift", "kMirror", "kPeakFollow", "kPeakOctaveUp",
+    "kPeakOctaveDown", "kPeakHarmUp", "kPeakHarmDown", "kPeakHarmSweep", "kShepardNarrow",
+    "kShepardFilter", "kSpectralComb", "kSpectralPitchShift", "kSpectralPitchShiftNew",
+    "kSpectralPhaseTwist", "kSpectralFormantShift", "kMask_OSC", "kMask_OSC2",
+    "kMask_NOISE", "kMask_SUB", "kMask_FILT1", "kMask_FILT2", "kVocode_OSC",
+    "kVocode_OSC2", "kVocode_NOISE", "kVocode_SUB", "kVocode_FILT1", "kVocode_FILT2",
+    "kFilterLPF", "kFilterHPF", "kDistTube", "kDistSoftClip", "kDistHardClip",
+    "kDistDiode1", "kDistDiode2", "kDistLinFold", "kDistSinFold", "kDistZeroSquare",
+    "kDistAsym", "kDistRectify", "kDistSineShaper", "kDistStompBox", "kDistTapeSat",
+    "kDistSoftSat", "kFM_OSC", "kFM_OSC2", "kFM_NOISE", "kFM_SUB", "kFM_FILT1",
+    "kFM_FILT2", "kFMX_OSC", "kFMX_OSC2", "kFMX_NOISE", "kFMX_SUB", "kFMX_FILT1",
+    "kFMX_FILT2", "kFMP_OSC", "kFMP_OSC2", "kFMP_NOISE", "kFMP_SUB", "kFMP_FILT1",
+    "kFMP_FILT2", "kSelfPD", "kPD_OSC", "kPD_OSC2", "kPD_NOISE", "kPD_SUB",
+    "kPD_FILT1", "kPD_FILT2", "kAM_OSC", "kAM_OSC2", "kAM_NOISE", "kAM_SUB",
+    "kAM_FILT1", "kAM_FILT2", "kRM_OSC", "kRM_OSC2", "kRM_NOISE", "kRM_SUB",
+    "kRM_FILT1", "kRM_FILT2",
+)
+
+# SpectralOsc (slots 0-2, alternate engine kParamType="kOsc_Spectral") --
+# structurally identical to SampleOsc/GranularOsc's own file-reference
+# shape, plus a `flex` curve sibling (see the point-curve format decode,
+# PARAMETER_SCHEMA.md item 4) applying a spectral filter/EQ-like shape
+# across the frequency domain. Full automatable/private param enum mined
+# from the VST3 binary 2026-07-30: kParamWarp/WarpVar/WarpMenu/Warp2/
+# WarpVar2/WarpMenu2/SpecFltShift/SpecFltWetDry/FreqLo/FreqHi (automatable)
+# plus kParamPhaseLock/Transients/LoHiIsPost/LoHiIsSmooth/YAxisAssignment
+# (private). A 53-preset corpus survey found `flex.numPoints` is genuinely
+# >1 (a real hand-drawn spectral curve) in 53% of real occurrences -- only
+# the trivial single-point case (47%) is safely reproducible without a
+# curve-generation feature (see item 4), so this engine is wired into
+# OscillatorSpec with that caveat: a flat/neutral spectral response,
+# frequency-range and warp controls are real and generatable, the CURVE
+# SHAPE itself always comes out flat/untouched. NOT yet confirmed live for
+# generation -- same "experimental" caveat as GranularOsc/LfoSpec.shape.
+SPECTRALOSC_PARAMS: dict[str, ParamDef] = {
+    "kParamWarp": ParamDef(
+        "kParamWarp", "float", default=0.0, min=0.0, max=1.0, confidence="observed",
+        notes="Real range observed 0.035-1.0 across 26 samples.",
+    ),
+    "kParamWarpMenu": ParamDef(
+        "kParamWarpMenu", "enum", default="kNoWarp", confidence="observed",
+        enum_values=_SPECTRAL_WARP_MODES,
+        notes="SpectralOsc's OWN warp-mode vocabulary, much larger and mostly DIFFERENT "
+        "names than SIMPLE_WARP_MODES (WTOsc/SampleOsc/GranularOsc's shared one) -- see "
+        "the module-level comment above this table. Not offered as curated friendly "
+        "names; pass the raw 'kXxx' string directly via OscillatorSpec.warp_mode (falls "
+        "through unchanged when not a SIMPLE_WARP_MODES key, same mechanism already used "
+        "for any warp-capable engine).",
+    ),
+    "kParamWarp2": ParamDef(
+        "kParamWarp2", "float", default=0.0, min=0.0, max=1.0, confidence="observed",
+        notes="Second warp lane's amount -- NOT wired into OscillatorSpec.warp_amount2 "
+        "for this engine yet.",
+    ),
+    "kParamWarpMenu2": ParamDef(
+        "kParamWarpMenu2", "enum", default="kNoWarp", confidence="observed",
+        enum_values=_SPECTRAL_WARP_MODES,
+    ),
+    "kParamWarpVar": ParamDef("kParamWarpVar", "float", default=0.0, min=0.0, max=1.0, confidence="uncertain"),
+    "kParamWarpVar2": ParamDef("kParamWarpVar2", "float", default=0.0, min=0.0, max=1.0, confidence="uncertain"),
+    "kParamSpecFltShift": ParamDef(
+        "kParamSpecFltShift", "float", default=0.0, min=-100.0, max=100.0, unit="%",
+        confidence="observed", notes="Shifts the spectral filter/curve's effective "
+        "position. Real range observed -100.0 to 100.0.",
+    ),
+    "kParamSpecFltWetDry": ParamDef(
+        "kParamSpecFltWetDry", "float", default=100.0, min=0.0, max=100.0, unit="%",
+        confidence="observed", notes="Wet/dry for the spectral filter/curve effect. Real "
+        "range observed 0.0-98.7.",
+    ),
+    "kParamFreqLo": ParamDef(
+        "kParamFreqLo", "float", default=20.0, min=20.0, max=20000.0, unit="Hz",
+        confidence="observed", notes="Low edge of the frequency range the spectral "
+        "effect applies to. Real range observed 15.9-4307.3 Hz.",
+    ),
+    "kParamFreqHi": ParamDef(
+        "kParamFreqHi", "float", default=20000.0, min=20.0, max=20000.0, unit="Hz",
+        confidence="observed", notes="High edge of the frequency range. Real range "
+        "observed 371.1-17462.0 Hz.",
+    ),
+    "kParamPhaseLock": ParamDef("kParamPhaseLock", "bool", default=False, confidence="uncertain"),
+    "kParamTransients": ParamDef("kParamTransients", "bool", default=False, confidence="uncertain"),
+    "kParamLoHiIsPost": ParamDef("kParamLoHiIsPost", "bool", default=False, confidence="uncertain"),
+    "kParamLoHiIsSmooth": ParamDef("kParamLoHiIsSmooth", "bool", default=False, confidence="uncertain"),
+    "kParamYAxisAssignment": ParamDef(
+        "kParamYAxisAssignment", "enum", default="kYAxisNone", confidence="uncertain",
+        enum_values=(
+            "kYAxisNone", "kYAxisOscVolume", "kYAxisSpectralWarp", "kYAxisSpectralWarp2",
+            "kYAxisSpectralSpecFltShift", "kYAxisSpectralSpecFltWetDry",
+            "kYAxisSpectralFreqLo", "kYAxisSpectralFreqHi",
+        ),
+        notes="Rare (an XY-pad axis assignment) -- low-priority, same as GranularOsc's "
+        "own kParamYAxisAssignment.",
+    ),
+}
+
 SUBOSC_PARAMS: dict[str, ParamDef] = {
     "kParamShape": ParamDef(
         "kParamShape",

@@ -189,13 +189,21 @@ class OscillatorSpec(BaseModel):
         0.0, ge=0.0, le=256.0, description="wavetable frame position, slots 0-2 only"
     )
     warp_amount: float = Field(
-        0.0, ge=0.0, le=1.0, description="slots 0-2 only. Also applies to granular_source "
-        "(GranularOsc shares WTOsc/SampleOsc's warp system)."
+        0.0, ge=0.0, le=1.0, description="slots 0-2 only. Also applies to granular_source/"
+        "spectral_source (GranularOsc/SpectralOsc share the same kParamWarp amount knob "
+        "as WTOsc/SampleOsc, though SpectralOsc's warp MODE vocabulary is different -- "
+        "see warp_mode)."
     )
     warp_mode: str = Field(
         "fm",
         description=f"slots 0-2 only, one of: {', '.join(sorted(SIMPLE_WARP_MODES))}. Also "
-        "applies to granular_source.",
+        "applies to granular_source. For spectral_source specifically, this curated list "
+        "does NOT apply -- SpectralOsc has its own, much larger warp-mode vocabulary "
+        "(spectral-domain effects like gating/robotizing/vocoding/Shepard tones, "
+        "unrelated names) -- pass the raw Serum name directly instead, e.g. "
+        "warp_mode='kGate', 'kSmear', 'kRobotize', 'kSpectralShift', 'kVocode_OSC', "
+        "'kMask_OSC', 'kShepardFilter' (any value not in the curated list above is "
+        "passed straight through unvalidated against a friendly-name table).",
     )
     granular_source: str | None = Field(
         None,
@@ -241,6 +249,45 @@ class OscillatorSpec(BaseModel):
         0.0, ge=0.0, le=100.0, description="granular_source only. % random variation in "
         "each grain's length around granular_grain_length -- adds organic irregularity to "
         "the grain cloud instead of a perfectly uniform texture.",
+    )
+    spectral_source: str | None = Field(
+        None,
+        description="slots 0-2 only. If set, uses Serum's SPECTRAL engine (SpectralOsc) "
+        "instead of the wavetable engine: an absolute path to a WAV file, resynthesized "
+        "through spectral-domain processing (FFT-based warping -- gating, robotizing, "
+        "spectral shifting, vocoding against the OTHER oscillators/filters via the "
+        "kMask_*/kVocode_* warp modes, Shepard-tone effects, and more, see warp_mode) "
+        "instead of straight playback or granular re-triggering. Use for glitchy/robotic/"
+        "vocoder/otherworldly textures specifically -- a materially different character "
+        "than sample_playback_source (unprocessed) or granular_source (grain clouds). "
+        "IMPORTANT LIMITATION: real SpectralOsc content commonly carries a hand-drawn "
+        "spectral filter/EQ CURVE across the frequency domain (53% of real samples "
+        "surveyed) that this project cannot yet generate (see "
+        "docs/PARAMETER_SCHEMA.md item 4) -- a generated SpectralOsc always has a flat/"
+        "neutral spectral response; only the frequency-range and warp controls below are "
+        "real. Takes priority over wavetable/custom_harmonics/sample_source, but "
+        "sample_playback_source/granular_source take priority over this if set. Only "
+        ".wav is supported. NOT yet confirmed live for generation -- experimental, same "
+        "caveat as granular_source.",
+    )
+    spectral_warp_freq_lo: float = Field(
+        20.0, ge=20.0, le=20000.0, description="spectral_source only. Hz, low edge of the "
+        "frequency range warp_mode's spectral effect applies to.",
+    )
+    spectral_warp_freq_hi: float = Field(
+        20000.0, ge=20.0, le=20000.0, description="spectral_source only. Hz, high edge of "
+        "the frequency range warp_mode's spectral effect applies to -- narrow the "
+        "freq_lo..freq_hi range to target just a specific band (e.g. only warping the "
+        "upper harmonics while leaving the fundamental untouched).",
+    )
+    spectral_filter_shift: float = Field(
+        0.0, ge=-100.0, le=100.0, description="spectral_source only. % shift applied to "
+        "the (always-flat, see the spectral_source limitation note) spectral filter "
+        "curve's effective position.",
+    )
+    spectral_filter_wet: float = Field(
+        100.0, ge=0.0, le=100.0, description="spectral_source only. % wet/dry for the "
+        "spectral filter/curve effect.",
     )
     warp_amount2: float = Field(
         0.0, ge=0.0, le=1.0, description="amount for the SECOND warp lane, slots 0-2 only "

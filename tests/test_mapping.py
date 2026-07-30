@@ -2257,6 +2257,121 @@ def test_granular_source_writes_granularosc_and_engine_selector(
     assert ex_osc.warp_mode == "soft_clip"
 
 
+def test_spectral_source_writes_spectralosc_and_engine_selector(
+    init_data, tables_dir, samples_dir, tmp_path
+):
+    """SpectralOsc -- decoded 2026-07-30 via a 53-preset corpus survey and
+    VST3 binary string mining (see docs/PARAMETER_SCHEMA.md item 3). Also
+    structurally identical to SampleOsc's file-reference shape, plus a
+    `flex` curve sibling -- a generated one always gets the exact
+    flat/neutral sentinel 24/25 real no-curve instances use (curve
+    GENERATION isn't implemented, see PARAMETER_SCHEMA.md item 4).
+    warp_mode='kGate' (a raw Serum name, not in SIMPLE_WARP_MODES) exercises
+    the documented passthrough for SpectralOsc's own much larger warp
+    vocabulary."""
+    source = tmp_path / "drone.wav"
+    _write_wav_fixture(source)
+
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(
+                enabled=True,
+                spectral_source=str(source),
+                spectral_warp_freq_lo=100.0,
+                spectral_warp_freq_hi=8000.0,
+                spectral_filter_shift=25.0,
+                spectral_filter_wet=80.0,
+                warp_amount=0.6,
+                warp_mode="kGate",
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    osc0 = data["Oscillator0"]
+    assert osc0["plainParams"]["kParamType"] == "kOsc_Spectral"
+
+    spectral0 = osc0["SpectralOsc0"]
+    assert spectral0["numChannels"] == 1
+    assert spectral0["sampleRate"] == 44100
+    assert spectral0["numFrames"] == 4410
+    assert spectral0["samplePathRelative"].startswith("User/serum-mcp/smp_")
+    assert spectral0["plainParams"]["kParamFreqLo"] == 100.0
+    assert spectral0["plainParams"]["kParamFreqHi"] == 8000.0
+    assert spectral0["plainParams"]["kParamSpecFltShift"] == 25.0
+    assert spectral0["plainParams"]["kParamSpecFltWetDry"] == 80.0
+    assert spectral0["plainParams"]["kParamWarp"] == 0.6
+    assert spectral0["plainParams"]["kParamWarpMenu"] == "kGate"
+    assert spectral0["flex"] == {
+        "numPoints": 1,
+        "xVals": [0.0, 1.0],
+        "yVals": [0.5, 0.5],
+        "curveVals": [0.5, 0.5],
+    }
+
+    written_file = samples_dir / spectral0["samplePathRelative"]
+    assert written_file.exists()
+    assert written_file.read_bytes() == source.read_bytes()
+
+    assert osc0["WTOsc0"] == init_data["Oscillator0"]["WTOsc0"]
+
+    extracted = extract_spec(data)
+    ex_osc = extracted.oscillators[0]
+    assert ex_osc.spectral_source is not None
+    assert ex_osc.spectral_warp_freq_lo == 100.0
+    assert ex_osc.spectral_warp_freq_hi == 8000.0
+    assert ex_osc.spectral_filter_shift == 25.0
+    assert ex_osc.spectral_filter_wet == 80.0
+    assert ex_osc.warp_amount == 0.6
+    assert ex_osc.warp_mode == "kGate"
+
+
+def test_editing_a_spectral_oscillator_preserves_its_real_curve(init_data, tables_dir, samples_dir, tmp_path):
+    """A real (non-trivial) flex curve on an existing SpectralOsc must
+    survive an edit_preset call that touches the same oscillator's other
+    fields -- the flat sentinel is only written when nothing is there yet."""
+    source = tmp_path / "drone.wav"
+    _write_wav_fixture(source)
+
+    real_curve = {
+        "numPoints": 3,
+        "xVals": [0.0, 0.4, 0.7, 1.0],
+        "yVals": [0.5, 0.9, 0.2, 0.5],
+        "curveVals": [0.5, 0.5, 0.5, 0.5],
+    }
+    init_data["Oscillator0"] = {
+        "plainParams": {"kParamType": "kOsc_Spectral"},
+        "SpectralOsc0": {
+            "plainParams": {"kParamWarp": 0.1},
+            "flex": real_curve,
+            "samplePathRelative": "User/serum-mcp/smp_existing.wav",
+            "numFrames": 4410,
+            "sampleRate": 44100,
+            "numChannels": 1,
+        },
+    }
+    (samples_dir / "User" / "serum-mcp").mkdir(parents=True, exist_ok=True)
+    (samples_dir / "User" / "serum-mcp" / "smp_existing.wav").write_bytes(source.read_bytes())
+
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(
+                enabled=True,
+                spectral_source=str(samples_dir / "User" / "serum-mcp" / "smp_existing.wav"),
+                warp_amount=0.9,
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["Oscillator0"]["SpectralOsc0"]["flex"] == real_curve
+    assert data["Oscillator0"]["SpectralOsc0"]["plainParams"]["kParamWarp"] == 0.9
+
+
 def test_sample_playback_source_centers_imbalanced_stereo_by_default(
     init_data, tables_dir, samples_dir, tmp_path
 ):
