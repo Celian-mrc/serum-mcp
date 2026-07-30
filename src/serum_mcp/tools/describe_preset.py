@@ -50,6 +50,13 @@ def describe_preset(preset_path: str) -> str:
                     f"freq={osc.spectral_warp_freq_lo:.0f}-{osc.spectral_warp_freq_hi:.0f}Hz  "
                     f"warp={osc.warp_mode}({osc.warp_amount:.2f}){warp2}"
                 )
+            elif osc.multisample_source:
+                extra = (
+                    f"multisample={osc.multisample_source}  "
+                    f"env(A/D/R)={osc.multisample_env_attack:.2f}/"
+                    f"{osc.multisample_env_decay:.2f}/{osc.multisample_env_release:.2f}s  "
+                    f"warp={osc.warp_mode}({osc.warp_amount:.2f}){warp2}"
+                )
             else:
                 extra = (
                     f"wavetable={osc.wavetable}  table_pos={osc.table_position:.1f}  "

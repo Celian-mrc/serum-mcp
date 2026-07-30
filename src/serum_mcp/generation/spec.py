@@ -18,6 +18,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from serum_mcp.preset.schema import (
+    MULTISAMPLE_INSTRUMENTS,
     SIMPLE_ARP_SHAPES,
     SIMPLE_FILTER_TYPES,
     SIMPLE_SUB_SHAPES,
@@ -190,15 +191,16 @@ class OscillatorSpec(BaseModel):
     )
     warp_amount: float = Field(
         0.0, ge=0.0, le=1.0, description="slots 0-2 only. Also applies to granular_source/"
-        "spectral_source (GranularOsc/SpectralOsc share the same kParamWarp amount knob "
-        "as WTOsc/SampleOsc, though SpectralOsc's warp MODE vocabulary is different -- "
-        "see warp_mode)."
+        "spectral_source/multisample_source (GranularOsc/SpectralOsc/MultiSampleOsc share "
+        "the same kParamWarp amount knob as WTOsc/SampleOsc, though SpectralOsc's warp "
+        "MODE vocabulary is different -- see warp_mode)."
     )
     warp_mode: str = Field(
         "fm",
         description=f"slots 0-2 only, one of: {', '.join(sorted(SIMPLE_WARP_MODES))}. Also "
-        "applies to granular_source. For spectral_source specifically, this curated list "
-        "does NOT apply -- SpectralOsc has its own, much larger warp-mode vocabulary "
+        "applies to granular_source/multisample_source. For spectral_source specifically, "
+        "this curated list does NOT apply -- SpectralOsc has its own, much larger "
+        "warp-mode vocabulary "
         "(spectral-domain effects like gating/robotizing/vocoding/Shepard tones, "
         "unrelated names) -- pass the raw Serum name directly instead, e.g. "
         "warp_mode='kGate', 'kSmear', 'kRobotize', 'kSpectralShift', 'kVocode_OSC', "
@@ -311,6 +313,40 @@ class OscillatorSpec(BaseModel):
     spectral_filter_wet: float = Field(
         100.0, ge=0.0, le=100.0, description="spectral_source only. % wet/dry for the "
         "spectral filter/curve effect.",
+    )
+    multisample_source: str | None = Field(
+        None,
+        description=f"slots 0-2 only. If set, uses Serum's MULTISAMPLE engine "
+        f"(MultiSampleOsc) with a CURATED real Factory multisample instrument -- one of: "
+        f"{', '.join(sorted(MULTISAMPLE_INSTRUMENTS))}. Unlike granular_source/"
+        f"spectral_source/sample_playback_source (an arbitrary user WAV file),  "
+        f"MultiSampleOsc's real structure is a full SFZ-format keyzone mapping across many "
+        f"sample files -- too complex to build from an arbitrary user file this round (see "
+        f"docs/PARAMETER_SCHEMA.md item 3), so only these pre-verified real Factory "
+        f"instruments are selectable, each played back with correct per-note sample "
+        f"selection/pitch/looping exactly as Xfer's own sound designers configured it "
+        f"(unlike a single-sample engine playing one recording across the whole keyboard). "
+        f"Use for realistic multisampled instruments (choir, guitar, strings, ...) rather "
+        f"than synthesized/textural sources. Decoded 2026-07-31 via a 246-preset corpus "
+        f"survey -- NOT yet confirmed live for generation, treat as experimental until "
+        f"tested. Takes priority over wavetable/custom_harmonics/sample_source, but "
+        f"sample_playback_source/granular_source/spectral_source take priority over this "
+        f"if set on the same oscillator.",
+    )
+    multisample_env_attack: float = Field(
+        0.0, ge=0.0, le=0.4, description="multisample_source only. Seconds -- an OSC-level "
+        "note-shaping attack stage layered on top of the instrument's own baked-in sample "
+        "envelope, NOT the primary voice envelope (Env0-3). Real range observed is short "
+        "(0-0.4s); for a longer/slower attack shape the fuller Env0-3 envelope is the "
+        "right tool instead.",
+    )
+    multisample_env_decay: float = Field(
+        0.0, ge=0.0, le=32.0, description="multisample_source only. Seconds, same "
+        "OSC-level layered envelope as multisample_env_attack.",
+    )
+    multisample_env_release: float = Field(
+        0.0, ge=0.0, le=32.0, description="multisample_source only. Seconds, same "
+        "OSC-level layered envelope as multisample_env_attack.",
     )
     warp_amount2: float = Field(
         0.0, ge=0.0, le=1.0, description="amount for the SECOND warp lane, slots 0-2 only "

@@ -1144,7 +1144,10 @@ improve generation quality if resolved:
    a filter MUST set `filter_routing`/`output_routing` explicitly on the
    oscillators/filters under test, or risk silently testing a bypassed
    signal path.
-3. **Unmodeled oscillator engines** — MultiSample/Spectral remain unmodeled;
+3. **Unmodeled oscillator engines** — RESOLVED as of 2026-07-31: all three
+   remaining alternate oscillator engines (Granular, Spectral, MultiSample)
+   are now modeled, alongside the already-existing SampleOsc. See the
+   timeline below for how each was decoded and confirmed.
    **Granular is now modeled, as of 2026-07-30.** `GranularOsc` turned out
    to be structurally identical to `SampleOsc`'s own file-reference shape
    (`{numChannels, numFrames, plainParams, samplePathRelative, sampleRate}`)
@@ -1354,16 +1357,33 @@ improve generation quality if resolved:
    `auto-re-agent`'s build/test loop uses for compiled-code reversal (see
    the "loop engineering" discussion this session) — adapted here for a
    data-format-plus-audio-behavior reversal problem instead.
-   MultiSampleOsc
-   (used for realistic multisampled instrument patches, e.g. real
-   pianos/guitars) is now the highest-value remaining gap — its own
-   structure (`embedded_sfz` text + a `files` dict of per-sample metadata +
-   `sfzPathRelative`) is a full SFZ-format multisample mapping, a
-   meaningfully bigger undertaking than Granular's flat-params-plus-file-
-   reference shape; referencing an EXISTING Factory `.sfz` instrument
-   (rather than building a custom keyzone map from scratch) would be the
-   tractable first slice, mirroring how `wavetable`/`sample_source`
-   reference curated Factory content. Confirmed live 2026-07-29 recreating a second
+   **Update 2026-07-31, modeled via the recommended tractable first
+   slice.** `MultiSampleOsc`'s own structure (`embedded_sfz` text + a
+   `files` dict of per-sample metadata + `sfzPathRelative`) is a full
+   SFZ-format multisample mapping across many sample files — too complex
+   to synthesize from an arbitrary user file this round, so, mirroring how
+   `wavetable`/`sample_source` reference curated Factory content, this
+   references an EXISTING real Factory instrument's structure verbatim
+   instead of building a custom keyzone map from scratch. Key finding
+   enabling this: `embedded_sfz`/`files` are BYTE-IDENTICAL across every
+   real preset observed referencing the same instrument (confirmed for 4
+   different presets all using `Factory/Choir/Ah High.sfz` — only each
+   preset's own `plainParams`, envelope/warp, differ), so it's safe to
+   hard-code these two fields once per instrument. A 246-preset corpus
+   survey found the full `plainParams` schema (`kParamEnvAttack`/`Decay`/
+   `Release` at 97-100% presence, `kParamWarp`/`WarpMenu` shared with every
+   other warp-capable engine, ~10 rarer params documented for round-trip
+   safety only). 4 instruments curated to start (`choir_ah`, `synth_sid`,
+   `guitar_ac`, `violins`) via `OscillatorSpec.multisample_source` +
+   `multisample_env_attack`/`decay`/`release`. **Confirmed live via the
+   audio-rendering pipeline**: a generated `choir_ah` preset rendered at
+   MIDI note 60 detected pitch 261.6Hz (C4); at note 72 (one octave up),
+   523.3Hz (C5) — exactly one octave apart, confirming correct per-note
+   sample/keyzone selection and pitch tracking, not just a fixed drone.
+   Still experimental (only this one pitch-tracking check performed, not a
+   full listening pass) and only 4 of many real Factory instruments are
+   curated — adding more is now a simple, low-risk mechanical extraction
+   (same technique), no further reverse-engineering needed. Confirmed live 2026-07-29 recreating a second
    real Unmute preset (`UN_PLACES_PL_Dreams`, chosen specifically for being
    otherwise fully within scope — no arp, no sample oscillators, single FX
    rack): its Osc C is a real `SpectralOsc` (`kOsc_Spectral`) referencing a

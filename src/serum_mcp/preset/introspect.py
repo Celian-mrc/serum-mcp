@@ -32,6 +32,9 @@ _REVERSE_FILTER_TYPES = {v: k for k, v in schema.SIMPLE_FILTER_TYPES.items()}
 _REVERSE_WARP_MODES = {v: k for k, v in schema.SIMPLE_WARP_MODES.items()}
 _REVERSE_ARP_SHAPES = {v: k for k, v in schema.SIMPLE_ARP_SHAPES.items()}
 _REVERSE_WAVETABLES = {wt.relative_path: name for name, wt in schema.SIMPLE_WAVETABLES.items()}
+_REVERSE_MULTISAMPLE_INSTRUMENTS = {
+    ms.sfz_path_relative: name for name, ms in schema.MULTISAMPLE_INSTRUMENTS.items()
+}
 _REVERSE_SAMPLE_LOOP_MODES = {v: k for k, v in schema.SIMPLE_SAMPLE_LOOP_MODES.items()}
 _REVERSE_LFO_TYPES = {v: k for k, v in schema.SIMPLE_LFO_TYPES.items()}
 _REVERSE_MOD_SOURCE_IDS = {v: k for k, v in schema.MOD_SOURCE_IDS.items()}
@@ -282,6 +285,35 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                         )
                     except config.SamplesFolderNotFoundError:
                         pass
+            elif engine == "kOsc_MultiSample":
+                multisample_container = container.get(f"MultiSampleOsc{i}") or {}
+                multisample_pp = multisample_container.get("plainParams")
+                kwargs["warp_amount"] = _resolve(
+                    multisample_pp, "kParamWarp", schema.MULTISAMPLEOSC_PARAMS
+                )
+                raw_warp_mode = _resolve(
+                    multisample_pp, "kParamWarpMenu", schema.MULTISAMPLEOSC_PARAMS
+                )
+                kwargs["warp_mode"] = _REVERSE_WARP_MODES.get(raw_warp_mode, raw_warp_mode)
+                kwargs["multisample_env_attack"] = _resolve(
+                    multisample_pp, "kParamEnvAttack", schema.MULTISAMPLEOSC_PARAMS
+                )
+                kwargs["multisample_env_decay"] = _resolve(
+                    multisample_pp, "kParamEnvDecay", schema.MULTISAMPLEOSC_PARAMS
+                )
+                kwargs["multisample_env_release"] = _resolve(
+                    multisample_pp, "kParamEnvRelease", schema.MULTISAMPLEOSC_PARAMS
+                )
+                # Only round-trips as a named multisample_source when it
+                # matches one of the curated MULTISAMPLE_INSTRUMENTS exactly
+                # (by sfzPathRelative) -- a real Factory instrument this
+                # project hasn't curated, or a genuinely custom SFZ mapping,
+                # extracts with no multisample_source set (same "only name
+                # what we recognize safely" policy as every other curated
+                # reference table in this project).
+                raw_sfz_path = multisample_container.get("sfzPathRelative")
+                if raw_sfz_path in _REVERSE_MULTISAMPLE_INSTRUMENTS:
+                    kwargs["multisample_source"] = _REVERSE_MULTISAMPLE_INSTRUMENTS[raw_sfz_path]
             else:
                 wt_container = container.get(f"WTOsc{i}") or {}
                 wt_pp = wt_container.get("plainParams")

@@ -88,6 +88,12 @@ _SPECTRALOSC_KEYS = {
     "spectral_filter_shift": "kParamSpecFltShift",
     "spectral_filter_wet": "kParamSpecFltWetDry",
 }
+_ENGINE_TYPE_MULTISAMPLE = "kOsc_MultiSample"
+_MULTISAMPLEOSC_KEYS = {
+    "multisample_env_attack": "kParamEnvAttack",
+    "multisample_env_decay": "kParamEnvDecay",
+    "multisample_env_release": "kParamEnvRelease",
+}
 _FILTER_KEYS = {
     "cutoff": "kParamFreq",
     "resonance": "kParamReso",
@@ -858,6 +864,43 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                 )
                 validate_params(
                     spectral_key, spectral_params, schema.SPECTRALOSC_PARAMS, allow_unknown=True
+                )
+            elif osc.multisample_source:
+                if osc.multisample_source not in schema.MULTISAMPLE_INSTRUMENTS:
+                    raise ValueError(
+                        f"unknown multisample_source {osc.multisample_source!r}; expected "
+                        f"one of {sorted(schema.MULTISAMPLE_INSTRUMENTS)}"
+                    )
+                # kParamType written explicitly every call, same staleness
+                # reasoning as the kOsc_Sample branch above.
+                osc_params["kParamType"] = _ENGINE_TYPE_MULTISAMPLE
+
+                instrument = schema.MULTISAMPLE_INSTRUMENTS[osc.multisample_source]
+                multisample_key = f"MultiSampleOsc{i}"
+                multisample_container = osc_container.setdefault(multisample_key, {})
+                # No file to copy/resolve -- embedded_sfz/files are curated,
+                # fixed real-Factory-instrument data, confirmed byte-identical
+                # across every real preset referencing the same instrument
+                # (see schema.MultiSampleInstrumentDef's docstring). Written
+                # verbatim every call, same "always write explicitly, don't
+                # trust a stale value surviving an engine switch" reasoning
+                # as every other file-reference engine above.
+                multisample_container["sfzPathRelative"] = instrument.sfz_path_relative
+                multisample_container["embedded_sfz"] = instrument.embedded_sfz
+                multisample_container["files"] = dict(instrument.files)
+
+                multisample_params = _plain_params(osc_container, multisample_key)
+                for spec_key, param_key in _MULTISAMPLEOSC_KEYS.items():
+                    multisample_params[param_key] = getattr(osc, spec_key)
+                multisample_params["kParamWarp"] = osc.warp_amount
+                multisample_params["kParamWarpMenu"] = schema.SIMPLE_WARP_MODES.get(
+                    osc.warp_mode, osc.warp_mode
+                )
+                validate_params(
+                    multisample_key,
+                    multisample_params,
+                    schema.MULTISAMPLEOSC_PARAMS,
+                    allow_unknown=True,
                 )
             else:
                 osc_params["kParamType"] = _ENGINE_TYPE_WT

@@ -41,6 +41,13 @@ def list_parameters() -> str:
         "noise_oscillator": _dump(schema.NOISEOSC_PARAMS),
         "sub_oscillator": _dump(schema.SUBOSC_PARAMS),
         "simple_sub_shapes": schema.SIMPLE_SUB_SHAPES,
+        "granular_oscillator": _dump(schema.GRANULAROSC_PARAMS),
+        "spectral_oscillator": _dump(schema.SPECTRALOSC_PARAMS),
+        "multisample_oscillator": _dump(schema.MULTISAMPLEOSC_PARAMS),
+        "multisample_instruments": {
+            name: instrument.sfz_path_relative
+            for name, instrument in schema.MULTISAMPLE_INSTRUMENTS.items()
+        },
         "voice_filter": _dump(schema.VOICE_FILTER_PARAMS),
         "simple_filter_types": schema.SIMPLE_FILTER_TYPES,
         "envelope": _dump(schema.ENV_PARAMS),
