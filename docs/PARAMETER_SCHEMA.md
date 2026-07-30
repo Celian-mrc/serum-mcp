@@ -1471,6 +1471,37 @@ improve generation quality if resolved:
    presumably synthesizes one of these point sequences internally) to
    reverse-engineer the mapping. This is now a well-scoped, tractable next
    step rather than a totally opaque one.
+
+   **Update 2026-07-31, attempted via the audio-rendering pipeline, hit a
+   real tool limitation (not a dead end on the underlying question).**
+   Tried to calibrate `curveVals`' interpolation semantics the same way
+   `kParamScanRate` was calibrated: patched a 2-point `curveData`
+   (`xVals=[0,1]`, `yVals=[0,1]`, `curveVals=[0.5,0.5]`) directly onto
+   `LFO0`, routed `lfo0 -> filter0.cutoff` at `amount=90`, and measured
+   spectral centroid over time to reconstruct the modulation shape.
+   Result: **completely flat** (no cycling at all) regardless of
+   `kParamRate` (tried 0.1 and 10.66, the one empirically-known reference
+   point) or whether `kParamBeatSync` was explicit-`False` vs. genuinely
+   absent. Confirmed via `serum2_preset_loader.converter.
+   preset_cbor_to_processor_cbor` that the `curveData` survives the CBOR
+   translation byte-for-byte correctly — the state going INTO the render
+   is right. Isolated the cause with a clean control: the EXACT same
+   preset/rate/routing with `curveData` simply absent (Serum's own
+   built-in default LFO shape instead) showed clear, strong, cyclical
+   modulation (spectral centroid swinging 110↔9208 Hz repeatedly). **This
+   pins the failure specifically on custom `curveData` not being
+   correctly applied by Serum when loaded via `serum2-preset-loader`'s
+   VST3 state-injection path** — a different, harder-to-work-around
+   limitation than the `filter_routing` gotcha (item 2), since there's no
+   known field to set explicitly that fixes it; the data is already
+   present and structurally correct. **Practical consequence**: the
+   audio-rendering pipeline cannot currently be used to reverse-engineer
+   `curveVals` — this specific question needs either a real Serum GUI
+   test (load a hand-crafted `curveData` preset, listen/screenshot) or
+   finding a different, non-state-injection way to get a custom curve
+   into a live Serum instance for rendering. Recorded in
+   [[reference-serum-verify-audio-pipeline]] so a future session doesn't
+   repeat this exact dead end.
 5. **RESOLVED 2026-07-30, all 16 FX types now have param schemas.**
    `FXSplit`/`FXSplit3`/`FXSplitMS` were assumed to need "nested
    band-splitter containers, not a flat `plainParams` dict" — a 626-preset
