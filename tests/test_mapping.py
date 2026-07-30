@@ -1804,6 +1804,60 @@ def test_oscillator_warp_amount2_mod_destination(init_data):
     assert routes["oscillator0.warp_amount2"] == "macro4"
 
 
+def test_new_mod_destinations_2026_07_30_survey_round_trip(init_data):
+    """filter{i}.wet/var/stereo/level_out, oscillator3.noise_color, arp.gate/
+    rate, global.voice_scaling_env_time/lfo_time -- confirmed via a
+    626-preset corpus survey of every real ModSlot's destModuleParamID,
+    closing out item 1b's remaining destination gaps in
+    docs/PARAMETER_SCHEMA.md §5 (VoiceFilter.kParamWet, NoiseOsc.kParamColor,
+    Arp params, VoicePanel.kParamGlobalScalingEnvTime/LfoTime)."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        filters=[FilterSpec(), FilterSpec()],
+        mod_routes=[
+            ModRouteSpec(source="lfo0", destination="filter0.wet", amount=10.0),
+            ModRouteSpec(source="lfo1", destination="filter1.var", amount=11.0),
+            ModRouteSpec(source="lfo2", destination="filter0.stereo", amount=12.0),
+            ModRouteSpec(source="lfo3", destination="filter1.level_out", amount=13.0),
+            ModRouteSpec(source="macro0", destination="oscillator3.noise_color", amount=14.0),
+            ModRouteSpec(source="macro1", destination="arp.gate", amount=15.0),
+            ModRouteSpec(source="macro2", destination="arp.rate", amount=16.0),
+            ModRouteSpec(source="macro3", destination="global.voice_scaling_env_time", amount=17.0),
+            ModRouteSpec(source="macro4", destination="global.voice_scaling_lfo_time", amount=18.0),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    expected = {
+        "ModSlot0": ("VoiceFilter", "kParamWet", 1),
+        "ModSlot1": ("VoiceFilter", "kParamVar", 6),
+        "ModSlot2": ("VoiceFilter", "kParamStereo", 7),
+        "ModSlot3": ("VoiceFilter", "kParamLevelOut", 8),
+        "ModSlot4": ("NoiseOsc", "kParamColor", 0),
+        "ModSlot5": ("Arp", "kParamGate", 6),
+        "ModSlot6": ("Arp", "kParamRate", 1),
+        "ModSlot7": ("VoicePanel", "kParamGlobalScalingEnvTime", 58),
+        "ModSlot8": ("VoicePanel", "kParamGlobalScalingLfoTime", 59),
+    }
+    for slot, (dest_type, param_name, param_id) in expected.items():
+        assert data[slot]["destModuleTypeString"] == dest_type
+        assert data[slot]["destModuleParamName"] == param_name
+        assert data[slot]["destModuleParamID"] == param_id
+
+    extracted = extract_spec(data)
+    routes = {r.destination: r.source for r in extracted.mod_routes}
+    assert routes["filter0.wet"] == "lfo0"
+    assert routes["filter1.var"] == "lfo1"
+    assert routes["filter0.stereo"] == "lfo2"
+    assert routes["filter1.level_out"] == "lfo3"
+    assert routes["oscillator3.noise_color"] == "macro0"
+    assert routes["arp.gate"] == "macro1"
+    assert routes["arp.rate"] == "macro2"
+    assert routes["global.voice_scaling_env_time"] == "macro3"
+    assert routes["global.voice_scaling_lfo_time"] == "macro4"
+
+
 def test_fx_chain_edit_only_touches_racks_present(init_data):
     """A rack with zero entries in spec.fx_chain must be left untouched --
     most callers don't know rack 1/2 exist, so an edit that only mentions

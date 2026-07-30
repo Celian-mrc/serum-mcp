@@ -1548,6 +1548,19 @@ for _i in range(2):
     MOD_DEST_TARGETS[f"filter{_i}.cutoff"] = ModDestDef("VoiceFilter", _i, "kParamFreq", 3)
     MOD_DEST_TARGETS[f"filter{_i}.resonance"] = ModDestDef("VoiceFilter", _i, "kParamReso", 4)
     MOD_DEST_TARGETS[f"filter{_i}.drive"] = ModDestDef("VoiceFilter", _i, "kParamDrive", 5)
+    # Confirmed 2026-07-30 via a 626-preset corpus survey of every real
+    # ModSlot's (destModuleTypeString, destModuleParamName) -> destModuleParamID
+    # pair (same method as the rest of this table): kParamWet -> 1 (152
+    # samples), kParamVar -> 6 (82), kParamStereo -> 7 (14), kParamLevelOut
+    # -> 8 (153) -- closing part of item 1b's "VoiceFilter.kParamWet" gap in
+    # docs/PARAMETER_SCHEMA.md §5. kParamX/kParamY also appeared as real mod
+    # destinations (ids 9/10) but only 4/1 samples respectively and aren't
+    # even modeled as static FilterSpec fields yet -- not enough evidence to
+    # add safely, left out.
+    MOD_DEST_TARGETS[f"filter{_i}.wet"] = ModDestDef("VoiceFilter", _i, "kParamWet", 1)
+    MOD_DEST_TARGETS[f"filter{_i}.var"] = ModDestDef("VoiceFilter", _i, "kParamVar", 6)
+    MOD_DEST_TARGETS[f"filter{_i}.stereo"] = ModDestDef("VoiceFilter", _i, "kParamStereo", 7)
+    MOD_DEST_TARGETS[f"filter{_i}.level_out"] = ModDestDef("VoiceFilter", _i, "kParamLevelOut", 8)
 for _i in range(4):
     MOD_DEST_TARGETS[f"env{_i}.attack"] = ModDestDef("Env", _i, "kParamAttack", 0)
     MOD_DEST_TARGETS[f"env{_i}.decay"] = ModDestDef("Env", _i, "kParamDecay", 2)
@@ -1574,12 +1587,33 @@ for _i in range(10):
     MOD_DEST_TARGETS[f"lfo{_i}.rate"] = ModDestDef("LFO", _i, "kParamRate", 0)
 for _i in range(8):
     MOD_DEST_TARGETS[f"macro{_i}.value"] = ModDestDef("Macro", _i, "kParamValue", 0)
+# NoiseOsc is a singleton submodule living only inside Oscillator3 (the
+# fixed Noise slot, see OscillatorSpec.noise_type) -- destModuleID always 3
+# (confirmed 2026-07-30, 64/64 samples), matching that slot's own index, the
+# same convention as WTOsc's oscillator{i}.* destinations above.
+# destModuleParamID confirmed via the same 626-preset survey: kParamColor ->
+# 0 (53 samples). Closes part of item 1b's "NoiseOsc.kParamColor" gap.
+MOD_DEST_TARGETS["oscillator3.noise_color"] = ModDestDef("NoiseOsc", 3, "kParamColor", 0)
 del _i
 # `Global` is a singleton (destModuleID always 0), unlike everything above
 # which is per-slot. Confirmed live 2026-07-29 against TWO independent real
 # presets (both used key_track -> Global.kParamVoiceAmp, at -61% and -52%
 # respectively) -- destModuleParamID 2.
 MOD_DEST_TARGETS["global.voice_amp"] = ModDestDef("Global", 0, "kParamVoiceAmp", 2)
+# `Arp`/`VoicePanel` are also singletons (destModuleID always 0, confirmed
+# 2026-07-30: 32/32 and 9/9 samples respectively). destModuleParamID via the
+# same 626-preset survey. Arp's gate/rate are only meaningful when
+# GlobalSpec/ArpSpec's own arp is actually enabled, same caveat as any other
+# destination targeting a disabled module. Closes the rest of item 1b's
+# "Arp params"/"VoicePanel.kParamGlobalScalingEnvTime" gaps.
+MOD_DEST_TARGETS["arp.gate"] = ModDestDef("Arp", 0, "kParamGate", 6)
+MOD_DEST_TARGETS["arp.rate"] = ModDestDef("Arp", 0, "kParamRate", 1)
+MOD_DEST_TARGETS["global.voice_scaling_env_time"] = ModDestDef(
+    "VoicePanel", 0, "kParamGlobalScalingEnvTime", 58
+)
+MOD_DEST_TARGETS["global.voice_scaling_lfo_time"] = ModDestDef(
+    "VoicePanel", 0, "kParamGlobalScalingLfoTime", 59
+)
 
 # Non-`kParamWet` FX mod destinations -- unlike kParamWet (destModuleParamID
 # 1, confirmed universal across every FX type that has a wet knob), every

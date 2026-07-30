@@ -1060,16 +1060,31 @@ improve generation quality if resolved:
    a real preset's raw file had 27 active `ModSlot`s; only 11 round-tripped
    through `extract_spec` before this was found (14 after the multi-rack FX
    fix below), the rest silently dropped for an unmodeled *destination*
-   even though their source was resolved. Unmodeled destination categories:
-   `Arp` params (e.g. modulating the arpeggiator's gate/chance live), a
-   `WTOsc` secondary warp param (`kParamWarpVar2`), `NoiseOsc.kParamColor`,
-   FX params other than `kParamWet` (currently the ONLY FX param
-   generatable as a mod destination), `VoiceFilter.kParamWet`, `Global.
-   kParamVoiceAmp`, `VoicePanel.kParamGlobalScalingEnvTime`. Silent
-   under-reporting, not corruption — but it means `describe_preset`/
-   `extract_spec` can present a real preset as far simpler than it actually
-   is, which misled an earlier recreation attempt into thinking its
-   modulation was complete when ~40% of it was invisible.
+   even though their source was resolved. Silent under-reporting, not
+   corruption — but it means `describe_preset`/`extract_spec` can present a
+   real preset as far simpler than it actually is, which misled an earlier
+   recreation attempt into thinking its modulation was complete when ~40% of
+   it was invisible. Originally-unmodeled categories, now mostly closed:
+   `Global.kParamVoiceAmp` (closed 2026-07-29), a `WTOsc` secondary warp
+   param `kParamWarpVar2` and FX params other than `kParamWet` (closed
+   2026-07-29/30, see `FX_EXTRA_MOD_DEST_PARAMS`). **Closed 2026-07-30** via
+   a 626-preset corpus survey of every real `ModSlot`'s destination:
+   `VoiceFilter.kParamWet`/`kParamVar`/`kParamStereo`/`kParamLevelOut`
+   (`filter{i}.wet`/`var`/`stereo`/`level_out`), `NoiseOsc.kParamColor`
+   (`oscillator3.noise_color`, confirmed a fixed singleton at `destModuleID
+   3`, matching the Noise slot's own index), `Arp.kParamGate`/`kParamRate`
+   (`arp.gate`/`arp.rate`), and `VoicePanel.kParamGlobalScalingEnvTime`/
+   `kParamGlobalScalingLfoTime` (`global.voice_scaling_env_time`/
+   `voice_scaling_lfo_time`) — all confirmed singletons at `destModuleID 0`
+   except VoiceFilter/NoiseOsc (per-slot/fixed-slot respectively). Verified
+   round-trip against several real ARP-category Factory presets (e.g.
+   `ARP - Acid101.SerumPreset`: `macro3 -> arp.gate`, `macro4 ->
+   filter1.var`). `VoiceFilter.kParamX`/`kParamY` also appeared as real mod
+   destinations but with only 4/1 samples respectively, and aren't even
+   modeled as static `FilterSpec` fields yet — left out, not enough
+   evidence. `NoiseOsc.kParamInitialPhase`/`kParamRandomPhase`/`kParamFine`
+   also appeared (7/1/3 samples) but are lower-value/rarer — not added this
+   round.
 2. **Filter cutoff Hz curve** (§4, Filters) — only one calibration point.
 3. **Unmodeled oscillator engines** — Granular/MultiSample/Spectral remain
    unmodeled (GranularOsc/MultiSampleOsc/SpectralOsc appeared in 3.6-15.8%
@@ -1360,12 +1375,11 @@ an enum tying source names to `ModSlot.source` integers, the technique that
 worked for the destination side) did not find one for sources despite
 targeted searches.
 
-`subIndex` (`source[1]`) is unresolved for every source family — it's 0 in
-the overwhelming majority of samples (including every route in the
-2026-07-29 probe session); a handful of source IDs (notably 6-9, inside the
-LFO block) show varied non-zero subIndex values correlated with other valid
-source IDs (16-32ish), suggestive of some kind of chained/secondary
-modulation, but this wasn't pinned down further either.
+`subIndex` (`source[1]`) — **resolved 2026-07-30**, see item 14 in §5: a
+second, independent source id from the exact same `MOD_SOURCE_IDS` space as
+`source[0]`, Serum's "Aux"/"Via" system (`ModRouteSpec.aux_source`). 0 (no
+valid source has this id) is the "no aux" sentinel, matching the "0 in the
+overwhelming majority of samples" observation above.
 
 ## 7. Wavetable file format
 
