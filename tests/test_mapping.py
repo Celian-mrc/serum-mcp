@@ -939,6 +939,33 @@ def test_global_fx_bus_volumes_and_direct_volume_round_trip(init_data):
     assert extracted.global_.direct_volume == 0.3
 
 
+def test_global_fx_bus_destinations_round_trip(init_data):
+    """GlobalSpec.fx_bus1_destination/fx_bus2_destination -- decoded
+    2026-07-30 via a 626-preset corpus survey: kParamFXBus1Dest/2Dest only
+    ever took values 1.0 or 2.0 in real content, the same meaning as
+    RoutingSlot's kParamRoutingDest (Master/Direct) but stored as a raw
+    float ordinal here, NOT the string enum RoutingSlot uses -- confirmed
+    directly against real Factory CBOR. Unset (the default) writes nothing."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        **{
+            "global": GlobalSpec(
+                fx_bus1_destination="master", fx_bus2_destination="direct"
+            )
+        },
+    )
+    data = apply_spec(init_data, spec)
+
+    global_pp = data["Global0"]["plainParams"]
+    assert global_pp["kParamFXBus1Dest"] == 1.0
+    assert global_pp["kParamFXBus2Dest"] == 2.0
+
+    extracted = extract_spec(data)
+    assert extracted.global_.fx_bus1_destination == "master"
+    assert extracted.global_.fx_bus2_destination == "direct"
+
+
 def test_lfo_default_rate_and_beat_sync_omitted_not_written_explicitly(init_data):
     """kParamRate=0.0 is a literal 0Hz freeze, not a neutral value -- found
     live 2026-07-29 (UN_PLACES_BA_Beyond): its real LFO0 has neither

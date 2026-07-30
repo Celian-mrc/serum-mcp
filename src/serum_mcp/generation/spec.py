@@ -504,6 +504,21 @@ class GlobalSpec(BaseModel):
         "system entirely). Real values seen 0.21-0.43 -- well below the presumed unity "
         "default, uncertain why. Leave unset unless deliberately using 'direct' routing.",
     )
+    fx_bus1_destination: Literal["master", "direct"] | None = Field(
+        None,
+        description="Where FX Bus 1's OWN processed signal (after passing through its "
+        "FX chain) rejoins the main path -- distinct from fx_bus1_volume (that bus's "
+        "aggregate level) and each source's own fx_bus1_send (how much is sent INTO the "
+        "bus to begin with). 'master' (straight to main output) or 'direct' (a separate "
+        "bypass path, see direct_volume). Decoded 2026-07-30 from a 626-preset corpus "
+        "survey: real content only ever used these two values, never routing a bus back "
+        "into a filter or nowhere. Leave unset unless deliberately using the FX bus "
+        "system; only meaningful when at least one source has a nonzero fx_bus1_send.",
+    )
+    fx_bus2_destination: Literal["master", "direct"] | None = Field(
+        None,
+        description="Same as fx_bus1_destination, for FX Bus 2.",
+    )
 
 
 class ModRouteSpec(BaseModel):

@@ -461,6 +461,14 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         fx_bus1_volume=global_pp.get("kParamFXBus1Vol") if isinstance(global_pp, dict) else None,
         fx_bus2_volume=global_pp.get("kParamFXBus2Vol") if isinstance(global_pp, dict) else None,
         direct_volume=global_pp.get("kParamDirectVol") if isinstance(global_pp, dict) else None,
+        # Raw float ordinal (1.0/2.0), NOT the string enum RoutingSlot uses
+        # for the same meaning -- see schema.GLOBAL_PARAMS['kParamFXBus1Dest'].
+        fx_bus1_destination={1.0: "master", 2.0: "direct"}.get(
+            global_pp.get("kParamFXBus1Dest") if isinstance(global_pp, dict) else None
+        ),
+        fx_bus2_destination={1.0: "master", 2.0: "direct"}.get(
+            global_pp.get("kParamFXBus2Dest") if isinstance(global_pp, dict) else None
+        ),
     )
 
     arp_pp = (data.get("Arp0", {}) or {}).get("plainParams")

@@ -892,6 +892,17 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             global_params["kParamFXBus2Vol"] = spec.global_.fx_bus2_volume
         if spec.global_.direct_volume is not None:
             global_params["kParamDirectVol"] = spec.global_.direct_volume
+        if spec.global_.fx_bus1_destination is not None:
+            # Stored as a raw float ordinal in Global0 (1.0/2.0), NOT the
+            # string enum RoutingSlot uses for the same meaning -- confirmed
+            # against real Factory CBOR, see schema.GLOBAL_PARAMS['kParamFXBus1Dest'].
+            global_params["kParamFXBus1Dest"] = (
+                1.0 if spec.global_.fx_bus1_destination == "master" else 2.0
+            )
+        if spec.global_.fx_bus2_destination is not None:
+            global_params["kParamFXBus2Dest"] = (
+                1.0 if spec.global_.fx_bus2_destination == "master" else 2.0
+            )
         validate_params("Global0", global_params, schema.GLOBAL_PARAMS, allow_unknown=True)
 
     # Like `global`, arp is a single nested object (not a list), and unset

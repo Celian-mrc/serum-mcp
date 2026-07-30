@@ -923,10 +923,29 @@ directly rather than trusting the extracted `PresetSpec` was complete:
     source routed with `filter_routing`/`output_routing='direct'`, real
     values seen well below unity, 0.21-0.43, reason unconfirmed). All four
     are `None` by default and write nothing unless explicitly set, matching
-    Serum's real absent-state default. `kParamFXBus1Dest`/`kParamFXBus2Dest`
-    (which enum value routes each bus's processed signal back into the main
-    path) remain unwired -- still `confidence="uncertain"`, the integer-per-
-    destination mapping was never decoded.
+    Serum's real absent-state default.
+
+19. **`kParamFXBus1Dest`/`kParamFXBus2Dest` decoded and wired up, closing the
+    very last open piece of the RoutingSlot/FX-bus system.** A full
+    626-preset Factory corpus survey (2026-07-30) found only two raw values
+    ever appear: `1.0` (14 occurrences on bus 1, 6 on bus 2) and `2.0` (5 on
+    bus 1, 2 on bus 2) — never `0.0` or `3.0`. That's exactly
+    `RoutingSlot.kParamRoutingDest`'s own `kRoutingDestMaster`/
+    `kRoutingDestDirect` ordinals, and never its `kRoutingDestFilter`/
+    `kRoutingDestNone` ones — which makes sense (a post-FX-chain bus return
+    routing "into a filter" that's already been passed, or "nowhere",
+    would be nonsensical). **Caught mid-implementation**: unlike
+    `RoutingSlot`, which stores this same enum as a literal string (e.g.
+    `'kRoutingDestFilter'`), `Global0` stores `kParamFXBus1Dest`/
+    `kParamFXBus2Dest` as a raw float ordinal (`1.0`/`2.0`) — confirmed
+    directly against real Factory CBOR after an initial string-based
+    implementation would have written the wrong CBOR value (the same class
+    of bug as the historic bool/int wire-type crashes). `schema.py` keeps
+    `kind="float"` for both keys for that reason; `GlobalSpec.
+    fx_bus1_destination`/`fx_bus2_destination` (`"master"`/`"direct"`/
+    `None`) do the string↔ordinal translation in `mapping.py`/
+    `introspect.py` instead. Verified round-trip against 5 real Factory
+    presets spanning all 4 combinations of set/unset per bus.
 
 **Fixture bug, not a schema gap** (fixed): `fixtures/init_preset.SerumPreset`
 — the blank template every `generate_preset`/`edit_preset` call starts

@@ -1048,14 +1048,32 @@ GLOBAL_PARAMS: dict[str, ParamDef] = {
         notes="Same as kParamFXBus1Vol, for FX Bus 2.",
     ),
     "kParamFXBus1Dest": ParamDef(
-        "kParamFXBus1Dest", "float", default=0.0, min=0.0, max=None, confidence="uncertain",
-        notes="Small-integer-valued (1.0/2.0 observed) -- presumably an enum selecting "
-        "where FX Bus 1's processed signal rejoins the main path, but the enum's "
-        "meaning per integer is not decoded.",
+        "kParamFXBus1Dest", "float", default=0.0, min=0.0, max=3.0, confidence="observed",
+        notes="Decoded 2026-07-30 by a full-corpus survey (626 real Factory presets, 14 "
+        "with this key present): every value observed was 1.0 or 2.0, NEVER 0.0 or 3.0 "
+        "-- exactly the two RoutingSlot.kParamRoutingDest ordinals that make sense as a "
+        "post-FX bus return (kRoutingDestMaster=1: straight to main output; "
+        "kRoutingDestDirect=2: a separate bypass path) and never the two that wouldn't "
+        "(kRoutingDestFilter=0: nonsensical, already downstream of the filter stage; "
+        "kRoutingDestNone=3: would silence the whole processed bus). Shares the same "
+        "MEANING as RoutingSlot's kParamRoutingDest but NOT the same storage kind -- "
+        "unlike RoutingSlot (which stores this enum as a literal string, e.g. "
+        "'kRoutingDestFilter'), Global0 stores it as a raw float ordinal (1.0/2.0), "
+        "confirmed directly against real Factory CBOR. kind stays 'float' here for that "
+        "reason; GlobalSpec.fx_bus1_destination/mapping.py does the "
+        "'master'/'direct'<->1.0/2.0 translation instead. default=0.0 (kRoutingDestFilter's "
+        "ordinal) is assumed by that same-enum convention, NOT independently confirmed -- "
+        "genuine absent-key behavior was never isolated since real content only ever "
+        "writes 1.0/2.0 explicitly. Where FX Bus 1's OWN processed signal (after passing "
+        "through its FX chain) rejoins the main path -- distinct from "
+        "GLOBAL_PARAMS['kParamFXBus1Vol'] (that bus's aggregate level) and "
+        "ROUTING_SLOT_PARAMS['kParamFXBus1Level'] (how much of a given source is SENT "
+        "into the bus to begin with).",
     ),
     "kParamFXBus2Dest": ParamDef(
-        "kParamFXBus2Dest", "float", default=0.0, min=0.0, max=None, confidence="uncertain",
-        notes="Same as kParamFXBus1Dest, for FX Bus 2.",
+        "kParamFXBus2Dest", "float", default=0.0, min=0.0, max=3.0, confidence="observed",
+        notes="Same as kParamFXBus1Dest, for FX Bus 2 (6 real occurrences of 1.0, 2 of "
+        "2.0 in the same 626-preset survey).",
     ),
 }
 
