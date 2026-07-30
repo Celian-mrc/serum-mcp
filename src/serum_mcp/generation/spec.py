@@ -13,6 +13,8 @@ if you change one, change the other.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from serum_mcp.preset.schema import (
@@ -273,6 +275,23 @@ class FilterSpec(BaseModel):
     level_out: float = Field(
         0.5, ge=0.0, le=1.0, description="output level trim applied after the filter"
     )
+    output_routing: Literal["parallel", "series"] | None = Field(
+        None,
+        description="how this filter's OWN output reaches the main signal path -- "
+        "'parallel' (the real Serum default: goes straight to output, independent of "
+        "the other filter) or 'series' (cascades into the OTHER filter, i.e. this "
+        "filter's output becomes the other filter's input). Leave unset to use "
+        "Serum's real default ('parallel') rather than writing anything explicit -- "
+        "found live 2026-07-29: a fixture bug had every serum-mcp preset with both "
+        "filters enabled silently running them in series (now fixed at the fixture "
+        "level, so 'parallel' no longer needs to be set explicitly to get it). Only "
+        "set 'series' when a genuinely cascaded dual-filter chain is wanted (e.g. "
+        "recreating a specific reference preset that uses it) -- setting BOTH "
+        "filters[0] and filters[1] to 'series' at once creates a routing cycle and "
+        "raises an error rather than producing a silently broken preset. Backed by "
+        "RoutingSlot5/RoutingSlot6, a top-level structure outside VoiceFilter this "
+        "project only partially understands -- see docs/PARAMETER_SCHEMA.md §5.",
+    )
 
 
 class EnvelopeSpec(BaseModel):
@@ -416,28 +435,33 @@ class ModRouteSpec(BaseModel):
     ``velocity``, ``mod_wheel``, ``pitch_bend``, ``key_track`` (note number),
     ``aftertouch``, ``poly_aftertouch``, ``env0``..``env3`` (an envelope's
     own output used as a source, distinct from routing something INTO that
-    envelope), and three independent per-note random sources (``random1``,
-    ``random2``, ``random_discrete``) -- routed to the destinations
-    enumerated in ``preset.schema.MOD_DEST_TARGETS`` (oscillator volume/pan/
-    octave/pitch/fine, filter cutoff/resonance/drive, envelope attack/decay/
+    envelope), three independent per-note random sources (``random1``,
+    ``random2``, ``random_discrete``), and 5 per-voice/note "Note"-category
+    sources -- ``release_velo``, ``active_voices``, ``voice_index``,
+    ``voice_mod1``, ``voice_mod2`` -- routed to the destinations enumerated
+    in ``preset.schema.MOD_DEST_TARGETS`` (oscillator volume/pan/octave/
+    pitch/fine, filter cutoff/resonance/drive, envelope attack/decay/
     sustain/release). ``velocity`` is a good fit for envelope attack/decay/
     release (classic velocity-sensitivity) or filter cutoff (velocity-
     sensitive brightness); ``key_track`` for filter cutoff that opens up on
     higher notes; ``aftertouch``/``poly_aftertouch`` for post-note-on
     expressive control (e.g. pressure adding vibrato or opening the filter);
     ``random1``/``random2``/``random_discrete`` for per-note humanization
-    (e.g. small pan or pitch variation) -- all confirmed live 2026-07-29 via
-    direct probing of a real Serum 2 instance. This covers every mod source
-    this project originally set out to decode; a few more exist in Serum
-    (release velocity, per-voice sources) but weren't part of that scope and
-    aren't decoded -- see docs/PARAMETER_SCHEMA.md §6.
+    (e.g. small pan or pitch variation); ``release_velo``/``voice_mod1``/
+    ``voice_mod2``/``active_voices``/``voice_index`` exact musical meaning
+    unconfirmed beyond their Serum UI name (only their source IDs were
+    probed, not their live behavior) -- all IDs confirmed live 2026-07-29
+    via direct probing of a real Serum 2 instance. A few more sources exist
+    in Serum but aren't decoded -- see docs/PARAMETER_SCHEMA.md §6.
     """
 
     source: str = Field(
         description=(
             "'lfo0'..'lfo9', 'macro0'..'macro7', 'velocity', 'mod_wheel', "
             "'pitch_bend', 'key_track', 'aftertouch', 'poly_aftertouch', "
-            "'env0'..'env3', 'random1', 'random2', or 'random_discrete'"
+            "'env0'..'env3', 'random1', 'random2', 'random_discrete', "
+            "'release_velo', 'active_voices', 'voice_index', 'voice_mod1', "
+            "or 'voice_mod2'"
         )
     )
     destination: str = Field(description="e.g. 'filter0.cutoff', 'oscillator0.pitch', 'env0.decay'")

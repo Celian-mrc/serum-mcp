@@ -32,6 +32,26 @@ _OSC_KEYS = {
     "unison": "kParamUnison",
     "detune": "kParamDetune",
 }
+# Presence-forces-the-DSP-stage params (see the loop below), same class as
+# _FILTER_KEYS_OMIT_AT_DEFAULT/_LFO_KEYS_OMIT_AT_DEFAULT -- found live
+# 2026-07-30 (UN_PLACES_BA_Beyond): Osc A's real kParamVolume is absent
+# entirely (Serum shows 75%/-5dB), while writing this field's own schema
+# default (0.75) explicitly showed 87%/-2.5dB instead -- not the "same
+# value" the raw number implies. A real-corpus survey confirmed every other
+# _OSC_KEYS entry is similarly majority-absent when untouched (kParamOctave
+# 66%, kParamPitch 95%, kParamFine 90%, kParamPan 91%, kParamUnison 78%,
+# kParamDetune 72%). kParamEnable is deliberately NOT here -- it's a
+# structural on/off assertion this project must always write explicitly,
+# not a "neutral value" a knob happens to rest at.
+_OSC_KEYS_OMIT_AT_DEFAULT = {
+    "kParamOctave": 0.0,
+    "kParamPitch": 0.0,
+    "kParamFine": 0.0,
+    "kParamVolume": 0.75,
+    "kParamPan": 0.0,
+    "kParamUnison": 1.0,
+    "kParamDetune": 0.0,
+}
 _WTOSC_KEYS = {
     "table_position": "kParamTablePos",
     "warp_amount": "kParamWarp",
@@ -59,6 +79,21 @@ _FILTER_KEYS = {
     "wet": "kParamWet",
     "level_out": "kParamLevelOut",
 }
+# Presence-forces-the-DSP-stage params (see the loop below) -- omit these
+# from a filter's plainParams whenever the spec value equals the default
+# on the right, matching how real Serum leaves an untouched knob out
+# entirely. kParamFreq (cutoff) is deliberately NOT here: a real-corpus
+# survey (2026-07-29) found it present in 1254/1302 (96%) real filters,
+# the opposite skew from these -- almost always deliberately set, so
+# always writing it explicitly is the behavior that matches real content.
+_FILTER_KEYS_OMIT_AT_DEFAULT = {
+    "kParamWet": 100.0,
+    "kParamLevelOut": 0.5,
+    "kParamDrive": 0.0,
+    "kParamStereo": 50.0,
+    "kParamReso": 10.0,
+    "kParamVar": 0.0,
+}
 _ENV_KEYS = {
     "attack": "kParamAttack",
     "hold": "kParamHold",
@@ -80,6 +115,24 @@ _LFO_KEYS = {
     "dotted": "kParamDotted",
     "triplets": "kParamTriplets",
     "rate10x": "kParamRate10x",
+}
+# Presence-forces-the-DSP-stage params (see the loop below) -- every
+# _LFO_KEYS entry except kParamSmooth, all confirmed by a real-corpus survey
+# (2026-07-29) to be overwhelmingly absent when untouched: kParamRate 37%,
+# kParamBeatSync 67%, kParamDelay 99%, kParamRise 96%, kParamMono 98%,
+# kParamSwing 99%, kParamDotted/kParamTriplets/kParamRate10x 83-85% absent.
+# kParamSmooth deliberately excluded -- no evidence either way, and this
+# project's own generated LFOs commonly set it to a real non-default value.
+_LFO_KEYS_OMIT_AT_DEFAULT = {
+    "kParamRate": 0.0,
+    "kParamBeatSync": False,
+    "kParamDelay": 0.0,
+    "kParamRise": 0.0,
+    "kParamMono": False,
+    "kParamSwing": 0.0,
+    "kParamDotted": False,
+    "kParamTriplets": False,
+    "kParamRate10x": False,
 }
 
 
@@ -443,10 +496,28 @@ def _resolve_route_source(route: ModRouteSpec) -> int:
     return schema.MOD_SOURCE_IDS[route.source]
 
 
-def _build_modslot_entry(route: ModRouteSpec, fx_chain: list[FxUnitSpec]) -> dict[str, Any]:
+def _build_modslot_entry(
+    route: ModRouteSpec,
+    fx_chain: list[FxUnitSpec],
+    existing_plain_params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build (or update in place) one ModSlot entry. When
+    ``existing_plain_params`` is given (this route is reusing an already-
+    matching slot, see ``_find_existing_modslot_index``), merge onto it
+    rather than replacing wholesale -- found live 2026-07-30 via a VST3
+    binary string dump revealing ModSlot's full private param list
+    (kParamSmoothRise/Fall/Link, kParamDelayOffset/BeatSync, kParamAuxCurve/
+    AuxCurveData, kParamBypass, kParamCurveIn, kParamMainCurveData -- none
+    previously known to this project, none exposed via ModRouteSpec): a
+    real-corpus survey found these present on 0.04-3.2% of real mod routes,
+    rare but real. Building the dict fresh (the old behavior) silently
+    discarded any of these on a route being edited in place, even for an
+    edit_preset call that only meant to nudge that route's amount."""
     source_id = _resolve_route_source(route)
     dest = _resolve_mod_destination(route.destination, fx_chain)
-    plain_params: dict[str, Any] = {"kParamAmount": route.amount}
+    plain_params: dict[str, Any] = dict(existing_plain_params or {})
+    plain_params["kParamAmount"] = route.amount
+    plain_params.pop("kParamBipolar", None)
     if route.bipolar:
         plain_params["kParamBipolar"] = True
     validate_params("ModSlot", plain_params, schema.MODSLOT_PARAMS, allow_unknown=True)
@@ -534,7 +605,10 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         osc_params = osc_container["plainParams"]
         osc_params["kParamEnable"] = osc.enabled
         for spec_key, param_key in _OSC_KEYS.items():
-            osc_params[param_key] = getattr(osc, spec_key)
+            value = getattr(osc, spec_key)
+            if param_key in _OSC_KEYS_OMIT_AT_DEFAULT and value == _OSC_KEYS_OMIT_AT_DEFAULT[param_key]:
+                continue
+            osc_params[param_key] = value
 
         if i in _WTOSC_SLOTS:
             if osc.sample_playback_source:
@@ -618,9 +692,33 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             validate_params(f"NoiseOsc{i}", noise_params, schema.NOISEOSC_PARAMS, allow_unknown=True)
         elif i == _SUB_SLOT:
             sub_params = _plain_params(osc_container, f"SubOsc{i}")
-            sub_params["kParamShape"] = schema.SIMPLE_SUB_SHAPES.get(osc.sub_shape, osc.sub_shape)
+            if osc.sub_shape != "saw":
+                # Same presence-forces-the-DSP-stage pattern as VoiceFilter/LFO
+                # above, found live 2026-07-29 (UN_PLACES_BA_Beyond): a
+                # real-corpus survey found kParamShape absent in EVERY single
+                # one of 896 real SubOsc4 modules (0% presence, the most
+                # extreme skew found this session) -- Serum's Sub is
+                # essentially never touched away from its true default.
+                # Explicitly writing "saw" (this field's own schema default)
+                # gave the Sub layer harsh/piercing highs not present in the
+                # real (untouched) preset. Only write this key at all when a
+                # caller deliberately requests a non-default shape.
+                sub_params["kParamShape"] = schema.SIMPLE_SUB_SHAPES.get(
+                    osc.sub_shape, osc.sub_shape
+                )
             validate_params(f"SubOsc{i}", sub_params, schema.SUBOSC_PARAMS, allow_unknown=True)
         validate_params(f"Oscillator{i}", osc_params, schema.OSCILLATOR_PARAMS, allow_unknown=True)
+
+    if (
+        len(spec.filters) == 2
+        and spec.filters[0].output_routing == "series"
+        and spec.filters[1].output_routing == "series"
+    ):
+        raise ValueError(
+            "filters[0].output_routing and filters[1].output_routing can't both be "
+            "'series' -- each filter would cascade into the other, a routing cycle "
+            "Serum has no defined behavior for. Set at most one filter to 'series'."
+        )
 
     for i, flt in enumerate(spec.filters):
         filter_params = _plain_params(data, f"VoiceFilter{i}")
@@ -628,40 +726,43 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         filter_params["kParamKeyTrack"] = flt.key_track
         filter_params["kParamType"] = schema.SIMPLE_FILTER_TYPES.get(flt.type, flt.type)
         for spec_key, param_key in _FILTER_KEYS.items():
-            if param_key == "kParamWet" and flt.wet == 100.0:
-                # Same absent-means-100 pattern confirmed on FX units above
-                # (build_fx_unit) -- confirmed here too 2026-07-29 against
-                # UN_PLACES_PL_Dreams's real VoiceFilter0/1, neither of
-                # which has a kParamWet key at all. Writing it explicitly
-                # at 100.0 is the likely remaining cause of a persistent
-                # fuzzy/buzzy character that survived every other fix.
+            value = getattr(flt, spec_key)
+            if param_key in _FILTER_KEYS_OMIT_AT_DEFAULT and value == _FILTER_KEYS_OMIT_AT_DEFAULT[param_key]:
+                # Presence, not just value, changes the sound: real presets
+                # leave a filter param key out entirely whenever it was never
+                # touched, and the untouched value happens to equal this
+                # param's own documented default -- writing it explicitly
+                # anyway (mathematically "the same") was measurably audible
+                # in real Serum (2026-07-29, chasing UN_PLACES_PL_Dreams's
+                # fuzzy/buzzy character then a separate loudness regression;
+                # confirmed for wet/level_out/drive/stereo by ear, and for
+                # resonance/var by the SAME absent-at-default pattern showing
+                # up again on a second real preset, UN_PLACES_BA_Beyond,
+                # 2026-07-29). Likely cause: Serum skips the relevant DSP
+                # stage entirely when the key is absent, vs. actually
+                # computing it at a "neutral" value when present.
                 continue
-            if param_key == "kParamLevelOut" and flt.level_out == 0.5:
-                # Same pattern again, found live 2026-07-29 chasing a
-                # loudness (not tone) regression that survived the wet fix:
-                # UN_PLACES_PL_Dreams's real VoiceFilter0 has no kParamLevelOut
-                # key at all, unlike VoiceFilter1 which explicitly sets one.
-                # Writing the schema default (0.5) explicitly measurably
-                # quieted that filter's output vs leaving it untouched.
-                continue
-            if param_key == "kParamDrive" and flt.drive == 0.0:
-                # Same pattern again -- UN_PLACES_PL_Dreams's real
-                # VoiceFilter0/1 never have kParamDrive at all. A real-corpus
-                # survey (2026-07-29) found it absent in 589/1300 real
-                # filters, too common to dismiss as noise.
-                continue
-            if param_key == "kParamStereo" and flt.stereo == 50.0:
-                # Same pattern again -- absent in 1162/1300 (89%) real
-                # filters, the strongest skew of any VoiceFilter param besides
-                # wet/level_out. Stacks with the EARLIER-confirmed finding
-                # (2026-07-28) that kParamStereo=0 is not neutral (hard-left
-                # bias) -- this filter is evidently sensitive to explicit
-                # writes of this param in more than one way.
-                continue
-            filter_params[param_key] = getattr(flt, spec_key)
+            filter_params[param_key] = value
         validate_params(
             f"VoiceFilter{i}", filter_params, schema.VOICE_FILTER_PARAMS, allow_unknown=True
         )
+        if flt.output_routing is not None and i < 2:
+            # RoutingSlot5/RoutingSlot6 -- each filter's OWN output routing
+            # (distinct from RoutingSlot0-4, the 5 oscillators' routing
+            # INTO the filters). Found live 2026-07-29 recreating two real
+            # presets that used opposite directions of this -- see
+            # docs/PARAMETER_SCHEMA.md §5 items 11-12. Only written when
+            # explicitly requested; leaving it unset matches Serum's real
+            # default (parallel/kRoutingDestMaster) without writing
+            # anything, now that fixtures/init_preset.SerumPreset's own
+            # fixture bug (RoutingSlot5 stuck on the cascade value) is
+            # fixed.
+            routing_slot = data.setdefault(f"RoutingSlot{5 + i}", {})
+            routing_slot["plainParams"] = {
+                "kParamRoutingDest": (
+                    "kRoutingDestMaster" if flt.output_routing == "parallel" else "kRoutingDestFilter"
+                )
+            }
 
     for i, env in enumerate(spec.envelopes):
         env_params = _plain_params(data, f"Env{i}")
@@ -672,7 +773,25 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
     for i, lfo in enumerate(spec.lfos):
         lfo_params = _plain_params(data, f"LFO{i}")
         for spec_key, param_key in _LFO_KEYS.items():
-            lfo_params[param_key] = getattr(lfo, spec_key)
+            value = getattr(lfo, spec_key)
+            if param_key in _LFO_KEYS_OMIT_AT_DEFAULT and value == _LFO_KEYS_OMIT_AT_DEFAULT[param_key]:
+                # Same presence-forces-the-DSP-stage pattern as the
+                # VoiceFilter fix above. Found live 2026-07-29
+                # (UN_PLACES_BA_Beyond): kParamRate=0.0 (LfoSpec's own
+                # default) is a literal 0Hz freeze, not a neutral value --
+                # the real LFO0 has neither kParamRate nor kParamBeatSync at
+                # all, yet a user-provided screenshot (note held) showed it
+                # visibly running in BPM-synced mode ("1/4" readout). A
+                # follow-up real-corpus survey found the SAME overwhelming
+                # absent-when-default skew on every other _LFO_KEYS entry
+                # (kParamDelay 99%, kParamRise 96%, kParamMono 98%,
+                # kParamSwing 99%, kParamDotted/kParamTriplets/kParamRate10x
+                # 83-85% absent) -- generalized rather than fixed one at a
+                # time. The exact Hz/BPM rate encoding remains undecoded
+                # (LFO_PARAMS["kParamRate"]) -- omitting sidesteps needing
+                # it, by letting Serum fall back to its own real default.
+                continue
+            lfo_params[param_key] = value
         lfo_params["kParamMode"] = lfo.mode
         if lfo.shape is not None:
             lfo_params["kParamType"] = schema.SIMPLE_LFO_TYPES.get(lfo.shape, lfo.shape)
@@ -705,7 +824,9 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
     if spec.mod_routes:
         indices = _resolve_modslot_indices(data, spec.mod_routes, spec.fx_chain)
         for idx, route in zip(indices, spec.mod_routes, strict=True):
-            data[f"ModSlot{idx}"] = _build_modslot_entry(route, spec.fx_chain)
+            existing = data.get(f"ModSlot{idx}", {}).get("plainParams")
+            existing = existing if isinstance(existing, dict) else None
+            data[f"ModSlot{idx}"] = _build_modslot_entry(route, spec.fx_chain, existing)
 
     # Unlike oscillators/filters/envelopes/etc. (lists, only touched per
     # index when present), `global` is a single nested object that always

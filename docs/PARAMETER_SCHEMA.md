@@ -763,6 +763,134 @@ directly rather than trusting the extracted `PresetSpec` was complete:
     `kParamFilterBalance`, `kParamFXBus1Level`/`kParamFXBus2Level`) surveyed
     across the real corpus but not yet wired into a spec field.
 
+12. **A third real preset (`UN_PLACES_BA_Beyond`), recreated one-shot to
+    test whether items 10-11's fixes generalize (fixed further, mostly —
+    see the open item below).** Deliberately picked for using SERIAL
+    filter routing (Filter 2 → Filter 1), the opposite direction from
+    Dreams' parallel setup. Built directly from `extract_spec(real_file)`
+    and generated with zero errors on the first attempt. A pre-emptive full
+    diff (before even asking the user to listen) found 2 more
+    `VoiceFilter` params following item 10's exact pattern —
+    `kParamReso`/`kParamVar` absent-at-default in the real file, always
+    written by `serum-mcp` — generalized into a single
+    `_FILTER_KEYS_OMIT_AT_DEFAULT` table (`kParamFreq`/cutoff deliberately
+    excluded: present in 96% of real filters, the opposite skew). Then the
+    SAME pattern again on `LFO` — `kParamRate=0.0` is a literal 0Hz freeze,
+    not a neutral value, so an untouched LFO sat frozen instead of running
+    at Serum's real default; a user screenshot (note held) showed the real
+    LFO's RATE readout in BPM-synced mode ("1/4") despite the file having
+    neither `kParamRate` nor `kParamBeatSync` — generalized to the entire
+    `_LFO_KEYS` set (delay/rise/mono/swing/dotted/triplets/rate10x all
+    similarly 83-99% absent by survey) via `_LFO_KEYS_OMIT_AT_DEFAULT`.
+    Also added `FXUtils.kParamLevelOut` as a confirmed mod destination
+    (`FX_EXTRA_MOD_DEST_PARAMS`), and resolved 5 more mod **source** IDs via
+    a 3rd direct-UI-probe round: `release_velo=37`, `active_voices=55`,
+    `voice_mod1=56`, `voice_mod2=57`, `voice_index=58` (see §6) —
+    `voice_mod2` also incidentally closes one of Galaxy's 3 long-standing
+    unknown source IDs. Empirically confirmed (not guessed) that Serum's
+    genuine absent-state LFO rate default really is "1/4" BPM-synced, via
+    live probing of a real Serum instance (`kParamRate=10.66` reads back
+    for an explicit `1/8`; returning to `1/4` makes Serum omit the key
+    again) — ruling out rate/beat_sync as the cause of the remaining open
+    item below.
+
+13. **RESOLVED (was "still open" above): the LFO curve mystery was a
+    completely unmodeled structural link, not a rendering fluke.** A
+    top-level key this project had never looked at, `lfoPointModAssignments`
+    (a small array: `[{busID, lfoID, lfoType, pointID, target}]`), declares
+    that a SPECIFIC POINT on an LFO's hand-drawn curve (`pointID`, indexing
+    into `curveData`'s own point list) is live-modulatable via a dedicated
+    `LFOPointModBus{N}` module + a `ModSlot` targeting it
+    (`destModuleTypeString: "LFOPointModBus"`, `destModuleID` = busID).
+    Real Beyond preset: `lfoPointModAssignments=[{busID:0, lfoID:0,
+    lfoType:0, pointID:1, target:0}]` plus a `ModSlot` routing the (then-
+    unidentified) source `38` into `LFOPointModBus0`. `serum-mcp` wrote
+    neither the assignment array nor the ModSlot at all, so LFO0's point #1
+    was static in the recreation while the real preset's genuinely animated
+    in real time — this, not any curveData/rate difference, was the entire
+    "renders differently" mystery. Fixed as a one-off raw-CBOR patch
+    (assignment array + ModSlot copied verbatim); confirmed live ("ça bouge
+    comme sur l'original"). Not generalized into `PresetSpec` — see item 14.
+
+14. **The "Fixed" mod source (id `38`) and its "Aux Source" mechanism,
+    investigated in depth 2026-07-30.** Serum's own MATRIX-tab UI names
+    source `38` literally "Fixed" (a constant/manual base amount,
+    `kParamAmount`), paired with an independent AUX SOURCE (visible as its
+    own MATRIX-tab column) that scales or gates it — confirmed via a
+    user-provided screenshot showing 3 real "Fixed" rows, each with a
+    DIFFERENT macro as its AUX SOURCE. `source[1]` (subIndex, "always 0,
+    unresolved" everywhere else in this schema) turned out to encode WHICH
+    macro is the aux source for `source[0]=38` specifically: `subIndex =
+    25 + macro_index` (i.e. the same numbering as `MOD_SOURCE_IDS`'s own
+    macro block) — confirmed exactly against 3 independent real routes.
+    Empirically confirmed the mechanism itself works (built a minimal probe
+    preset, `kParamAmount=80` gated by a macro at 0 → silent, same macro at
+    100 → audible). **Still unresolved**: the exact DSP formula combining
+    `kParamAmount` with the aux macro's value (simple `amount * aux/100`?
+    something curve-shaped via `kParamAuxCurve`? inverted via
+    `kParamAuxInverted`?) — not decoded, and not wired into
+    `ModRouteSpec`/generation at all; every real "Fixed" route reproduced
+    so far has been a one-off raw-CBOR copy of the exact real values.
+
+15. **RoutingSlot and ModSlot's full private param lists, mined from the
+    VST3 binary's own debug strings 2026-07-30** (the same technique that
+    cracked the LFO rate encoding). `RoutingSlot`'s automatable enum is
+    confirmed complete: `kParamFilterBalance, kParamFXBus1Level,
+    kParamFXBus2Level` (nothing hidden) plus one private param never seen
+    before, `kParamViaEnv1` — presumably gates the routing choice via
+    Envelope 1, but every one of 49 real occurrences surveyed was `0.0`
+    (never observed enabled), so low-priority. `kRoutingDestFilter/Master/
+    Direct/None`'s exact ordinal values (0/1/2/3) are now confirmed. Also
+    found `Global0`'s complementary bus-level controls, never looked for
+    before: `kParamDirectVol` (volume for `kRoutingDestDirect`-routed
+    signal), `kParamFXBus1Vol`/`kParamFXBus2Vol` (each bus's aggregate
+    volume — confirmed real values EXCEED 1.0, a genuine boost stage, not
+    just 0-100% attenuation like most params in this schema), and
+    `kParamFXBus1Dest`/`kParamFXBus2Dest` (small-integer enum, meaning per
+    integer not decoded). All added to `schema.py` (`GLOBAL_PARAMS`,
+    the new `ROUTING_SLOT_PARAMS`) for documentation/round-trip safety;
+    none wired into `PresetSpec`. Separately, mining `ModSlot`'s own private
+    param enum found SEVEN more never-before-seen per-route fields:
+    `kParamSmoothRise`/`kParamSmoothFall`/`kParamSmoothLink` (a mod route's
+    OWN rise/fall smoothing, independent of the source's own smoothing),
+    `kParamDelayOffset`/`kParamDelayBeatSync` (a per-route delay before the
+    modulation kicks in — real corpus use is 100% confined to "LOOP"-
+    category presets), `kParamAuxCurveData` (a curve-shape flag for the AUX
+    source, sibling to the already-known `kParamMainCurveData` for the main
+    source — confirmed BOTH are flags whose real point data lives in a
+    sibling `flex` key, not the value itself), and `kParamBypass`. All rare
+    (0.04-3.2% of 17,861 real mod slots surveyed) but genuinely real, now
+    documented in `MODSLOT_PARAMS`. Found and fixed a real, live bug this
+    surfaced: `_build_modslot_entry` built each `ModSlot`'s `plainParams`
+    fresh from scratch, so any `edit_preset` call touching a route carrying
+    one of these fields (even just nudging its amount) silently discarded
+    it. Fixed to merge onto the existing slot instead when reusing one (see
+    `_find_existing_modslot_index`); verified against the real corpus
+    (423/450 real routes using an exotic field round-tripped with zero
+    loss; the other 27 hit already-known, unrelated `extract_spec`/
+    `apply_spec` gaps unrelated to this fix, e.g. FXDelay range/wavetable-
+    path issues).
+
+16. **`FilterSpec.output_routing` -- RoutingSlot5/6's parallel-vs-series
+    piece is now a real `PresetSpec` field, not a one-off patch only.**
+    The best-understood, highest-confidence slice of the RoutingSlot system
+    (confirmed live on two independent real presets, opposite directions)
+    is now generatable directly: `filters[i].output_routing = "parallel"`
+    (explicit `kRoutingDestMaster`) or `"series"` (explicit
+    `kRoutingDestFilter`, cascades into the OTHER filter). Left unset (the
+    default) writes nothing, matching Serum's real absent-state default
+    (parallel) rather than writing it explicitly. Setting both filters to
+    `"series"` at once (a routing cycle) raises `ValueError` instead of
+    silently producing a broken preset. `extract_spec` reads it back the
+    same way, confirmed against both real files: Dreams' Filter 1 is
+    genuinely absent (extracts `None`, not `"parallel"` -- the earlier
+    write-up's "explicit MAIN" phrasing was about the FIXTURE bug being
+    fixed to genuine absence, not the real file itself being explicit);
+    Beyond's Filter 2 extracts `"series"` exactly as expected. The rest of
+    RoutingSlot (oscillator-to-filter assignment via `RoutingSlot0-4`,
+    `kParamFilterBalance`'s exact scale, the FX-bus send system) remains
+    unwired -- lower confidence, not attempted this round.
+
 **Fixture bug, not a schema gap** (fixed): `fixtures/init_preset.SerumPreset`
 — the blank template every `generate_preset`/`edit_preset` call starts
 from — was built (`scripts/build_fixture.py`, one-off) by resetting most
@@ -1075,29 +1203,37 @@ patterns) and resolved an ambiguity clustering had left genuinely unsettled
 | Random 2 (Serum UI: `Note > NoteOn Rand2`) | `22` | Direct UI probe, `confirmed`. Serum 2 has **three independent** per-note random sources, not one "Random/S&H" as this project had assumed pre-probe — see Random (Discrete) below. |
 | Pitch Bend | `33` | Direct UI probe, `confirmed`. Immediately after the Macro block (`25-32`) — a source-ID region clustering hadn't considered at all. |
 | Random (Discrete) (Serum UI: `Note > NoteOn Rand (Discrete)`) | `59` | Direct UI probe, `confirmed`. Inside the `34+` candidate range clustering had flagged, but far higher than the other two random sources — not contiguous with them. |
+| Release Velo (Serum UI: `Note > Release Velo`) | `37` | Direct UI probe, `confirmed`, 2026-07-29 round 3. Prompted by `UN_PLACES_BA_Beyond` (see below) using an unresolved source id (`38`) on 3 of its real routes — probing everything nearby in the picker to close the gap resolved these 5 instead (`38` itself is still NOT identified, not one of these). |
+| Active Voices (Serum UI: `Note > Active Voices`) | `55` | Direct UI probe, `confirmed`, round 3. |
+| Voice Mod 1 (Serum UI: `Note > Voice Mod 1`) | `56` | Direct UI probe, `confirmed`, round 3. |
+| Voice Mod 2 (Serum UI: `Note > Voice Mod 2`) | `57` | Direct UI probe, `confirmed`, round 3. Resolves one of the two remaining Galaxy-recreation unknowns (`24`, `40`, `57` — see item 6 in the Galaxy investigation below); `24` and `40` remain open. |
+| Voice Index (Serum UI: `Note > Voice Index`) | `58` | Direct UI probe, `confirmed`, round 3. |
 
-Note: `20` and `23+` (within the probed `16-24` cluster) weren't assigned to
-anything in this project's original scope and remain unidentified — likely
-`Release Velo` or one of the voice-management sources mentioned below, but
-not probed.
+Note: `20`, `23`, `24`, `40` (within/near the probed `16-24` cluster and the
+Galaxy investigation's 3 unknowns) remain unidentified. Round 3's 5 new IDs
+(`37`, `55-58`) are NOT contiguous with each other or with `20`/`23` — don't
+assume adjacency within this range without probing.
 
 All of the above are wired into `serum-mcp`, which generates and reads back
 routes for them (see `schema.MOD_SOURCE_IDS`, `generation/spec.py::ModRouteSpec`).
 **This closes out every source in this project's original gap list**
 (Envelope, Velocity, Mod Wheel, Aftertouch, Pitch Bend, Key Track,
 Random/S&H — all resolved, the last three via a discovery that Random is
-actually three independent sources).
+actually three independent sources), plus all 5 of the "Note"-category
+sources this project had only ever seen in the picker without a name-to-ID
+mapping.
 
-**Genuinely out of original scope, still unresolved**: `subIndex`
-(`source[1]`, see below), and a handful of sources this project only
-learned existed by seeing Serum 2's real source picker rather than being
-part of the original gap list: `Release Velo`, `Active Voices`,
-`Voice Index`, `Voice Mod 1`/`Voice Mod 2` (all nested
-under `Note`, likely voice-management/polyphony-related, not in the
-original "Envelope/Velocity/Mod Wheel/Aftertouch/Pitch Bend/Key
-Track/Random" gap list this project started from) — none of these are
-decoded or wired in, but the direct-probe method below is proven to reach
-them quickly if/when they're needed.
+**Still genuinely unresolved**: `subIndex` (`source[1]`, see below), source
+ids `20`/`23` (within the originally-probed `16-24` cluster), `24`/`40`
+(the 2 remaining Galaxy-recreation unknowns), and `38` (`UN_PLACES_BA_Beyond`'s
+3 unreproduced routes — see the Dreams/Beyond investigation write-up below).
+`38` is NOT immediately adjacent to `Release Velo` (`37`) in the picker —
+probed the very next item in that list, which turned out to be plain `Velo`
+(id `16`, already-confirmed Velocity appearing a second time in the Note
+category), not a new source, so `38` isn't just "the next one down" and
+needs its own targeted probe rather than more positional guessing. The
+direct-probe method itself is proven fast and reusable (round 3 resolved 5
+IDs in one sitting from a single probe file).
 
 **Method, for resolving what's left**: open Serum 2 on any preset, go to
 the MATRIX tab, pick an unresolved source from the `Source` column dropdown

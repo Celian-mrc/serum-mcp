@@ -237,6 +237,18 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
     for i in range(2):
         pp = (data.get(f"VoiceFilter{i}", {}) or {}).get("plainParams")
         raw_type = _resolve(pp, "kParamType", schema.VOICE_FILTER_PARAMS)
+        # RoutingSlot5/RoutingSlot6 -- each filter's OWN output routing (see
+        # FilterSpec.output_routing / mapping.apply_spec). Only extracted as
+        # 'parallel'/'series' when EXPLICITLY set to that value -- absence
+        # (Serum's real default, meaning parallel) round-trips as None so
+        # re-applying an extracted spec doesn't start writing a key the
+        # original file never had.
+        routing_pp = (data.get(f"RoutingSlot{5 + i}", {}) or {}).get("plainParams")
+        raw_routing_dest = routing_pp.get("kParamRoutingDest") if isinstance(routing_pp, dict) else None
+        output_routing = {
+            "kRoutingDestMaster": "parallel",
+            "kRoutingDestFilter": "series",
+        }.get(raw_routing_dest)
         filters.append(
             FilterSpec(
                 enabled=bool(_resolve(pp, "kParamEnable", schema.VOICE_FILTER_PARAMS)),
@@ -249,6 +261,7 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                 key_track=bool(_resolve(pp, "kParamKeyTrack", schema.VOICE_FILTER_PARAMS)),
                 wet=_resolve(pp, "kParamWet", schema.VOICE_FILTER_PARAMS),
                 level_out=_resolve(pp, "kParamLevelOut", schema.VOICE_FILTER_PARAMS),
+                output_routing=output_routing,
             )
         )
 

@@ -284,6 +284,41 @@ def test_mod_route_2026_07_29_probe_sources_round_trip(init_data):
     assert sources[16.0] == "random_discrete"
 
 
+def test_mod_route_2026_07_29_note_family_probe_sources_round_trip(init_data):
+    """release_velo/active_voices/voice_index/voice_mod1/voice_mod2 -- the 5
+    remaining named "Note"-category sources this project had only ever seen
+    in Serum's own source picker, confirmed live 2026-07-29 via the same
+    direct-probe method (prompted by UN_PLACES_BA_Beyond using an
+    unresolved source id, 38, on 3 of its real routes -- still not
+    identified, NOT one of these 5, see docs/PARAMETER_SCHEMA.md §6)."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[
+            ModRouteSpec(source="release_velo", destination="filter0.cutoff", amount=22.0),
+            ModRouteSpec(source="active_voices", destination="filter0.cutoff", amount=23.0),
+            ModRouteSpec(source="voice_index", destination="filter0.cutoff", amount=24.0),
+            ModRouteSpec(source="voice_mod1", destination="filter0.cutoff", amount=25.0),
+            ModRouteSpec(source="voice_mod2", destination="filter0.cutoff", amount=26.0),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["ModSlot0"]["source"] == [37, 0]  # release_velo
+    assert data["ModSlot1"]["source"] == [55, 0]  # active_voices
+    assert data["ModSlot2"]["source"] == [58, 0]  # voice_index
+    assert data["ModSlot3"]["source"] == [56, 0]  # voice_mod1
+    assert data["ModSlot4"]["source"] == [57, 0]  # voice_mod2
+
+    extracted = extract_spec(data)
+    sources = {r.amount: r.source for r in extracted.mod_routes}
+    assert sources[22.0] == "release_velo"
+    assert sources[23.0] == "active_voices"
+    assert sources[24.0] == "voice_index"
+    assert sources[25.0] == "voice_mod1"
+    assert sources[26.0] == "voice_mod2"
+
+
 def test_mod_routes_do_not_collide_with_existing_slots(init_data):
     init_data["ModSlot0"] = {
         "source": [99, 0],
@@ -339,6 +374,43 @@ def test_editing_a_mod_route_updates_it_in_place(init_data):
     ]
     assert len(routes_to_filter_cutoff) == 1
     assert routes_to_filter_cutoff[0]["plainParams"]["kParamAmount"] == 4.0
+
+
+def test_editing_a_mod_route_in_place_preserves_unmodeled_exotic_fields(init_data):
+    """Found live 2026-07-30 via a VST3 binary string dump of ModSlot's
+    full private param list: real mod routes can carry fields this project
+    doesn't model at all (kParamSmoothRise/Fall, kParamAuxCurve,
+    kParamCurveIn, etc, 0.04-3.2% of real routes per corpus survey).
+    _build_modslot_entry used to build each ModSlot's plainParams fresh
+    from scratch, silently discarding any such fields whenever
+    edit_preset touched that exact route (even just to nudge its amount) --
+    fixed to merge onto the existing slot instead, matching how every
+    other module's plainParams already round-trips unmodeled real keys."""
+    data = copy.deepcopy(init_data)
+    data["ModSlot0"] = {
+        "source": [6, 0],
+        "destModuleID": 0,
+        "destModuleParamID": 3,
+        "destModuleParamName": "kParamFreq",
+        "destModuleTypeString": "VoiceFilter",
+        "plainParams": {
+            "kParamAmount": 15.0,
+            "kParamSmoothRise": 42.0,
+            "kParamCurveIn": -12.5,
+        },
+    }
+
+    spec = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[ModRouteSpec(source="lfo0", destination="filter0.cutoff", amount=4.0)],
+    )
+    data = apply_spec(data, spec)
+
+    fp = data["ModSlot0"]["plainParams"]
+    assert fp["kParamAmount"] == 4.0
+    assert fp["kParamSmoothRise"] == 42.0
+    assert fp["kParamCurveIn"] == -12.5
 
 
 def test_editing_one_route_does_not_disturb_a_different_existing_route(init_data):
@@ -666,6 +738,246 @@ def test_filter_default_drive_and_stereo_omitted_not_written_explicitly(init_dat
     extracted = extract_spec(data)
     assert extracted.filters[0].drive == 0.0
     assert extracted.filters[0].stereo == 50.0
+
+
+def test_filter_default_resonance_and_var_omitted_not_written_explicitly(init_data):
+    """Same presence-forces-the-DSP-stage pattern, found again 2026-07-29 on
+    a SECOND real preset (UN_PLACES_BA_Beyond, generated one-shot to test
+    whether the earlier Dreams fixes generalize): its real VoiceFilter1 has
+    no kParamReso at all despite the extracted value matching the schema
+    default (10.0) exactly. A real-corpus survey found kParamVar present in
+    only 526/1302 (40%) real filters, and virtually never AT its own default
+    (0.0) when present (2/526) -- unlike kParamFreq (cutoff), deliberately
+    NOT included in this fix since it's present in 96% of real filters."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        filters=[FilterSpec(type="comb", stereo=30.0)],
+    )
+    data = apply_spec(init_data, spec)
+
+    fp = data["VoiceFilter0"]["plainParams"]
+    assert "kParamReso" not in fp
+    assert "kParamVar" not in fp
+    assert "kParamFreq" in fp
+
+    extracted = extract_spec(data)
+    assert extracted.filters[0].resonance == 10.0
+    assert extracted.filters[0].var == 0.0
+
+
+def test_filter_output_routing_unset_writes_no_routing_slot(init_data):
+    """FilterSpec.output_routing=None (the default) must not touch
+    RoutingSlot5/6 at all -- Serum's real default (parallel) is reached by
+    absence, not by explicitly writing kRoutingDestMaster, now that
+    fixtures/init_preset.SerumPreset's own fixture bug (RoutingSlot5 stuck
+    on the cascade/'series' value) is fixed."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        filters=[FilterSpec(), FilterSpec()],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["RoutingSlot5"]["plainParams"] == "default"
+    assert data["RoutingSlot6"]["plainParams"] == "default"
+
+    extracted = extract_spec(data)
+    assert extracted.filters[0].output_routing is None
+    assert extracted.filters[1].output_routing is None
+
+
+def test_filter_output_routing_series_and_parallel_round_trip(init_data):
+    """RoutingSlot5/6 -- found live 2026-07-29 recreating two real presets
+    that used opposite directions of this (Dreams: parallel; Beyond:
+    series). filters[0]='series' cascades Filter 1 into Filter 2;
+    filters[1]='parallel' keeps Filter 2 direct-to-output."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        filters=[
+            FilterSpec(output_routing="series"),
+            FilterSpec(output_routing="parallel"),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["RoutingSlot5"]["plainParams"] == {"kParamRoutingDest": "kRoutingDestFilter"}
+    assert data["RoutingSlot6"]["plainParams"] == {"kParamRoutingDest": "kRoutingDestMaster"}
+
+    extracted = extract_spec(data)
+    assert extracted.filters[0].output_routing == "series"
+    assert extracted.filters[1].output_routing == "parallel"
+
+
+def test_filter_output_routing_both_series_rejected(init_data):
+    """Both filters cascading into each other is a routing cycle Serum has
+    no defined behavior for -- reject it outright rather than writing a
+    silently broken preset."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        filters=[
+            FilterSpec(output_routing="series"),
+            FilterSpec(output_routing="series"),
+        ],
+    )
+    with pytest.raises(ValueError, match="both.*'series'"):
+        apply_spec(init_data, spec)
+
+
+def test_lfo_default_rate_and_beat_sync_omitted_not_written_explicitly(init_data):
+    """kParamRate=0.0 is a literal 0Hz freeze, not a neutral value -- found
+    live 2026-07-29 (UN_PLACES_BA_Beyond): its real LFO0 has neither
+    kParamRate nor kParamBeatSync at all, yet a user-provided screenshot
+    (note held) showed it visibly moving in BPM-synced mode ("1/4"). The
+    generated version, with both explicitly written at their LfoSpec
+    defaults (rate=0.0, beat_sync=False), was frozen in free-Hz mode
+    instead. Omitting both when at those defaults lets Serum fall back to
+    its own real (beat-synced) default -- the exact Hz/BPM rate encoding
+    remains undecoded (see LFO_PARAMS["kParamRate"]), sidestepped rather
+    than guessed."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        lfos=[LfoSpec(smooth=1.5)],
+    )
+    data = apply_spec(init_data, spec)
+
+    fp = data["LFO0"]["plainParams"]
+    assert "kParamRate" not in fp
+    assert "kParamBeatSync" not in fp
+    assert fp["kParamSmooth"] == 1.5
+
+    extracted = extract_spec(data)
+    assert extracted.lfos[0].rate == 0.0
+    assert extracted.lfos[0].beat_sync is False
+
+
+def test_lfo_default_delay_rise_mono_swing_dotted_triplets_rate10x_omitted(init_data):
+    """Same pattern, generalized to the rest of _LFO_KEYS -- found live
+    2026-07-29 continuing the same investigation (the LFO still wasn't
+    right after the rate/beat_sync fix alone): a real-corpus survey found
+    every other _LFO_KEYS entry overwhelmingly absent when untouched too
+    (kParamDelay 99%, kParamRise 96%, kParamMono 98%, kParamSwing 99%,
+    kParamDotted/kParamTriplets/kParamRate10x 83-85%), so this project was
+    still forcing 7 more DSP-stage computations at their own defaults."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        lfos=[LfoSpec(smooth=1.5)],
+    )
+    data = apply_spec(init_data, spec)
+
+    fp = data["LFO0"]["plainParams"]
+    for key in (
+        "kParamDelay",
+        "kParamRise",
+        "kParamMono",
+        "kParamSwing",
+        "kParamDotted",
+        "kParamTriplets",
+        "kParamRate10x",
+    ):
+        assert key not in fp, key
+    assert fp["kParamSmooth"] == 1.5
+    assert fp["kParamMode"] == "Free"
+
+    extracted = extract_spec(data)
+    lfo = extracted.lfos[0]
+    assert lfo.delay == 0.0
+    assert lfo.rise == 0.0
+    assert lfo.mono is False
+    assert lfo.swing == 0.0
+    assert lfo.dotted is False
+    assert lfo.triplets is False
+    assert lfo.rate10x is False
+
+
+def test_sub_osc_default_shape_omitted_not_written_explicitly(init_data):
+    """kParamShape (SubOsc4) -- found live 2026-07-30 isolating oscillators
+    solo on UN_PLACES_BA_Beyond: the Sub layer had harsh/piercing highs not
+    present in the real preset. Its real SubOsc4 has no kParamShape at all;
+    a real-corpus survey found this key absent in ALL 896 real SubOsc4
+    modules surveyed (0% presence -- the most extreme skew found this
+    session), yet `serum-mcp` always wrote the schema default ('saw',
+    harmonically bright) explicitly. Only an explicit non-default request
+    (e.g. 'square') should still write the key."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(),
+            OscillatorSpec(),
+            OscillatorSpec(),
+            OscillatorSpec(),
+            OscillatorSpec(enabled=True, sub_shape="saw"),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    sp = data["Oscillator4"]["SubOsc4"]["plainParams"]
+    assert "kParamShape" not in sp
+
+    extracted = extract_spec(data)
+    assert extracted.oscillators[4].sub_shape == "saw"
+
+    spec2 = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(),
+            OscillatorSpec(),
+            OscillatorSpec(),
+            OscillatorSpec(),
+            OscillatorSpec(enabled=True, sub_shape="square"),
+        ],
+    )
+    data2 = apply_spec(init_data, spec2)
+    sp2 = data2["Oscillator4"]["SubOsc4"]["plainParams"]
+    assert sp2["kParamShape"] == "kSquare"
+
+
+def test_oscillator_default_octave_pitch_fine_volume_pan_unison_detune_omitted(init_data):
+    """Same presence-forces-the-DSP-stage pattern, generalized to the rest
+    of _OSC_KEYS -- found live 2026-07-30 continuing the same investigation
+    (user noticed Osc A's LEVEL knob read 75%/-5dB on the real preset vs
+    87%/-2.5dB on the recreation): Osc A's real kParamVolume is absent
+    entirely, not just at this field's own schema default (0.75) -- writing
+    it explicitly is NOT the audibly-transparent "same value" the raw
+    number implies. A real-corpus survey found every other _OSC_KEYS entry
+    similarly majority-absent when untouched (kParamOctave 66%, kParamPitch
+    95%, kParamFine 90%, kParamPan 91%, kParamUnison 78%, kParamDetune
+    72%)."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(enabled=True)],
+    )
+    data = apply_spec(init_data, spec)
+
+    op = data["Oscillator0"]["plainParams"]
+    for key in (
+        "kParamOctave",
+        "kParamPitch",
+        "kParamFine",
+        "kParamVolume",
+        "kParamPan",
+        "kParamUnison",
+        "kParamDetune",
+    ):
+        assert key not in op, key
+    assert op["kParamEnable"] == 1.0
+
+    extracted = extract_spec(data)
+    osc = extracted.oscillators[0]
+    assert osc.octave == 0.0
+    assert osc.semitone == 0.0
+    assert osc.fine == 0.0
+    assert osc.volume == 0.75
+    assert osc.pan == 0.0
+    assert osc.unison == 1.0
+    assert osc.detune == 0.0
 
 
 def test_oscillator_semitone_round_trips(init_data):
@@ -1221,6 +1533,56 @@ def test_global_voice_amp_and_fx_balance_mod_destinations(init_data):
     routes = {r.destination: r.source for r in extracted.mod_routes}
     assert routes["global.voice_amp"] == "key_track"
     assert routes["fx0.balance"] == "lfo2"
+
+
+def test_fxutils_level_out_mod_destination(init_data):
+    """FXUtils.kParamLevelOut -- found live 2026-07-29 recreating
+    UN_PLACES_BA_Beyond in one shot: its real ModSlot0/2 both route into
+    this (lfo0 and macro0 respectively), previously unmapped and silently
+    dropped -- the missing lfo0 route was also why that LFO looked inert
+    (not actually driving anything) in the recreation."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        fx_chain=[FxUnitSpec(type="FXUtils", wet=100.0)],
+        mod_routes=[
+            ModRouteSpec(source="lfo0", destination="fx0.level_out", amount=-100.0),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["ModSlot0"]["destModuleTypeString"] == "FXUtils"
+    assert data["ModSlot0"]["destModuleParamName"] == "kParamLevelOut"
+    assert data["ModSlot0"]["destModuleParamID"] == 2
+
+    extracted = extract_spec(data)
+    routes = {r.destination: r.source for r in extracted.mod_routes}
+    assert routes["fx0.level_out"] == "lfo0"
+
+
+def test_oscillator_warp_amount2_mod_destination(init_data):
+    """WTOsc.kParamWarp2 (destModuleParamID 3) -- the second warp lane's own
+    amount as a mod destination, distinct from warp_amount (ID 0) and
+    warp_var2 (ID 4). Found live 2026-07-29 recreating UN_PLACES_BA_Beyond:
+    its real ModSlot5 (macro4 -> WTOsc2.kParamWarp2) was previously unmapped
+    and silently dropped -- the missing 9th of 9 real active mod routes."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[OscillatorSpec(warp_mode2="filter_lpf", warp_amount2=0.5)],
+        mod_routes=[
+            ModRouteSpec(source="macro4", destination="oscillator0.warp_amount2", amount=28.05),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["ModSlot0"]["destModuleTypeString"] == "WTOsc"
+    assert data["ModSlot0"]["destModuleParamName"] == "kParamWarp2"
+    assert data["ModSlot0"]["destModuleParamID"] == 3
+
+    extracted = extract_spec(data)
+    routes = {r.destination: r.source for r in extracted.mod_routes}
+    assert routes["oscillator0.warp_amount2"] == "macro4"
 
 
 def test_fx_chain_edit_only_touches_racks_present(init_data):

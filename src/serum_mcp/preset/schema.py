@@ -864,7 +864,14 @@ LFO_PARAMS: dict[str, ParamDef] = {
         max=100.0,
         unit="normalized rate",
         confidence="uncertain",
-        notes="Hz/BPM mapping depends on kParamMode and beat-sync flags; not decoded.",
+        notes="Hz/BPM mapping depends on kParamMode and beat-sync flags; mostly not "
+        "decoded, but 2026-07-29 empirical probing (real Serum, an LFO explicitly set "
+        "then read back raw) DID confirm two points: with kParamBeatSync absent (its own "
+        "true default, confirmed separately -- see LFO_PARAMS notes), setting the RATE "
+        "knob to exactly '1/8' writes kParamRate=10.66; setting it back to '1/4' makes "
+        "Serum omit the key again -- i.e. '1/4' BPM-synced IS the genuine absent-state "
+        "default (not a UI placeholder), confirming mapping.py's omit-when-default fix "
+        "is correct. The full Hz/BPM curve beyond these 2 points is still not decoded.",
     ),
     "kParamMode": ParamDef(
         "kParamMode",
@@ -875,7 +882,16 @@ LFO_PARAMS: dict[str, ParamDef] = {
         notes="'Retrig' recovered from the plugin binary's debug strings "
         "('Free = 0, Retrig, Envelope, kCount'); never observed in the factory sample.",
     ),
-    "kParamBeatSync": ParamDef("kParamBeatSync", "bool", default=False),
+    "kParamBeatSync": ParamDef(
+        "kParamBeatSync",
+        "bool",
+        default=False,
+        notes="The schema default (False/free-Hz) is NOT the genuine absent-state "
+        "default -- confirmed live 2026-07-29 (real preset screenshot + empirical "
+        "probing, see kParamRate above): an untouched LFO is BPM-synced by default. "
+        "mapping.py omits this key when False rather than writing it explicitly, "
+        "letting Serum fall back to its own (beat-synced) default correctly.",
+    ),
     "kParamRise": ParamDef(
         "kParamRise",
         "float",
@@ -999,6 +1015,109 @@ GLOBAL_PARAMS: dict[str, ParamDef] = {
         "surveyed (39%). Presumed to limit voice-stacking when the SAME note is "
         "retriggered rapidly (e.g. under a fast arp) rather than letting overlapping "
         "voices for one note pile up -- not independently confirmed.",
+    ),
+    # Found live 2026-07-30 via a VST3 binary string dump
+    # ('kParamMasterVolume = 0, ... kParamDirectVol, kParamFXBus1Vol,
+    # kParamFXBus2Vol, kNumAutomatableParams' and, from kParamPolyCount's
+    # own private-param enum, 'kParamFXBus1Dest, kParamFXBus2Dest') while
+    # investigating the RoutingSlot system (see docs/PARAMETER_SCHEMA.md
+    # §5): these are the GLOBAL counterparts to each RoutingSlot's own
+    # per-oscillator/filter kParamFXBus1Level/kParamFXBus2Level send
+    # amount -- a source sends X% of its signal to a bus via its own
+    # RoutingSlot, and this bus's aggregate level/destination is set once,
+    # here. Confirmed real via a corpus survey (855 real Global0 slots):
+    # kParamDirectVol 2.0%, kParamFXBus1Vol 6.1%, kParamFXBus2Vol 5.1%,
+    # kParamFXBus1Dest 3.4%, kParamFXBus2Dest 2.1% presence. None wired
+    # into GlobalSpec/generation.
+    "kParamDirectVol": ParamDef(
+        "kParamDirectVol", "float", default=1.0, min=0.0, max=None, confidence="observed",
+        notes="Volume for signal from any source routed with "
+        "RoutingSlot.kParamRoutingDest='kRoutingDestDirect' (bypasses both filters AND "
+        "the FX bus system entirely). Real values seen 0.21-0.43 -- well below the "
+        "presumed unity default, uncertain why.",
+    ),
+    "kParamFXBus1Vol": ParamDef(
+        "kParamFXBus1Vol", "float", default=1.0, min=0.0, max=None, confidence="observed",
+        notes="Aggregate volume for FX Bus 1 (fed by any source's "
+        "RoutingSlot.kParamFXBus1Level send). Real values seen 0.26-1.75 -- CAN exceed "
+        "1.0 (a real boost/gain stage, not just 0-100% attenuation like most params "
+        "in this schema).",
+    ),
+    "kParamFXBus2Vol": ParamDef(
+        "kParamFXBus2Vol", "float", default=1.0, min=0.0, max=None, confidence="observed",
+        notes="Same as kParamFXBus1Vol, for FX Bus 2.",
+    ),
+    "kParamFXBus1Dest": ParamDef(
+        "kParamFXBus1Dest", "float", default=0.0, min=0.0, max=None, confidence="uncertain",
+        notes="Small-integer-valued (1.0/2.0 observed) -- presumably an enum selecting "
+        "where FX Bus 1's processed signal rejoins the main path, but the enum's "
+        "meaning per integer is not decoded.",
+    ),
+    "kParamFXBus2Dest": ParamDef(
+        "kParamFXBus2Dest", "float", default=0.0, min=0.0, max=None, confidence="uncertain",
+        notes="Same as kParamFXBus1Dest, for FX Bus 2.",
+    ),
+}
+
+# RoutingSlot0-6: per-source (5 oscillators) and per-filter (2 filters)
+# signal routing, discovered live 2026-07-29 recreating UN_PLACES_PL_Dreams
+# (see docs/REAL_SERUM_TESTING.md and PARAMETER_SCHEMA.md §5 items 11-12)
+# and expanded 2026-07-30 via a VST3 binary string dump of the module's
+# full param enums. RoutingSlot0-4 = the 5 oscillators' own routing choice;
+# RoutingSlot5/6 = each of the 2 filters' OWN output routing (confirmed via
+# a user-provided MIX-tab screenshot: "MAIN" = kRoutingDestMaster, i.e.
+# parallel/direct-to-output; "FILTER" = kRoutingDestFilter, i.e. serial,
+# cascaded into the other filter). Genuine absence (both untouched) is the
+# overwhelmingly common real state (450-770 of ~900 samples per slot,
+# see the round-3 survey in REAL_SERUM_TESTING.md) and resolves to
+# kRoutingDestFilter for oscillators, kRoutingDestMaster for filters --
+# NOT the same default across the two families. Not wired into PresetSpec
+# at all -- every use so far has been a one-off raw-CBOR patch reproducing
+# a real preset's exact values.
+ROUTING_SLOT_PARAMS: dict[str, ParamDef] = {
+    "kParamRoutingDest": ParamDef(
+        "kParamRoutingDest",
+        "enum",
+        default="kRoutingDestFilter",
+        enum_values=("kRoutingDestFilter", "kRoutingDestMaster", "kRoutingDestDirect", "kRoutingDestNone"),
+        confidence="observed",
+        notes="Ordinal values confirmed via VST3 binary string dump: kRoutingDestFilter=0, "
+        "kRoutingDestMaster=1, kRoutingDestDirect=2, kRoutingDestNone=3. For an "
+        "oscillator: Filter=normal (goes through VoiceFilter0/1, see kParamFilterBalance), "
+        "Master=bypasses filters straight to the main output, Direct=bypasses filters AND "
+        "the FX bus system (see GLOBAL_PARAMS['kParamDirectVol']), None=goes to neither "
+        "filter nor master by default (typically paired with an explicit "
+        "kParamFXBus1Level/2Level send instead). For a filter's own slot (5/6): Filter="
+        "cascade into the OTHER filter (serial), Master=direct to output (parallel) -- "
+        "confirmed live, this was the root cause of a real preset sounding wrongly "
+        "double-filtered/serial when it should have been parallel (see the fixture-bug "
+        "writeup in PARAMETER_SCHEMA.md §5).",
+    ),
+    "kParamFilterBalance": ParamDef(
+        "kParamFilterBalance", "float", default=0.0, min=0.0, max=100.0, confidence="observed",
+        notes="Only meaningful when kParamRoutingDest='kRoutingDestFilter' and BOTH "
+        "filters are in use -- balance between Filter 1 and Filter 2. Exact scale "
+        "(0=Filter1-only vs 50/50 vs Filter2-only) not independently confirmed; a real "
+        "Dreams route used 100.0 alongside Osc A+B+Noise visually confirmed feeding "
+        "Filter 2 in the real UI, suggesting higher values lean toward Filter 2.",
+    ),
+    "kParamFXBus1Level": ParamDef(
+        "kParamFXBus1Level", "float", default=0.0, min=0.0, max=100.0, confidence="observed",
+        notes="% of this source's signal sent to FX Bus 1 (see "
+        "GLOBAL_PARAMS['kParamFXBus1Vol']), independent of kParamRoutingDest's main "
+        "destination -- a genuine aux send, not mutually exclusive with it.",
+    ),
+    "kParamFXBus2Level": ParamDef(
+        "kParamFXBus2Level", "float", default=0.0, min=0.0, max=100.0, confidence="observed",
+        notes="Same as kParamFXBus1Level, for FX Bus 2.",
+    ),
+    "kParamViaEnv1": ParamDef(
+        "kParamViaEnv1", "bool", default=False, confidence="uncertain",
+        notes="Found live 2026-07-30 via VST3 binary string dump -- presumably gates or "
+        "modulates the routing choice itself via Envelope 1, but every one of 49 real "
+        "occurrences surveyed had this at 0.0 (False) -- never observed actually "
+        "enabled, so the presumption is unconfirmed and likely low-impact even if "
+        "correct.",
     ),
 }
 
@@ -1255,6 +1374,83 @@ MODSLOT_PARAMS: dict[str, ParamDef] = {
         confidence="confirmed",
     ),
     "kParamBipolar": ParamDef("kParamBipolar", "bool", default=False),
+    # Found live 2026-07-30 via a VST3 binary string dump of ModSlot's full
+    # private param enum ('kParamCurveIn = kNumAutomatableParams,
+    # kParamAuxCurve, kParamBipolar, kParamAuxInverted, kParamBypass,
+    # kParamMainCurveData, kParamAuxCurveData, kParamDelayOffset,
+    # kParamDelayBeatSync, kParamSmoothRise, kParamSmoothFall,
+    # kParamSmoothLink, ...') -- none of the below were known to this
+    # project before. A real-corpus survey (17,861 real mod slots) found
+    # all of them genuinely used, just rare: kParamCurveIn 2.9%,
+    # kParamMainCurveData 3.2%, kParamAuxInverted 0.9%, kParamAuxCurveData
+    # 0.8%, kParamSmoothRise/Fall ~0.3% each, kParamBypass 0.3%,
+    # kParamAuxCurve 0.3%, kParamSmoothLink 0.1%, kParamDelayOffset/
+    # BeatSync 0.04% each (only ever seen on "LOOP"-category presets).
+    # None wired into ModRouteSpec/generation -- `apply_spec` now at least
+    # preserves them when editing an EXISTING route in place (previously
+    # silently dropped, see `_build_modslot_entry`), but a brand-new
+    # generated route still can't set any of these.
+    "kParamAuxInverted": ParamDef(
+        "kParamAuxInverted", "bool", default=False, confidence="observed",
+        notes="Inverts the AUX source (not the main source) before it scales/gates "
+        "kParamAmount -- exact combination formula not decoded.",
+    ),
+    "kParamAuxCurve": ParamDef(
+        "kParamAuxCurve", "float", default=0.0, min=-100.0, max=100.0, confidence="observed",
+        notes="A scalar curve-shape value for the AUX source, same family as the "
+        "per-route kParamCurveIn (main source) -- distinct mechanism, not decoded.",
+    ),
+    "kParamBypass": ParamDef(
+        "kParamBypass", "bool", default=False, confidence="observed",
+        notes="Every real sample observed had this at 1.0 (True) when present -- "
+        "unclear if 'route bypassed but kept configured' is really the common case, "
+        "or if the semantics are inverted from the name.",
+    ),
+    "kParamCurveIn": ParamDef(
+        "kParamCurveIn", "float", default=0.0, min=-100.0, max=100.0, confidence="observed",
+        notes="Per-route curve-shape scalar for the MAIN source -- see the Dreams "
+        "recreation write-up in docs/REAL_SERUM_TESTING.md for the discovery context.",
+    ),
+    "kParamMainCurveData": ParamDef(
+        "kParamMainCurveData", "float", default=0.0, min=0.0, max=1.0, confidence="observed",
+        notes="A flag (observed only at 1.0), not the curve itself -- confirmed live "
+        "2026-07-30 (real file inspection): the actual hand-drawn point data lives in "
+        "a SIBLING 'flex' key on the ModSlot (same pattern as FX units' own 'flex'), "
+        "not inside plainParams. Arbitrary points, not generatable.",
+    ),
+    "kParamAuxCurveData": ParamDef(
+        "kParamAuxCurveData", "float", default=0.0, min=0.0, max=1.0, confidence="observed",
+        notes="Same flag-not-data pattern as kParamMainCurveData, presumably pointing "
+        "at a second curve within the same sibling 'flex' structure for the AUX source "
+        "-- a system this project only just found, never looked for before 2026-07-30, "
+        "exact 'flex' layout when both main and aux curves are present unconfirmed.",
+    ),
+    "kParamDelayOffset": ParamDef(
+        "kParamDelayOffset", "float", default=0.0, min=0.0, max=None, confidence="uncertain",
+        notes="Per-route delay before the modulation takes effect -- only ever "
+        "observed on 'LOOP'-category presets (beat-synced loop content). Real "
+        "values seen ~0.3-0.8 (units unconfirmed, possibly beats).",
+    ),
+    "kParamDelayBeatSync": ParamDef(
+        "kParamDelayBeatSync", "bool", default=False, confidence="uncertain",
+        notes="Beat-syncs kParamDelayOffset -- co-occurs with it in every sample seen.",
+    ),
+    "kParamSmoothRise": ParamDef(
+        "kParamSmoothRise", "float", default=0.0, min=0.0, max=100.0, confidence="uncertain",
+        notes="Per-route smoothing time/amount for a rising modulation value, "
+        "independent of the source's own smoothing (e.g. an LFO's kParamSmooth). "
+        "Real values seen 5.8-92.8 -- units unconfirmed.",
+    ),
+    "kParamSmoothFall": ParamDef(
+        "kParamSmoothFall", "float", default=0.0, min=0.0, max=100.0, confidence="uncertain",
+        notes="Same as kParamSmoothRise, for a falling modulation value.",
+    ),
+    "kParamSmoothLink": ParamDef(
+        "kParamSmoothLink", "bool", default=False, confidence="uncertain",
+        notes="Presumed 'link rise and fall smoothing to one value' toggle -- every "
+        "real sample seen had this at 0.0 (False) even when Rise/Fall were both set, "
+        "so the presumption is unconfirmed.",
+    ),
 }
 
 # source name -> ModSlot.source[0]. subIndex (source[1]) is always 0 for
@@ -1281,6 +1477,19 @@ MOD_SOURCE_IDS: dict[str, int] = {
     "random2": 22,  # Serum UI: "NoteOn Rand2"
     "pitch_bend": 33,
     "random_discrete": 59,  # Serum UI: "NoteOn Rand (Discrete)"
+    # Confirmed 2026-07-29 via the same direct-UI-probe method, prompted by
+    # UN_PLACES_BA_Beyond using an unresolved source id (38, still not this
+    # block -- see the note above MOD_SOURCE_IDS's definition) on 3 of its
+    # real mod routes. Probed the 5 remaining named "Note"-category sources
+    # this project had seen in Serum's picker but never identified:
+    # release_velo, active_voices, voice_index, voice_mod1, voice_mod2 --
+    # note these are NOT a contiguous block with each other (37, then a gap,
+    # then 55-58), so don't extrapolate neighboring IDs from this range.
+    "release_velo": 37,  # Serum UI: "Release Velo"
+    "voice_mod1": 56,  # Serum UI: "Voice Mod 1"
+    "voice_mod2": 57,  # Serum UI: "Voice Mod 2"
+    "active_voices": 55,  # Serum UI: "Active Voices"
+    "voice_index": 58,  # Serum UI: "Voice Index"
 }
 
 
@@ -1328,6 +1537,11 @@ for _i in range(3):
     # destModuleParamID 4 confirmed live 2026-07-29 against a real preset's
     # raw ModSlot (see schema.WTOSC_PARAMS["kParamWarpVar2"]).
     MOD_DEST_TARGETS[f"oscillator{_i}.warp_var2"] = ModDestDef("WTOsc", _i, "kParamWarpVar2", 4)
+    # destModuleParamID 3 confirmed live 2026-07-29 against UN_PLACES_BA_Beyond's
+    # real raw ModSlot5 (macro4 -> WTOsc2.kParamWarp2) -- the second warp
+    # lane's own amount as a mod destination, distinct from warp_amount
+    # (the first lane, ID 0) and warp_var2 (ID 4).
+    MOD_DEST_TARGETS[f"oscillator{_i}.warp_amount2"] = ModDestDef("WTOsc", _i, "kParamWarp2", 3)
 for _i in range(10):
     MOD_DEST_TARGETS[f"lfo{_i}.rate"] = ModDestDef("LFO", _i, "kParamRate", 0)
 for _i in range(8):
@@ -1352,6 +1566,10 @@ FX_EXTRA_MOD_DEST_PARAMS: dict[str, dict[str, tuple[str, int]]] = {
         # Confirmed live 2026-07-29 against a real preset's raw ModSlot
         # (lfo -> FXUtils.kParamBalance).
         "balance": ("kParamBalance", 4),
+        # Confirmed live 2026-07-29 against UN_PLACES_BA_Beyond's raw
+        # ModSlot0/2 (lfo0 -> FXUtils.kParamLevelOut, macro0 ->
+        # FXUtils.kParamLevelOut).
+        "level_out": ("kParamLevelOut", 2),
     },
 }
 
@@ -1560,7 +1778,17 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
             "enum",
             default="L12",
             enum_values=tuple(VOICE_FILTER_PARAMS["kParamType"].enum_values),
-            notes="Same filter model catalog as VoiceFilter, minus a few voice-only variants.",
+            confidence="uncertain",
+            notes="RISK, found live 2026-07-30 (user reported frequent crashes on freshly-"
+            "generated presets): this enum is a straight copy of VoiceFilter's full type "
+            "list, but the docstring's own claim ('minus a few voice-only variants') was "
+            "NEVER actually enforced in code -- some of these ~95 raw filter-engine names "
+            "were only ever confirmed present in real *VoiceFilter* data, not confirmed "
+            "safe for the FXFilter (FX-chain insert) context specifically, and using one "
+            "of the unconfirmed ones is a plausible crash cause. Every real preset this "
+            "project has generated AND live-confirmed with an FXFilter unit (Dreams/Beyond "
+            "recreations) left kParamType UNSET (Serum's own default) -- do the same until "
+            "someone does the work of confirming which subset is actually FXFilter-safe.",
         ),
         "kParamFreq": ParamDef(
             "kParamFreq", "float", default=0.5, min=0.0, max=1.0, unit="normalized cutoff"
