@@ -37,6 +37,19 @@ def describe_preset(preset_path: str) -> str:
                     f"sample={osc.sample_playback_source}  "
                     f"warp={osc.warp_mode}({osc.warp_amount:.2f}){warp2}{loop}"
                 )
+            elif osc.granular_source:
+                extra = (
+                    f"granular={osc.granular_source}  "
+                    f"density={osc.granular_density:.1f}Hz  "
+                    f"grain_len={osc.granular_grain_length:.2f}s  "
+                    f"warp={osc.warp_mode}({osc.warp_amount:.2f}){warp2}"
+                )
+            elif osc.spectral_source:
+                extra = (
+                    f"spectral={osc.spectral_source}  "
+                    f"freq={osc.spectral_warp_freq_lo:.0f}-{osc.spectral_warp_freq_hi:.0f}Hz  "
+                    f"warp={osc.warp_mode}({osc.warp_amount:.2f}){warp2}"
+                )
             else:
                 extra = (
                     f"wavetable={osc.wavetable}  table_pos={osc.table_position:.1f}  "
