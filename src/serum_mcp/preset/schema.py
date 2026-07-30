@@ -552,6 +552,160 @@ NOISEOSC_PARAMS: dict[str, ParamDef] = {
     "kParamOneShot": ParamDef("kParamOneShot", "bool", default=False),
 }
 
+# GranularOsc (slots 0-2, an alternate engine selected via kParamType=
+# "kOsc_Granular" the same way kOsc_Sample/kOsc_WT are, see mapping.py's
+# oscillator loop) -- surveyed and its full automatable/private param enum
+# mined from the VST3 binary's own debug strings 2026-07-30 (same technique
+# used throughout this project): 22 automatable params (kParamWarp/
+# WarpVar/WarpMenu/Warp2/WarpVar2/WarpMenu2 -- shared with WTOsc/SampleOsc's
+# own warp system -- plus kParamDensity/GrainLength/GrainReverse/
+# WindowParam/WindowSkew/WindowShape/RandomOffset/RandomDir/RandomPitch/
+# RandomGrainLength/RandomPan/RandomGain/RandomWindowAmount/
+# RandomWindowSkew/RandomWarp/RandomWarp2) plus 7 private ones
+# (kParamLengthMode/DensityMode/MaxNumGrains/YAxisAssignment/
+# UnisonTrigPattern/JumpStartGrains/DensityDotted/DensityTriplet/
+# LengthDotted/LengthTriplet/LoopGrains/LengthKeyTrack -- some genuinely
+# rarely used, see per-param confidence/notes below). Only the 5 highest-
+# presence controls (found via a 66-sample corpus survey) plus warp_amount/
+# warp_mode (shared OscillatorSpec fields, already used by WTOsc/SampleOsc)
+# are wired into OscillatorSpec/mapping.py/introspect.py this round --
+# window shaping, randomization-direction/gain/window-skew, BPM-synced
+# density/length, unison trigger pattern, and the granular-specific warp
+# lane 2 remain documented here (round-trip/edit safety via
+# `_plain_params`'s allow_unknown merge) but not independently generatable.
+# NOT yet confirmed live for generation (only confirmed reading real
+# files) -- treat as experimental until tested, same caveat as LfoSpec.shape.
+GRANULAROSC_PARAMS: dict[str, ParamDef] = {
+    "kParamWarp": ParamDef(
+        "kParamWarp", "float", default=0.0, min=0.0, max=1.0, confidence="observed",
+        notes="Shared with WTOsc/SampleOsc's own warp system -- see OscillatorSpec.warp_amount.",
+    ),
+    "kParamWarpMenu": ParamDef(
+        "kParamWarpMenu", "enum", default="kFM_OSC", confidence="observed",
+        enum_values=(
+            "kFM_OSC", "kAM_OSC", "kSync", "kPWM", "kBendPos", "kDistLinFold",
+            "kDistSoftClip", "kDistHardClip", "kQuantize", "kFilterLPF", "kFilterHPF",
+            "kDistAsym", "kPD_OSC", "kGate",
+        ),
+        notes="Real corpus values included kDistAsym/kPD_OSC/kGate, NOT in "
+        "SIMPLE_WARP_MODES's curated 11-value subset -- Serum's real warp-mode menu is "
+        "larger than what this project exposes for generation; see OscillatorSpec.warp_mode.",
+    ),
+    "kParamWarp2": ParamDef(
+        "kParamWarp2", "float", default=0.0, min=0.0, max=1.0, confidence="observed",
+        notes="Second warp lane's amount, same concept as WTOsc's kParamWarp2 -- NOT "
+        "wired into OscillatorSpec.warp_amount2 for this engine yet.",
+    ),
+    "kParamWarpMenu2": ParamDef(
+        "kParamWarpMenu2", "enum", default="kAM_OSC", confidence="observed",
+        enum_values=(
+            "kFM_OSC", "kAM_OSC", "kSync", "kPWM", "kBendPos", "kDistLinFold",
+            "kDistSoftClip", "kDistHardClip", "kQuantize", "kFilterLPF", "kFilterHPF",
+        ),
+    ),
+    "kParamWarpVar": ParamDef("kParamWarpVar", "float", default=0.0, min=0.0, max=1.0, confidence="uncertain"),
+    "kParamWarpVar2": ParamDef("kParamWarpVar2", "float", default=0.0, min=0.0, max=1.0, confidence="uncertain"),
+    "kParamDensity": ParamDef(
+        "kParamDensity", "float", default=20.0, min=0.0, max=850.0, unit="Hz (approx.)",
+        confidence="observed",
+        notes="Grain trigger rate. 89% presence (59/66 real samples), real range "
+        "7.6e-6-800.0. Interpretation depends on kParamDensityMode (Free Hz/BPM-synced/"
+        "direct grain count) -- only kDensityFree confirmed as the overwhelmingly common "
+        "real default (3/66 used a non-default mode).",
+    ),
+    "kParamGrainLength": ParamDef(
+        "kParamGrainLength", "float", default=0.1, min=0.0, max=10.0, unit="seconds (approx.)",
+        confidence="observed",
+        notes="83% presence (55/66), real range 0.0-10.0.",
+    ),
+    "kParamGrainReverse": ParamDef("kParamGrainReverse", "bool", default=False, confidence="uncertain"),
+    "kParamRandomOffset": ParamDef(
+        "kParamRandomOffset", "float", default=0.0, min=0.0, max=100.0, unit="%",
+        confidence="observed", notes="Random start-offset within the source sample per grain.",
+    ),
+    "kParamRandomDir": ParamDef(
+        "kParamRandomDir", "float", default=0.0, min=0.0, max=100.0, unit="%", confidence="observed",
+    ),
+    "kParamRandomPitch": ParamDef(
+        "kParamRandomPitch", "float", default=0.0, min=0.0, max=12.0, unit="semitones",
+        confidence="observed", notes="33% presence (22/66), real range ~0-12 (one octave).",
+    ),
+    "kParamRandomGrainLength": ParamDef(
+        "kParamRandomGrainLength", "float", default=0.0, min=0.0, max=100.0, unit="%",
+        confidence="observed", notes="61% presence (40/66), real range 1.0-100.0.",
+    ),
+    "kParamRandomPan": ParamDef(
+        "kParamRandomPan", "float", default=0.0, min=0.0, max=100.0, unit="%",
+        confidence="observed", notes="62% presence (41/66), real range 15.9-100.0.",
+    ),
+    "kParamRandomGain": ParamDef(
+        "kParamRandomGain", "float", default=0.0, min=0.0, max=100.0, unit="%", confidence="observed",
+    ),
+    "kParamRandomWindowAmount": ParamDef(
+        "kParamRandomWindowAmount", "float", default=0.0, min=0.0, max=100.0, unit="%",
+        confidence="uncertain",
+    ),
+    "kParamRandomWindowSkew": ParamDef(
+        "kParamRandomWindowSkew", "float", default=0.0, min=0.0, max=100.0, unit="%",
+        confidence="uncertain",
+    ),
+    "kParamRandomWarp": ParamDef(
+        "kParamRandomWarp", "float", default=0.0, min=0.0, max=100.0, unit="%", confidence="observed",
+    ),
+    "kParamRandomWarp2": ParamDef(
+        "kParamRandomWarp2", "float", default=0.0, min=0.0, max=100.0, unit="%",
+        confidence="uncertain",
+    ),
+    "kParamWindowParam": ParamDef(
+        "kParamWindowParam", "float", default=50.0, min=0.0, max=100.0, unit="%",
+        confidence="observed", notes="Shapes the grain envelope window.",
+    ),
+    "kParamWindowSkew": ParamDef(
+        "kParamWindowSkew", "float", default=0.0, min=-100.0, max=100.0, unit="%",
+        confidence="observed",
+    ),
+    "kParamWindowShape": ParamDef(
+        "kParamWindowShape", "enum", default="kWindowHann", confidence="observed",
+        enum_values=(
+            "kWindowHann", "kWindowWelch", "kWindowGaussian", "kWindowBlackmanHarris",
+            "kWindowSinc", "kWindowTukey", "kWindowTriangle", "kWindowTrapezoid",
+            "kWindowExpDec", "kWindowExpDecRev",
+        ),
+        notes="Ordinals confirmed via VST3 binary string dump (declaration order 0-9).",
+    ),
+    "kParamDensityMode": ParamDef(
+        "kParamDensityMode", "enum", default="kDensityFree", confidence="observed",
+        enum_values=("kDensityFree", "kDensityBPM", "kDensityGrains"),
+    ),
+    "kParamLengthMode": ParamDef(
+        "kParamLengthMode", "enum", default="kLengthFree", confidence="observed",
+        enum_values=("kLengthFree", "kLengthBPM", "kLengthPercent"),
+    ),
+    "kParamUnisonTrigPattern": ParamDef(
+        "kParamUnisonTrigPattern", "enum", default="kTogether", confidence="observed",
+        enum_values=("kTogether", "kEven", "kExponential", "kRandom"),
+    ),
+    "kParamYAxisAssignment": ParamDef(
+        "kParamYAxisAssignment", "enum", default="kYAxisNone", confidence="uncertain",
+        enum_values=(
+            "kYAxisNone", "kYAxisOscVolume", "kYAxisGranularWarp", "kYAxisGranularWarp2",
+            "kYAxisGranularDensity", "kYAxisGranularGrainLength", "kYAxisGranularWindowParam",
+            "kYAxisGranularWindowSkew", "kYAxisGranularRandomOffset", "kYAxisGranularRandomDir",
+            "kYAxisGranularRandomPitch", "kYAxisGranularRandomGrainLength",
+        ),
+        notes="Only 1/66 real samples used this (assigns an XY-pad axis to a granular "
+        "param) -- rare, low-priority.",
+    ),
+    "kParamMaxNumGrains": ParamDef("kParamMaxNumGrains", "float", default=16.0, min=1.0, max=64.0, confidence="uncertain"),
+    "kParamJumpStartGrains": ParamDef("kParamJumpStartGrains", "bool", default=False, confidence="uncertain"),
+    "kParamDensityDotted": ParamDef("kParamDensityDotted", "bool", default=False, confidence="uncertain"),
+    "kParamDensityTriplet": ParamDef("kParamDensityTriplet", "bool", default=False, confidence="uncertain"),
+    "kParamLengthDotted": ParamDef("kParamLengthDotted", "bool", default=False, confidence="uncertain"),
+    "kParamLengthTriplet": ParamDef("kParamLengthTriplet", "bool", default=False, confidence="uncertain"),
+    "kParamLoopGrains": ParamDef("kParamLoopGrains", "bool", default=True, confidence="uncertain"),
+    "kParamLengthKeyTrack": ParamDef("kParamLengthKeyTrack", "bool", default=False, confidence="uncertain"),
+}
+
 SUBOSC_PARAMS: dict[str, ParamDef] = {
     "kParamShape": ParamDef(
         "kParamShape",

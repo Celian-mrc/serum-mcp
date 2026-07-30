@@ -188,10 +188,59 @@ class OscillatorSpec(BaseModel):
     table_position: float = Field(
         0.0, ge=0.0, le=256.0, description="wavetable frame position, slots 0-2 only"
     )
-    warp_amount: float = Field(0.0, ge=0.0, le=1.0, description="slots 0-2 only")
+    warp_amount: float = Field(
+        0.0, ge=0.0, le=1.0, description="slots 0-2 only. Also applies to granular_source "
+        "(GranularOsc shares WTOsc/SampleOsc's warp system)."
+    )
     warp_mode: str = Field(
         "fm",
-        description=f"slots 0-2 only, one of: {', '.join(sorted(SIMPLE_WARP_MODES))}",
+        description=f"slots 0-2 only, one of: {', '.join(sorted(SIMPLE_WARP_MODES))}. Also "
+        "applies to granular_source.",
+    )
+    granular_source: str | None = Field(
+        None,
+        description="slots 0-2 only. If set, uses Serum's GRANULAR engine (GranularOsc) "
+        "instead of the wavetable engine: an absolute path to a WAV file that gets copied "
+        "into Serum's Samples library (same mechanism as sample_playback_source) and "
+        "played back through Serum's grain-based synthesis instead of straight playback "
+        "-- continuously re-triggered short 'grains' sliced from the source, each with "
+        "randomizable pitch/pan/length/start-offset, for an evolving/textural/'clouds of "
+        "sound' character very different from both wavetable and sample_playback_source. "
+        "Use for pads/textures/soundscapes built FROM a sample (a field recording, a "
+        "vocal, a drone) rather than played back as itself. Takes priority over "
+        "wavetable/custom_harmonics/sample_source if set, but sample_playback_source "
+        "takes priority over this if BOTH are set (only one non-wavetable engine can be "
+        "active per slot). Decoded 2026-07-30 via a 626-preset corpus survey and VST3 "
+        "binary string mining -- NOT yet confirmed live for generation (only confirmed "
+        "reading real files), treat as experimental until tested. Only the controls below "
+        "plus warp_amount/warp_mode are exposed; Serum's real GranularOsc has ~20 more "
+        "params (window shape, BPM-synced density/length, unison trigger pattern, a "
+        "second randomizable warp lane, ...) this project doesn't generate yet -- see "
+        "docs/PARAMETER_SCHEMA.md.",
+    )
+    granular_density: float = Field(
+        20.0, ge=0.0, le=850.0, description="granular_source only. Grain trigger rate in "
+        "Hz (approx.) -- higher = denser/smoother/more continuous-sounding grain cloud, "
+        "lower = sparser/more rhythmic/glitchy individual grains audible.",
+    )
+    granular_grain_length: float = Field(
+        0.1, ge=0.0, le=10.0, description="granular_source only. Length of each individual "
+        "grain in seconds (approx.) -- shorter = more textural/granular-sounding, longer = "
+        "closer to overlapping mini-loops of the source.",
+    )
+    granular_random_pitch: float = Field(
+        0.0, ge=0.0, le=12.0, description="granular_source only. Random per-grain pitch "
+        "variation in semitones -- adds a chorus-like/detuned-cloud thickness. 0 = every "
+        "grain plays at the same pitch.",
+    )
+    granular_random_pan: float = Field(
+        0.0, ge=0.0, le=100.0, description="granular_source only. % random per-grain stereo "
+        "placement -- higher = wider/more diffuse cloud, 0 = all grains centered.",
+    )
+    granular_random_grain_length: float = Field(
+        0.0, ge=0.0, le=100.0, description="granular_source only. % random variation in "
+        "each grain's length around granular_grain_length -- adds organic irregularity to "
+        "the grain cloud instead of a perfectly uniform texture.",
     )
     warp_amount2: float = Field(
         0.0, ge=0.0, le=1.0, description="amount for the SECOND warp lane, slots 0-2 only "

@@ -207,6 +207,39 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                     kwargs["sample_loop_crossfade"] = _resolve(
                         pp, "kParamLoopCrossfade", schema.OSCILLATOR_PARAMS
                     )
+            elif engine == "kOsc_Granular":
+                granular_container = container.get(f"GranularOsc{i}") or {}
+                granular_pp = granular_container.get("plainParams")
+                kwargs["warp_amount"] = _resolve(granular_pp, "kParamWarp", schema.GRANULAROSC_PARAMS)
+                raw_warp_mode = _resolve(granular_pp, "kParamWarpMenu", schema.GRANULAROSC_PARAMS)
+                kwargs["warp_mode"] = _REVERSE_WARP_MODES.get(raw_warp_mode, raw_warp_mode)
+                kwargs["granular_density"] = _resolve(
+                    granular_pp, "kParamDensity", schema.GRANULAROSC_PARAMS
+                )
+                kwargs["granular_grain_length"] = _resolve(
+                    granular_pp, "kParamGrainLength", schema.GRANULAROSC_PARAMS
+                )
+                kwargs["granular_random_pitch"] = _resolve(
+                    granular_pp, "kParamRandomPitch", schema.GRANULAROSC_PARAMS
+                )
+                kwargs["granular_random_pan"] = _resolve(
+                    granular_pp, "kParamRandomPan", schema.GRANULAROSC_PARAMS
+                )
+                kwargs["granular_random_grain_length"] = _resolve(
+                    granular_pp, "kParamRandomGrainLength", schema.GRANULAROSC_PARAMS
+                )
+
+                raw_granular_path = granular_container.get("samplePathRelative")
+                if raw_granular_path:
+                    try:
+                        kwargs["granular_source"] = str(
+                            config.get_samples_dir() / raw_granular_path
+                        )
+                    except config.SamplesFolderNotFoundError:
+                        # Same reasoning as sample_playback_source above --
+                        # introspection must still succeed without a
+                        # resolvable Samples folder.
+                        pass
             else:
                 wt_container = container.get(f"WTOsc{i}") or {}
                 wt_pp = wt_container.get("plainParams")

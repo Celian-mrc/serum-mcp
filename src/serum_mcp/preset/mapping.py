@@ -70,6 +70,14 @@ _NOISE_SLOT = 3
 _SUB_SLOT = 4
 _ENGINE_TYPE_WT = "kOsc_WT"
 _ENGINE_TYPE_SAMPLE = "kOsc_Sample"
+_ENGINE_TYPE_GRANULAR = "kOsc_Granular"
+_GRANULAROSC_KEYS = {
+    "granular_density": "kParamDensity",
+    "granular_grain_length": "kParamGrainLength",
+    "granular_random_pitch": "kParamRandomPitch",
+    "granular_random_pan": "kParamRandomPan",
+    "granular_random_grain_length": "kParamRandomGrainLength",
+}
 _FILTER_KEYS = {
     "cutoff": "kParamFreq",
     "resonance": "kParamReso",
@@ -225,6 +233,55 @@ def _resolve_sample_playback(osc: OscillatorSpec) -> schema.SampleAudioDef:
         config.get_samples_dir(),
         _CUSTOM_SAMPLE_SUBDIR,
         center_pan=osc.sample_center_pan,
+    )
+    channels, sample_rate, num_frames = sample_library.read_wav_metadata(source_path)
+    relative_path = "/".join((*_CUSTOM_SAMPLE_SUBDIR, dest.name))
+    return schema.SampleAudioDef(relative_path, num_frames, sample_rate, channels)
+
+
+def _unchanged_granular_reference(
+    granular_container: dict[str, Any], osc: OscillatorSpec
+) -> schema.SampleAudioDef | None:
+    """Same fast path as ``_unchanged_sample_reference``, for
+    ``osc.granular_source`` against a ``GranularOsc{i}`` container -- avoids
+    re-copying/re-reading a file that's already correctly referenced on an
+    edit_preset call that round-tripped an unchanged granular oscillator
+    through extract_spec."""
+    existing_relative = granular_container.get("samplePathRelative")
+    if not existing_relative:
+        return None
+    try:
+        samples_dir = config.get_samples_dir()
+    except config.SamplesFolderNotFoundError:
+        return None
+    existing_absolute = (samples_dir / existing_relative).resolve()
+    try:
+        incoming_absolute = Path(osc.granular_source).resolve()
+    except (OSError, ValueError):
+        return None
+    if existing_absolute != incoming_absolute:
+        return None
+    num_frames = granular_container.get("numFrames")
+    sample_rate = granular_container.get("sampleRate")
+    num_channels = granular_container.get("numChannels")
+    if not (isinstance(num_frames, int | float) and sample_rate and num_channels):
+        return None
+    return schema.SampleAudioDef(
+        existing_relative, int(num_frames), int(sample_rate), int(num_channels)
+    )
+
+
+def _resolve_granular_playback(osc: OscillatorSpec) -> schema.SampleAudioDef:
+    """Resolve an oscillator's ``granular_source`` into a
+    :class:`schema.SampleAudioDef`, same mechanism as
+    ``_resolve_sample_playback`` (GranularOsc's file-reference shape is
+    structurally identical to SampleOsc's) -- copy the referenced WAV into
+    Serum's Samples/User/serum-mcp folder and read its header metadata."""
+    source_path = Path(osc.granular_source)
+    if not source_path.is_file():
+        raise ValueError(f"granular_source {osc.granular_source!r} does not exist")
+    dest = sample_library.copy_sample_to_library(
+        source_path, config.get_samples_dir(), _CUSTOM_SAMPLE_SUBDIR, center_pan=False
     )
     channels, sample_rate, num_frames = sample_library.read_wav_metadata(source_path)
     relative_path = "/".join((*_CUSTOM_SAMPLE_SUBDIR, dest.name))
@@ -674,6 +731,31 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                     osc_params["kParamLoopStart"] = osc.sample_loop_start
                     osc_params["kParamLoopEnd"] = osc.sample_loop_end
                     osc_params["kParamLoopCrossfade"] = osc.sample_loop_crossfade
+            elif osc.granular_source:
+                # kParamType written explicitly every call, same staleness
+                # reasoning as the kOsc_Sample branch above.
+                osc_params["kParamType"] = _ENGINE_TYPE_GRANULAR
+
+                granular_key = f"GranularOsc{i}"
+                granular_container = osc_container.setdefault(granular_key, {})
+                granular_def = _unchanged_granular_reference(
+                    granular_container, osc
+                ) or _resolve_granular_playback(osc)
+                granular_container["samplePathRelative"] = granular_def.relative_path
+                granular_container["numFrames"] = granular_def.num_frames
+                granular_container["sampleRate"] = granular_def.sample_rate
+                granular_container["numChannels"] = granular_def.num_channels
+
+                granular_params = _plain_params(osc_container, granular_key)
+                for spec_key, param_key in _GRANULAROSC_KEYS.items():
+                    granular_params[param_key] = getattr(osc, spec_key)
+                granular_params["kParamWarp"] = osc.warp_amount
+                granular_params["kParamWarpMenu"] = schema.SIMPLE_WARP_MODES.get(
+                    osc.warp_mode, osc.warp_mode
+                )
+                validate_params(
+                    granular_key, granular_params, schema.GRANULAROSC_PARAMS, allow_unknown=True
+                )
             else:
                 osc_params["kParamType"] = _ENGINE_TYPE_WT
 

@@ -2161,6 +2161,70 @@ def test_sample_playback_source_writes_sampleosc_and_engine_selector(
     assert osc0["WTOsc0"] == init_data["Oscillator0"]["WTOsc0"]
 
 
+def test_granular_source_writes_granularosc_and_engine_selector(
+    init_data, tables_dir, samples_dir, tmp_path
+):
+    """GranularOsc -- decoded 2026-07-30 via a 626-preset corpus survey and
+    VST3 binary string mining (see docs/PARAMETER_SCHEMA.md item 3).
+    Structurally identical to SampleOsc's own file-reference shape, so
+    reuses the same copy-into-Samples-library mechanism."""
+    source = tmp_path / "texture.wav"
+    _write_wav_fixture(source)
+
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(
+                enabled=True,
+                granular_source=str(source),
+                granular_density=15.0,
+                granular_grain_length=0.2,
+                granular_random_pitch=3.0,
+                granular_random_pan=40.0,
+                granular_random_grain_length=25.0,
+                warp_amount=0.4,
+                warp_mode="soft_clip",
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    osc0 = data["Oscillator0"]
+    assert osc0["plainParams"]["kParamType"] == "kOsc_Granular"
+
+    granular0 = osc0["GranularOsc0"]
+    assert granular0["numChannels"] == 1
+    assert granular0["sampleRate"] == 44100
+    assert granular0["numFrames"] == 4410
+    assert granular0["samplePathRelative"].startswith("User/serum-mcp/smp_")
+    assert granular0["plainParams"]["kParamDensity"] == 15.0
+    assert granular0["plainParams"]["kParamGrainLength"] == 0.2
+    assert granular0["plainParams"]["kParamRandomPitch"] == 3.0
+    assert granular0["plainParams"]["kParamRandomPan"] == 40.0
+    assert granular0["plainParams"]["kParamRandomGrainLength"] == 25.0
+    assert granular0["plainParams"]["kParamWarp"] == 0.4
+    assert granular0["plainParams"]["kParamWarpMenu"] == "kDistSoftClip"
+
+    written_file = samples_dir / granular0["samplePathRelative"]
+    assert written_file.exists()
+    assert written_file.read_bytes() == source.read_bytes()
+
+    # WTOsc0 must be left alone, same reasoning as the SampleOsc test above.
+    assert osc0["WTOsc0"] == init_data["Oscillator0"]["WTOsc0"]
+
+    extracted = extract_spec(data)
+    ex_osc = extracted.oscillators[0]
+    assert ex_osc.granular_source is not None
+    assert ex_osc.granular_density == 15.0
+    assert ex_osc.granular_grain_length == 0.2
+    assert ex_osc.granular_random_pitch == 3.0
+    assert ex_osc.granular_random_pan == 40.0
+    assert ex_osc.granular_random_grain_length == 25.0
+    assert ex_osc.warp_amount == 0.4
+    assert ex_osc.warp_mode == "soft_clip"
+
+
 def test_sample_playback_source_centers_imbalanced_stereo_by_default(
     init_data, tables_dir, samples_dir, tmp_path
 ):

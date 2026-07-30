@@ -1086,14 +1086,38 @@ improve generation quality if resolved:
    also appeared (7/1/3 samples) but are lower-value/rarer — not added this
    round.
 2. **Filter cutoff Hz curve** (§4, Filters) — only one calibration point.
-3. **Unmodeled oscillator engines** — Granular/MultiSample/Spectral remain
-   unmodeled (GranularOsc/MultiSampleOsc/SpectralOsc appeared in 3.6-15.8%
-   of the 1,878 slot-0-2 sample, see §8's table). `SampleOsc` (2.2% of
-   slots, true one-shot/sample playback) **is now modeled** — see §8 —
-   which was the highest-value item in this list as of this project's
-   earlier sessions; MultiSampleOsc (used for realistic multisampled
-   instrument patches, e.g. real pianos/guitars) is arguably the next most
-   valuable remaining gap. Confirmed live 2026-07-29 recreating a second
+3. **Unmodeled oscillator engines** — MultiSample/Spectral remain unmodeled;
+   **Granular is now modeled, as of 2026-07-30.** `GranularOsc` turned out
+   to be structurally identical to `SampleOsc`'s own file-reference shape
+   (`{numChannels, numFrames, plainParams, samplePathRelative, sampleRate}`)
+   — no new container type needed, just a new engine selector
+   (`kParamType='kOsc_Granular'`) and its own `plainParams` schema. Full
+   automatable/private param enum (22 + 7 params) mined from the VST3
+   binary's own debug strings; a 66-sample corpus survey picked the 5
+   highest-presence controls (`kParamDensity` 89%, `kParamGrainLength` 83%,
+   `kParamRandomGrainLength` 61%, `kParamRandomPan` 62%, `kParamRandomPitch`
+   33%) to wire into `OscillatorSpec` as `granular_source` (the file
+   reference, same copy-into-Samples-library mechanism as
+   `sample_playback_source`) plus `granular_density`/`grain_length`/
+   `random_pitch`/`random_pan`/`random_grain_length`; `warp_amount`/
+   `warp_mode` are shared with WTOsc/SampleOsc's existing fields (confirmed
+   GranularOsc uses the SAME `kParamWarp`/`kParamWarpMenu` keys). ~20 rarer
+   real params (window shape/skew, BPM-synced density/length, unison
+   trigger pattern, a second randomizable warp lane, ...) are documented in
+   `schema.GRANULAROSC_PARAMS` for round-trip/edit safety but not
+   independently generatable this round. **Not yet confirmed live** — only
+   confirmed reading real files and a full write→extract round-trip test
+   (including an actual file copy into a temp Samples folder), same
+   "experimental until tested" caveat as `LfoSpec.shape`. MultiSampleOsc
+   (used for realistic multisampled instrument patches, e.g. real
+   pianos/guitars) is now the highest-value remaining gap — its own
+   structure (`embedded_sfz` text + a `files` dict of per-sample metadata +
+   `sfzPathRelative`) is a full SFZ-format multisample mapping, a
+   meaningfully bigger undertaking than Granular's flat-params-plus-file-
+   reference shape; referencing an EXISTING Factory `.sfz` instrument
+   (rather than building a custom keyzone map from scratch) would be the
+   tractable first slice, mirroring how `wavetable`/`sample_source`
+   reference curated Factory content. Confirmed live 2026-07-29 recreating a second
    real Unmute preset (`UN_PLACES_PL_Dreams`, chosen specifically for being
    otherwise fully within scope — no arp, no sample oscillators, single FX
    rack): its Osc C is a real `SpectralOsc` (`kOsc_Spectral`) referencing a
