@@ -341,6 +341,63 @@ def test_mod_route_fixed_source_round_trip(init_data):
     assert extracted.mod_routes[0].amount == -9.375
 
 
+def test_mod_route_aux_source_round_trip(init_data):
+    """ModRouteSpec.aux_source/aux_inverted -- Serum's general 'Aux'/'Via'
+    system, decoded 2026-07-30 via a 626-preset corpus survey (1276 real
+    aux-paired routes across nearly every source family, not just 'fixed').
+    source[1]/subIndex is a second, independent source id drawn from the
+    exact same MOD_SOURCE_IDS space as the primary source."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[
+            ModRouteSpec(
+                source="lfo0",
+                destination="oscillator0.pitch",
+                amount=51.0,
+                bipolar=True,
+                aux_source="mod_wheel",
+            ),
+            ModRouteSpec(
+                source="env1",
+                destination="filter0.cutoff",
+                amount=64.0,
+                aux_source="macro0",
+                aux_inverted=True,
+            ),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["ModSlot0"]["source"] == [6, 1]  # lfo0 aux mod_wheel
+    assert data["ModSlot1"]["source"] == [3, 25]  # env1 aux macro0
+    assert data["ModSlot1"]["plainParams"]["kParamAuxInverted"] == 1.0
+
+    extracted = extract_spec(data)
+    routes_by_dest = {r.destination: r for r in extracted.mod_routes}
+    assert routes_by_dest["oscillator0.pitch"].aux_source == "mod_wheel"
+    assert routes_by_dest["oscillator0.pitch"].aux_inverted is False
+    assert routes_by_dest["filter0.cutoff"].aux_source == "macro0"
+    assert routes_by_dest["filter0.cutoff"].aux_inverted is True
+
+
+def test_mod_route_no_aux_source_writes_zero_subindex(init_data):
+    """aux_source=None (the default) must write subIndex=0, matching the
+    'no aux' sentinel every ordinary (non-aux-paired) real route uses --
+    no valid MOD_SOURCE_IDS value is 0, so this is unambiguous."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[ModRouteSpec(source="velocity", destination="filter0.cutoff", amount=30.0)],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["ModSlot0"]["source"] == [16, 0]
+    extracted = extract_spec(data)
+    assert extracted.mod_routes[0].aux_source is None
+    assert extracted.mod_routes[0].aux_inverted is False
+
+
 def test_mod_routes_do_not_collide_with_existing_slots(init_data):
     init_data["ModSlot0"] = {
         "source": [99, 0],

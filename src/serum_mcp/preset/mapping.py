@@ -488,12 +488,16 @@ def _resolve_mod_destination(destination: str, fx_chain: list[FxUnitSpec]) -> sc
     )
 
 
-def _resolve_route_source(route: ModRouteSpec) -> int:
-    if route.source not in schema.MOD_SOURCE_IDS:
+def _resolve_source_id(name: str, *, field_label: str) -> int:
+    if name not in schema.MOD_SOURCE_IDS:
         raise ValueError(
-            f"unknown mod source {route.source!r}; expected one of {sorted(schema.MOD_SOURCE_IDS)}"
+            f"unknown {field_label} {name!r}; expected one of {sorted(schema.MOD_SOURCE_IDS)}"
         )
-    return schema.MOD_SOURCE_IDS[route.source]
+    return schema.MOD_SOURCE_IDS[name]
+
+
+def _resolve_route_source(route: ModRouteSpec) -> int:
+    return _resolve_source_id(route.source, field_label="mod source")
 
 
 def _build_modslot_entry(
@@ -515,15 +519,33 @@ def _build_modslot_entry(
     edit_preset call that only meant to nudge that route's amount."""
     source_id = _resolve_route_source(route)
     dest = _resolve_mod_destination(route.destination, fx_chain)
+    # source[1] (subIndex) is a SECOND, independent source id from the SAME
+    # MOD_SOURCE_IDS space -- Serum's "Aux"/"Via" system, decoded 2026-07-30
+    # via a 626-preset corpus survey: 1276 real routes across nearly every
+    # source family pair a primary source with an aux one that scales/gates
+    # it (e.g. "LFO1 -> pitch" scaled by mod_wheel or aftertouch for
+    # expressive vibrato -- by far the two most common aux picks). Originally
+    # discovered narrowly on "Fixed" (id 38) routes specifically and assumed
+    # to be a special case (subIndex = 25 + macro_index); this survey showed
+    # that was just the first example found, not the whole mechanism -- ANY
+    # source can be an aux source for ANY primary source, using the exact
+    # same ids as MOD_SOURCE_IDS. 0 (no valid source has this id) is the
+    # "no aux" sentinel. See docs/PARAMETER_SCHEMA.md item 14.
+    aux_source_id = 0
+    if route.aux_source is not None:
+        aux_source_id = _resolve_source_id(route.aux_source, field_label="mod aux_source")
     plain_params: dict[str, Any] = dict(existing_plain_params or {})
     plain_params["kParamAmount"] = route.amount
     plain_params.pop("kParamBipolar", None)
     if route.bipolar:
         plain_params["kParamBipolar"] = True
+    plain_params.pop("kParamAuxInverted", None)
+    if route.aux_inverted:
+        plain_params["kParamAuxInverted"] = True
     validate_params("ModSlot", plain_params, schema.MODSLOT_PARAMS, allow_unknown=True)
 
     return {
-        "source": [source_id, 0],
+        "source": [source_id, aux_source_id],
         "destModuleID": dest.dest_id,
         "destModuleParamID": dest.param_id,
         "destModuleParamName": dest.param_name,

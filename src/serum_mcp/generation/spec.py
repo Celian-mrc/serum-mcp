@@ -548,13 +548,28 @@ class ModRouteSpec(BaseModel):
     MATRIX-tab name for a CONSTANT modulation offset -- ``amount`` alone,
     with no time-varying signal at all, useful for a permanent bias on a
     destination (e.g. a fixed pitch/tuning offset) without dedicating an LFO
-    or macro to it. Decoded 2026-07-30: a 626-preset corpus survey found
-    Serum's real "Fixed" source is ALSO commonly paired with an independent
-    "Aux Source" macro that scales/gates it (22% of real usage) -- that
-    pairing is NOT reachable through this field (only the more common
-    78% bare-constant case is); see docs/PARAMETER_SCHEMA.md item 14 for the
-    still-unresolved combination formula. A few more sources exist in Serum
-    but aren't decoded -- see docs/PARAMETER_SCHEMA.md §6.
+    or macro to it. A few more sources exist in Serum but aren't decoded --
+    see docs/PARAMETER_SCHEMA.md §6.
+
+    ``aux_source``/``aux_inverted`` expose Serum's general "Aux"/"Via"
+    system: an OPTIONAL second, independent source (same vocabulary as
+    ``source``, including ``fixed``) that scales/gates how much of
+    ``amount`` actually reaches ``destination``. Decoded 2026-07-30 via a
+    626-preset corpus survey: 1276 real routes across nearly every source
+    family use this, by far most commonly ``mod_wheel`` or ``aftertouch`` as
+    the aux (e.g. "LFO1 -> pitch" scaled by the mod wheel, a classic
+    controllable-vibrato pattern -- turn the wheel up to bring in an
+    already-configured LFO depth rather than routing the wheel directly to
+    pitch). Originally found narrowly on ``fixed`` routes and assumed to be
+    a `fixed`-only mechanism; the survey showed that was just the first
+    example encountered, not the whole feature. ``aux_inverted`` (rare, 2.8%
+    of aux-paired routes, always literally "on" when present) presumably
+    flips the aux source before it scales ``amount``. **Still unresolved**:
+    the exact DSP formula combining ``amount`` with the aux source's live
+    value (simple ``amount * aux``? something else?) -- not decoded, so
+    treat the audible depth as approximate when using this. A rarer curve
+    -shaping param (``kParamAuxCurve``) exists but is basically never used
+    in real content (0.16% of aux-paired routes) and isn't exposed here.
     """
 
     source: str = Field(
@@ -569,6 +584,20 @@ class ModRouteSpec(BaseModel):
     destination: str = Field(description="e.g. 'filter0.cutoff', 'oscillator0.pitch', 'env0.decay'")
     amount: float = Field(0.0, ge=-100.0, le=100.0)
     bipolar: bool = False
+    aux_source: str | None = Field(
+        None,
+        description="Optional second source (same vocabulary as `source`) that scales/"
+        "gates how much of `amount` reaches `destination` -- Serum's 'Aux'/'Via' system, "
+        "see class docstring. Most commonly 'mod_wheel' or 'aftertouch' for expressive, "
+        "player-controllable modulation depth. Leave unset for an ordinary route with no "
+        "aux scaling (the common case).",
+    )
+    aux_inverted: bool = Field(
+        False,
+        description="Only meaningful when aux_source is set -- presumably inverts the aux "
+        "source's scaling effect. Leave False unless deliberately matching a specific "
+        "real reference preset's behavior.",
+    )
 
 
 class ArpPatternNoteSpec(BaseModel):

@@ -831,25 +831,47 @@ directly rather than trusting the extracted `PresetSpec` was complete:
     `kParamAuxInverted`?) — not decoded, and the AUX-PAIRED case remains a
     one-off raw-CBOR copy only.
 
-    **Update 2026-07-30, the common (no-aux) case is now wired up**: a full
-    626-preset Factory corpus survey found only 5/23 (22%) real "Fixed"
-    routes actually use the aux-macro pairing above — the other 18/23 (78%)
-    have `subIndex=0`, meaning NO aux source at all, just a bare constant
-    offset from `kParamAmount`. Since `mapping._build_modslot_entry` already
-    always writes `subIndex=0` (every mod source works this way), adding
-    `source='fixed'` (id 38) to `MOD_SOURCE_IDS` made this majority case a
-    fully generatable, ordinary `ModRouteSpec` entry with no new code needed
-    beyond the id itself — useful for a permanent bias on a destination
-    (e.g. a fixed pitch/tuning offset) without dedicating an LFO or macro to
-    it. Verified round-trip against `LOOP - Breakwave.SerumPreset` (2 real
-    bare "Fixed" routes on `oscillator1.octave`/`oscillator1.pitch`,
-    extracted correctly). The aux-paired 22% remains genuinely unsupported
-    by this write path (it can only ever emit `subIndex=0`) — also confirmed
-    from the same survey: of the 5 aux-paired routes, ALL 5 had
-    `kParamAuxInverted=1.0` (small n, but 100% consistent), suggesting
-    inversion may be closer to the norm than the exception for this
-    mechanism, not just an occasional flag — still not enough to decode the
-    actual combination formula.
+    **Update 2026-07-30, the common (no-aux) case wired up first**: a
+    23-route "Fixed"-only survey found 78% (18/23) use no aux-macro pairing
+    at all — bare `subIndex=0`. Since `mapping._build_modslot_entry` already
+    always wrote `subIndex=0` (every mod source worked this way), adding
+    `source='fixed'` (id 38) to `MOD_SOURCE_IDS` made this majority case
+    generatable with no other code changes. Verified round-trip against
+    `LOOP - Breakwave.SerumPreset` (2 real bare "Fixed" routes on
+    `oscillator1.octave`/`oscillator1.pitch`).
+
+    **Update 2026-07-30, reframed and generalized**: a wider survey (every
+    `ModSlot` across all 626 Factory presets, not just `source[0]=38`) found
+    the "Aux Source" mechanism was never `fixed`-specific at all — it was
+    just the first example noticed. **1276 real routes** (a huge fraction of
+    all mod routes surveyed) pair a primary source with a second, aux one,
+    spanning nearly every source family (LFOs, envelopes, macros,
+    `random_discrete`, `fixed` itself, ...). `source[1]`/subIndex is simply
+    a SECOND id from the exact same `MOD_SOURCE_IDS` space as `source[0]` —
+    the earlier "`subIndex = 25 + macro_index`" finding was correct but only
+    because the 3 originally-probed examples happened to use a macro as
+    their aux; `subIndex` values matching `mod_wheel` (1), `aftertouch`
+    (18), and other non-macro sources are just as common (by far the two
+    most popular aux picks: `mod_wheel` and `aftertouch` — a classic
+    "player-controllable modulation depth" pattern, e.g. an LFO's vibrato
+    depth wired to the mod wheel or aftertouch instead of being routed to
+    pitch directly). `0` never collides with a real source id, so it
+    remains an unambiguous "no aux" sentinel across every source family.
+
+    Now generalized into `ModRouteSpec.aux_source`/`aux_inverted`, usable
+    with ANY `source`/`destination` pair, not just `fixed`. Verified
+    round-trip by extracting real routes from multiple Factory presets
+    (`ARP - Acid101.SerumPreset`: `env1 -> filter1.cutoff` aux `macro0`;
+    `ARP - Blossom Tree Sprites.SerumPreset`: `lfo3 -> oscillator0.fine` aux
+    `mod_wheel`; `ARP - Altar.SerumPreset`: `random_discrete ->
+    oscillator0.pan` aux `macro7`; several more). `kParamAuxInverted`
+    presence rate confirmed at 2.8% of aux-paired routes (36/1276, always
+    literally "on" when present, never explicitly "off") and
+    `kParamAuxCurve` at 0.16% (2/1276) — curve-shaping is essentially never
+    used in real content, so it stays unexposed. **Still unresolved**: the
+    exact DSP formula combining `kParamAmount` with the aux source's live
+    value (simple `amount * aux`? something else?) — not decoded; treat the
+    audible modulation depth as approximate when using `aux_source`.
 
 15. **RoutingSlot and ModSlot's full private param lists, mined from the
     VST3 binary's own debug strings 2026-07-30** (the same technique that

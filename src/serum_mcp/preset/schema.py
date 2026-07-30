@@ -1510,19 +1510,13 @@ MOD_SOURCE_IDS: dict[str, int] = {
     "voice_index": 58,  # Serum UI: "Voice Index"
     # "Fixed" -- Serum's own MATRIX-tab UI name for id 38, a constant/manual
     # modulation offset (kParamAmount alone), decoded in depth 2026-07-30
-    # (see docs/PARAMETER_SCHEMA.md item 14). A full corpus survey (626
-    # Factory presets, 23 real "Fixed" routes) found the WRITE path here
-    # (mapping._build_modslot_entry always emits subIndex=0) matches the
-    # overwhelmingly common real case: 18/23 (78%) used subIndex=0, a bare
-    # constant with no macro pairing at all -- exactly what generating
-    # source='fixed' produces. The remaining 5/23 pair it with an "Aux
-    # Source" macro (subIndex = 25 + macro_index) that scales/gates
-    # kParamAmount via some still-undecoded DSP formula -- NOT reachable
-    # through ModRouteSpec (this write path can't set subIndex != 0);
-    # extracting one of those routes still labels it 'fixed' (source id
-    # alone determines the name) but silently loses which macro was paired
-    # if the route is ever rewritten via edit_preset, same limitation as
-    # other unmodeled per-route fields.
+    # (see docs/PARAMETER_SCHEMA.md item 14). Originally found paired with a
+    # macro "Aux Source" on some real routes and assumed to be a
+    # `fixed`-specific mechanism (subIndex = 25 + macro_index) -- a wider
+    # 626-preset survey found that was just the first example encountered:
+    # source[1]/subIndex is actually a GENERAL second/aux source id, usable
+    # with ANY primary source, drawn from this exact same MOD_SOURCE_IDS
+    # space (see ModRouteSpec.aux_source and mapping._build_modslot_entry).
     "fixed": 38,
 }
 

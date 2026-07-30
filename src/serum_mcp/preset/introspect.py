@@ -440,12 +440,21 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             # it since a non-empty string is truthy (found live on a real
             # Factory preset's ModSlot, not just third-party content).
             pp = {}
+        # source[1]/subIndex -- Serum's general "Aux"/"Via" second-source
+        # system (see ModRouteSpec.aux_source / mapping._build_modslot_entry).
+        # 0 is the "no aux" sentinel (no valid MOD_SOURCE_IDS value is 0);
+        # only extracted when it resolves to a KNOWN source name, same
+        # "only round-trip what we can name safely" policy as the primary
+        # source/destination above.
+        aux_source_name = _REVERSE_MOD_SOURCE_IDS.get(src[1]) if src[1] else None
         mod_routes.append(
             ModRouteSpec(
                 source=source_name,
                 destination=dest_name,
                 amount=pp.get("kParamAmount", 0.0),
                 bipolar=bool(pp.get("kParamBipolar", False)),
+                aux_source=aux_source_name,
+                aux_inverted=bool(pp.get("kParamAuxInverted", False)),
             )
         )
 
