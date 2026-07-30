@@ -1045,6 +1045,38 @@ def test_global_fx_bus_destinations_round_trip(init_data):
     assert extracted.global_.fx_bus2_destination == "direct"
 
 
+def test_editing_an_lfo_preserves_its_hand_drawn_curve_data(init_data):
+    """LFO{i}.curveData -- decoded 2026-07-30 via a full-corpus structural
+    survey (3051 real curve structures across LFO/ModSlot/SpectralOsc/WTOsc/
+    FXRack, 99.7% consistent): a point-based curve, `len(xVals) ==
+    len(yVals) == len(curveVals) == numPoints + 1`, x always spans exactly
+    [0.0, 1.0] and is monotonically increasing -- the same format used
+    throughout Serum's point-curve editors. This is the format that was
+    completely unknown when a real preset (UN_PLACES_ARP_120_Galaxy) with a
+    S&H-shaped LFO proved unrecreatable (see docs/PARAMETER_SCHEMA.md item
+    4) -- not yet wired into LfoSpec for GENERATING new curves (the exact
+    curveVals tension semantics aren't independently confirmed), but this
+    locks in that editing an LFO with a real hand-drawn curve via
+    apply_spec doesn't silently destroy it, since apply_spec only ever
+    touches the LFO's own `plainParams`, never its `curveData` sibling
+    key."""
+    init_data["LFO0"] = {
+        "plainParams": {"kParamRate": 0.25},
+        "curveData": {
+            "numPoints": 3,
+            "xVals": [0.0, 0.3, 0.7, 1.0],
+            "yVals": [0.5, 0.9, 0.1, 0.5],
+            "curveVals": [0.5, 0.5, 0.5, 0.5],
+        },
+    }
+    spec = PresetSpec(name="X", description="", lfos=[LfoSpec(rate=0.5)])
+
+    data = apply_spec(init_data, spec)
+
+    assert data["LFO0"]["curveData"] == init_data["LFO0"]["curveData"]
+    assert data["LFO0"]["plainParams"]["kParamRate"] == 0.5
+
+
 def test_lfo_default_rate_and_beat_sync_omitted_not_written_explicitly(init_data):
     """kParamRate=0.0 is a literal 0Hz freeze, not a neutral value -- found
     live 2026-07-29 (UN_PLACES_BA_Beyond): its real LFO0 has neither

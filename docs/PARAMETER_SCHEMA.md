@@ -1156,6 +1156,46 @@ improve generation quality if resolved:
    `drive`/`stereo`) filter model — unconfirmed whether that's a real
    5th parameter or a relabeling of an existing one, but a plausible
    secondary contributor, not yet investigated.
+
+   **Update 2026-07-30, the storage FORMAT is now decoded** (the *reading*
+   half of this gap; *generating* a new curve from a description is still
+   open, see below). Investigating `SpectralOsc`'s own `flex` curve data
+   (see item 3) led to a full structural survey of every `{numPoints,
+   xVals, yVals, curveVals}`-shaped dict across the entire 626-preset
+   corpus — 3051 real occurrences, in `LFO{i}.curveData` (795, the exact
+   data the Galaxy S&H shape above lives in), `ModSlot{n}` (main/aux curve
+   data, ~200 total), `SpectralOsc{i}`/`WTOsc{i}`/`FXRack0/1` (a couple
+   hundred more). 99.7% (3043/3051) confirm one consistent invariant with
+   zero real exceptions (the 8 "violations" were float-precision near-misses
+   or a couple of genuinely partial/incomplete curves): `len(xVals) ==
+   len(yVals) == len(curveVals) == numPoints + 1`; `xVals[0] == 0.0`,
+   `xVals[-1] == 1.0` always; `xVals` always monotonically increasing. This
+   is a point-based curve spanning a fixed, normalized x-domain `[0, 1]`
+   (time for an LFO/envelope curve, frequency for `SpectralOsc`'s spectral
+   filter shape) — `yVals[i]` is that point's height (also roughly
+   `[0, 1]`, `0.5` a very common "neutral/center" value at untouched
+   points), `curveVals[i]` is presumed to be the curve TENSION/shape of the
+   segment leading into that point (`0.5` = the overwhelmingly common
+   default, seen at every point in some real curves — presumed linear;
+   deviation direction/amount not independently confirmed). A visually
+   distinct SEPARATE sub-format, `pathData` (49 occurrences, all on LFOs --
+   presumably `LfoSpec.shape='path'`, "unconfirmed in character" per that
+   field's own docstring), does NOT follow this invariant (x not always
+   monotonic, doesn't always span `[0,1]`) — a genuine 2D freehand drawing,
+   not a single-valued function of x, and NOT covered by this decode.
+   Confirmed this data already round-trips safely through `apply_spec`
+   today without any code change (a sibling key of `plainParams`, never
+   touched by code that only writes specific `plainParams` fields) — see
+   the regression test locking this in. **Still open**: `curveVals`'
+   exact interpolation semantics (what tension value produces what audible
+   curve shape) aren't independently confirmed, and no `PresetSpec` field
+   exists yet to GENERATE a new custom curve from a text description (e.g.
+   "make this LFO sound like S&H") — would need either live Serum
+   measurement of a few known curveVals values' audible effect, or finding
+   Serum's own preset-generation code for a named shape like "S&H" (which
+   presumably synthesizes one of these point sequences internally) to
+   reverse-engineer the mapping. This is now a well-scoped, tractable next
+   step rather than a totally opaque one.
 5. **RESOLVED 2026-07-30, all 16 FX types now have param schemas.**
    `FXSplit`/`FXSplit3`/`FXSplitMS` were assumed to need "nested
    band-splitter containers, not a flat `plainParams` dict" — a 626-preset
