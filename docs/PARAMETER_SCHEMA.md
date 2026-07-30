@@ -1085,7 +1085,47 @@ improve generation quality if resolved:
    evidence. `NoiseOsc.kParamInitialPhase`/`kParamRandomPhase`/`kParamFine`
    also appeared (7/1/3 samples) but are lower-value/rarer — not added this
    round.
-2. **Filter cutoff Hz curve** (§4, Filters) — only one calibration point.
+2. **Filter cutoff Hz curve** (§4, Filters) — **calibrated 2026-07-31** via the
+   [[reference-serum-verify-audio-pipeline]] (a full sweep, not one point):
+   a `lowpass_24` filter fed White noise (full-spectrum, no self-bias) at
+   11 `cutoff` values, measuring 85%-energy spectral rolloff on the
+   sustained portion of each render.
+
+   | `cutoff` | rolloff85 (Hz) | | `cutoff` | rolloff85 (Hz) |
+   |---|---|---|---|---|
+   | 0.05 | 21.5 | | 0.65 | 1571.9 |
+   | 0.15 | 43.1 | | 0.75 | 3466.8 |
+   | 0.25 | 64.6 | | 0.85 | 7558.2 |
+   | 0.35 | 129.2 | | 0.95 | 12919.9 |
+   | 0.45 | 323.0 | | 1.00 | 14427.2 |
+   | 0.55 | 710.6 | | | |
+
+   Roughly exponential (log-linear) through the middle of the range, with
+   some flattening at both extremes — plausibly a genuine warped curve (a
+   common "musical" cutoff mapping), or measurement bias from spectral
+   rolloff being a proxy rather than the filter's literal -3dB point at
+   the very dark/bright ends. Treat this table as the current best
+   reference rather than a single closed-form formula.
+
+   **Methodological finding surfaced by this sweep, important for any
+   future filter-related audio-pipeline work**: the first sweep attempt
+   showed ZERO difference between the filter fully disabled, fully closed,
+   and at 95% resonance — all bit-identical. Root cause: the oscillator's
+   `filter_routing` was left unset (the normal/default way to write a
+   preset, matching real content's own overwhelming convention, see item
+   16 in this list). Real Serum resolves that absence to "route through
+   the filter" when loading a genuine `.SerumPreset` file in its own GUI
+   (already ear-confirmed live this project, e.g. the Dreams/Beyond
+   recreations) — but `serum2-preset-loader`'s VST3 state-injection path
+   apparently does NOT resolve it the same way, and the noise bypassed the
+   filter entirely. Explicitly setting `filter_routing='filter'` fixed it.
+   **This is a limitation of the state-injection test method, not a new
+   finding about real Serum's preset-loading behavior** — don't let it
+   contradict the already-confirmed absence convention documented
+   elsewhere in this file. Any future audio-pipeline experiment involving
+   a filter MUST set `filter_routing`/`output_routing` explicitly on the
+   oscillators/filters under test, or risk silently testing a bypassed
+   signal path.
 3. **Unmodeled oscillator engines** — MultiSample/Spectral remain unmodeled;
    **Granular is now modeled, as of 2026-07-30.** `GranularOsc` turned out
    to be structurally identical to `SampleOsc`'s own file-reference shape
