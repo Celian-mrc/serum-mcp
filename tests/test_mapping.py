@@ -826,6 +826,49 @@ def test_filter_output_routing_both_series_rejected(init_data):
         apply_spec(init_data, spec)
 
 
+def test_oscillator_filter_routing_unset_writes_no_routing_slot(init_data):
+    """OscillatorSpec.filter_routing/filter_balance=None (the default) must
+    not touch RoutingSlot0-4 at all -- Serum's real default (through the
+    filters) is reached by absence, matching the real Dreams/Beyond
+    recreations' own RoutingSlot0 ('default')."""
+    spec = PresetSpec(
+        name="X", description="", oscillators=[OscillatorSpec(enabled=True)]
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["RoutingSlot0"]["plainParams"] == "default"
+
+    extracted = extract_spec(data)
+    assert extracted.oscillators[0].filter_routing is None
+    assert extracted.oscillators[0].filter_balance is None
+
+
+def test_oscillator_filter_routing_and_balance_round_trip(init_data):
+    """RoutingSlot0-4 -- this oscillator's own routing choice, distinct from
+    RoutingSlot5/6 (each filter's own output routing). Mirrors a real
+    RoutingSlot2 patch used recreating UN_PLACES_PL_Dreams
+    (kParamRoutingDest='kRoutingDestFilter', kParamFilterBalance=100.0)."""
+    oscillators = [OscillatorSpec(enabled=True) for _ in range(5)]
+    oscillators[1].filter_routing = "master"
+    oscillators[2].filter_routing = "filter"
+    oscillators[2].filter_balance = 100.0
+    spec = PresetSpec(name="X", description="", oscillators=oscillators)
+    data = apply_spec(init_data, spec)
+
+    assert data["RoutingSlot0"]["plainParams"] == "default"
+    assert data["RoutingSlot1"]["plainParams"] == {"kParamRoutingDest": "kRoutingDestMaster"}
+    assert data["RoutingSlot2"]["plainParams"] == {
+        "kParamRoutingDest": "kRoutingDestFilter",
+        "kParamFilterBalance": 100.0,
+    }
+
+    extracted = extract_spec(data)
+    assert extracted.oscillators[0].filter_routing is None
+    assert extracted.oscillators[1].filter_routing == "master"
+    assert extracted.oscillators[2].filter_routing == "filter"
+    assert extracted.oscillators[2].filter_balance == 100.0
+
+
 def test_lfo_default_rate_and_beat_sync_omitted_not_written_explicitly(init_data):
     """kParamRate=0.0 is a literal 0Hz freeze, not a neutral value -- found
     live 2026-07-29 (UN_PLACES_BA_Beyond): its real LFO0 has neither

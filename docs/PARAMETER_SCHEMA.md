@@ -891,6 +891,28 @@ directly rather than trusting the extracted `PresetSpec` was complete:
     `kParamFilterBalance`'s exact scale, the FX-bus send system) remains
     unwired -- lower confidence, not attempted this round.
 
+17. **`OscillatorSpec.filter_routing`/`filter_balance` -- RoutingSlot0-4,
+    each oscillator's own INPUT routing choice, is now also a real
+    `PresetSpec` field.** Distinct from item 16 above (which is each
+    FILTER's own OUTPUT routing): `oscillators[i].filter_routing` is one of
+    `"filter"` (default when unset, normal path through the enabled
+    VoiceFilter(s)), `"master"` (bypasses both filters straight to the main
+    output), `"direct"` (bypasses filters AND the FX bus system), or
+    `"none"`. `filter_balance` (0-100) sets `kParamFilterBalance` when both
+    filters are in use and this oscillator routes through them; exact scale
+    still not independently confirmed (see item 11), only that a real
+    Dreams route used 100.0 while visually routed toward Filter 2. Left
+    unset, nothing is written, matching the real absent-state default
+    (`kRoutingDestFilter`) rather than writing it explicitly. Verified by
+    extracting both fields back out of the real one-off `RoutingSlot0-4`
+    patches made recreating Dreams (`RoutingSlot2`:
+    `kParamFilterBalance=100.0` + `kParamRoutingDest='kRoutingDestFilter'`
+    round-trips to `filter_routing="filter"`, `filter_balance=100.0`) and
+    Beyond. `kParamFXBus1Level`/`kParamFXBus2Level` (each source's aux send
+    into the FX bus system, see `GLOBAL_PARAMS['kParamFXBus1Vol']`) remain
+    unwired -- lower confidence / rarer real-world use, not attempted this
+    round.
+
 **Fixture bug, not a schema gap** (fixed): `fixtures/init_preset.SerumPreset`
 — the blank template every `generate_preset`/`edit_preset` call starts
 from — was built (`scripts/build_fixture.py`, one-off) by resetting most

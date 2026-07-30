@@ -228,6 +228,31 @@ class OscillatorSpec(BaseModel):
         "saw",
         description=f"slot 4 (Sub) only, one of: {', '.join(sorted(SIMPLE_SUB_SHAPES))}",
     )
+    filter_routing: Literal["filter", "master", "direct", "none"] | None = Field(
+        None,
+        description="Which path THIS oscillator's signal takes after leaving the "
+        "oscillator itself, backed by RoutingSlot{index} (see "
+        "docs/PARAMETER_SCHEMA.md §5 item 11 -- distinct from FilterSpec.output_routing, "
+        "which is each FILTER's own output routing, not an oscillator's input routing). "
+        "'filter' (Serum's real default when left unset) sends it through the enabled "
+        "VoiceFilter(s) normally -- see filter_balance when both filters are in use. "
+        "'master' bypasses both filters straight to the main output -- useful to keep a "
+        "bright/transient layer (a noise click, a sub) out of a resonant/saturating "
+        "filter chain shaping the rest of the stack. 'direct' bypasses filters AND the "
+        "FX bus system entirely. 'none' sends to neither filter nor master by default. "
+        "Leave unset unless deliberately routing a specific oscillator around the filter "
+        "stage.",
+    )
+    filter_balance: float | None = Field(
+        None,
+        ge=0.0,
+        le=100.0,
+        description="Only meaningful when filter_routing='filter' (or left unset) AND "
+        "two filters are enabled -- balance of this oscillator's signal between Filter 1 "
+        "and Filter 2. Exact scale not independently confirmed; higher values are "
+        "believed to lean toward Filter 2 (see docs/PARAMETER_SCHEMA.md). Leave unset to "
+        "use Serum's own default balance.",
+    )
 
 
 class FilterSpec(BaseModel):

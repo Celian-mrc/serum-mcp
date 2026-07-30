@@ -231,6 +231,22 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             raw_shape = _resolve(sub_pp, "kParamShape", schema.SUBOSC_PARAMS)
             kwargs["sub_shape"] = _reverse_sub_shapes.get(raw_shape, raw_shape)
 
+        # RoutingSlot0-4 -- this oscillator's own input routing choice (see
+        # OscillatorSpec.filter_routing / mapping.apply_spec). Only extracted
+        # when explicitly set; absence (Serum's real default, meaning routed
+        # through the filters) round-trips as None.
+        osc_routing_pp = (data.get(f"RoutingSlot{i}", {}) or {}).get("plainParams")
+        if isinstance(osc_routing_pp, dict):
+            raw_osc_routing_dest = osc_routing_pp.get("kParamRoutingDest")
+            kwargs["filter_routing"] = {
+                "kRoutingDestFilter": "filter",
+                "kRoutingDestMaster": "master",
+                "kRoutingDestDirect": "direct",
+                "kRoutingDestNone": "none",
+            }.get(raw_osc_routing_dest)
+            if "kParamFilterBalance" in osc_routing_pp:
+                kwargs["filter_balance"] = osc_routing_pp["kParamFilterBalance"]
+
         oscillators.append(OscillatorSpec(**kwargs))
 
     filters = []

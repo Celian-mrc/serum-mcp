@@ -709,6 +709,28 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             validate_params(f"SubOsc{i}", sub_params, schema.SUBOSC_PARAMS, allow_unknown=True)
         validate_params(f"Oscillator{i}", osc_params, schema.OSCILLATOR_PARAMS, allow_unknown=True)
 
+        if osc.filter_routing is not None or osc.filter_balance is not None:
+            # RoutingSlot0-4 -- this oscillator's own INPUT routing choice
+            # (distinct from RoutingSlot5/6, each filter's OWN output
+            # routing, see FilterSpec.output_routing below). Only written
+            # when explicitly requested; leaving both fields unset matches
+            # Serum's real default (through the filters, kRoutingDestFilter)
+            # without writing anything.
+            routing_params: dict[str, Any] = {}
+            if osc.filter_routing is not None:
+                routing_params["kParamRoutingDest"] = {
+                    "filter": "kRoutingDestFilter",
+                    "master": "kRoutingDestMaster",
+                    "direct": "kRoutingDestDirect",
+                    "none": "kRoutingDestNone",
+                }[osc.filter_routing]
+            if osc.filter_balance is not None:
+                routing_params["kParamFilterBalance"] = osc.filter_balance
+            validate_params(
+                f"RoutingSlot{i}", routing_params, schema.ROUTING_SLOT_PARAMS, allow_unknown=True
+            )
+            data.setdefault(f"RoutingSlot{i}", {})["plainParams"] = routing_params
+
     if (
         len(spec.filters) == 2
         and spec.filters[0].output_routing == "series"
