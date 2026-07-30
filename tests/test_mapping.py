@@ -319,6 +319,28 @@ def test_mod_route_2026_07_29_note_family_probe_sources_round_trip(init_data):
     assert sources[26.0] == "voice_mod2"
 
 
+def test_mod_route_fixed_source_round_trip(init_data):
+    """'fixed' -- Serum's own MATRIX-tab name for source id 38, decoded in
+    depth 2026-07-30 (see docs/PARAMETER_SCHEMA.md item 14). A constant
+    modulation offset with no aux-macro pairing (subIndex=0) -- a full
+    corpus survey found this is the overwhelmingly common real case (18/23,
+    78%), matching what this write path always produces."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[
+            ModRouteSpec(source="fixed", destination="oscillator0.pitch", amount=-9.375),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["ModSlot0"]["source"] == [38, 0]
+
+    extracted = extract_spec(data)
+    assert extracted.mod_routes[0].source == "fixed"
+    assert extracted.mod_routes[0].amount == -9.375
+
+
 def test_mod_routes_do_not_collide_with_existing_slots(init_data):
     init_data["ModSlot0"] = {
         "source": [99, 0],

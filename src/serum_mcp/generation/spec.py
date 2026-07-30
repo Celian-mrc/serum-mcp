@@ -544,8 +544,17 @@ class ModRouteSpec(BaseModel):
     ``voice_mod2``/``active_voices``/``voice_index`` exact musical meaning
     unconfirmed beyond their Serum UI name (only their source IDs were
     probed, not their live behavior) -- all IDs confirmed live 2026-07-29
-    via direct probing of a real Serum 2 instance. A few more sources exist
-    in Serum but aren't decoded -- see docs/PARAMETER_SCHEMA.md §6.
+    via direct probing of a real Serum 2 instance. ``fixed`` is Serum's own
+    MATRIX-tab name for a CONSTANT modulation offset -- ``amount`` alone,
+    with no time-varying signal at all, useful for a permanent bias on a
+    destination (e.g. a fixed pitch/tuning offset) without dedicating an LFO
+    or macro to it. Decoded 2026-07-30: a 626-preset corpus survey found
+    Serum's real "Fixed" source is ALSO commonly paired with an independent
+    "Aux Source" macro that scales/gates it (22% of real usage) -- that
+    pairing is NOT reachable through this field (only the more common
+    78% bare-constant case is); see docs/PARAMETER_SCHEMA.md item 14 for the
+    still-unresolved combination formula. A few more sources exist in Serum
+    but aren't decoded -- see docs/PARAMETER_SCHEMA.md §6.
     """
 
     source: str = Field(
@@ -554,7 +563,7 @@ class ModRouteSpec(BaseModel):
             "'pitch_bend', 'key_track', 'aftertouch', 'poly_aftertouch', "
             "'env0'..'env3', 'random1', 'random2', 'random_discrete', "
             "'release_velo', 'active_voices', 'voice_index', 'voice_mod1', "
-            "or 'voice_mod2'"
+            "'voice_mod2', or 'fixed' (a constant offset, see class docstring)"
         )
     )
     destination: str = Field(description="e.g. 'filter0.cutoff', 'oscillator0.pitch', 'env0.decay'")

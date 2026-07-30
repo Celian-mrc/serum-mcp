@@ -828,9 +828,28 @@ directly rather than trusting the extracted `PresetSpec` was complete:
     100 → audible). **Still unresolved**: the exact DSP formula combining
     `kParamAmount` with the aux macro's value (simple `amount * aux/100`?
     something curve-shaped via `kParamAuxCurve`? inverted via
-    `kParamAuxInverted`?) — not decoded, and not wired into
-    `ModRouteSpec`/generation at all; every real "Fixed" route reproduced
-    so far has been a one-off raw-CBOR copy of the exact real values.
+    `kParamAuxInverted`?) — not decoded, and the AUX-PAIRED case remains a
+    one-off raw-CBOR copy only.
+
+    **Update 2026-07-30, the common (no-aux) case is now wired up**: a full
+    626-preset Factory corpus survey found only 5/23 (22%) real "Fixed"
+    routes actually use the aux-macro pairing above — the other 18/23 (78%)
+    have `subIndex=0`, meaning NO aux source at all, just a bare constant
+    offset from `kParamAmount`. Since `mapping._build_modslot_entry` already
+    always writes `subIndex=0` (every mod source works this way), adding
+    `source='fixed'` (id 38) to `MOD_SOURCE_IDS` made this majority case a
+    fully generatable, ordinary `ModRouteSpec` entry with no new code needed
+    beyond the id itself — useful for a permanent bias on a destination
+    (e.g. a fixed pitch/tuning offset) without dedicating an LFO or macro to
+    it. Verified round-trip against `LOOP - Breakwave.SerumPreset` (2 real
+    bare "Fixed" routes on `oscillator1.octave`/`oscillator1.pitch`,
+    extracted correctly). The aux-paired 22% remains genuinely unsupported
+    by this write path (it can only ever emit `subIndex=0`) — also confirmed
+    from the same survey: of the 5 aux-paired routes, ALL 5 had
+    `kParamAuxInverted=1.0` (small n, but 100% consistent), suggesting
+    inversion may be closer to the norm than the exception for this
+    mechanism, not just an occasional flag — still not enough to decode the
+    actual combination formula.
 
 15. **RoutingSlot and ModSlot's full private param lists, mined from the
     VST3 binary's own debug strings 2026-07-30** (the same technique that
@@ -1259,7 +1278,8 @@ patterns) and resolved an ambiguity clustering had left genuinely unsettled
 | Random 2 (Serum UI: `Note > NoteOn Rand2`) | `22` | Direct UI probe, `confirmed`. Serum 2 has **three independent** per-note random sources, not one "Random/S&H" as this project had assumed pre-probe — see Random (Discrete) below. |
 | Pitch Bend | `33` | Direct UI probe, `confirmed`. Immediately after the Macro block (`25-32`) — a source-ID region clustering hadn't considered at all. |
 | Random (Discrete) (Serum UI: `Note > NoteOn Rand (Discrete)`) | `59` | Direct UI probe, `confirmed`. Inside the `34+` candidate range clustering had flagged, but far higher than the other two random sources — not contiguous with them. |
-| Release Velo (Serum UI: `Note > Release Velo`) | `37` | Direct UI probe, `confirmed`, 2026-07-29 round 3. Prompted by `UN_PLACES_BA_Beyond` (see below) using an unresolved source id (`38`) on 3 of its real routes — probing everything nearby in the picker to close the gap resolved these 5 instead (`38` itself is still NOT identified, not one of these). |
+| Release Velo (Serum UI: `Note > Release Velo`) | `37` | Direct UI probe, `confirmed`, 2026-07-29 round 3. Prompted by `UN_PLACES_BA_Beyond` (see below) using an unresolved source id (`38`) on 3 of its real routes — probing everything nearby in the picker to close the gap resolved these 5 instead (`38` itself resolved separately, see next row). |
+| Fixed (Serum UI: `MATRIX` tab source name for a constant offset) | `38` | User-provided screenshot + corpus survey, `confirmed`, 2026-07-30 (item 14). A manual/constant `kParamAmount`, optionally paired with an independent "Aux Source" macro (`subIndex = 25 + macro_index`) that scales/gates it via a still-undecoded formula. `source='fixed'` in `ModRouteSpec` covers the common bare-constant case (`subIndex=0`, 78% of real usage); the aux-paired case (22%) is not generatable. |
 | Active Voices (Serum UI: `Note > Active Voices`) | `55` | Direct UI probe, `confirmed`, round 3. |
 | Voice Mod 1 (Serum UI: `Note > Voice Mod 1`) | `56` | Direct UI probe, `confirmed`, round 3. |
 | Voice Mod 2 (Serum UI: `Note > Voice Mod 2`) | `57` | Direct UI probe, `confirmed`, round 3. Resolves one of the two remaining Galaxy-recreation unknowns (`24`, `40`, `57` — see item 6 in the Galaxy investigation below); `24` and `40` remain open. |
