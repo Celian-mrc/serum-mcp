@@ -573,8 +573,13 @@ NOISEOSC_PARAMS: dict[str, ParamDef] = {
 # density/length, unison trigger pattern, and the granular-specific warp
 # lane 2 remain documented here (round-trip/edit safety via
 # `_plain_params`'s allow_unknown merge) but not independently generatable.
-# NOT yet confirmed live for generation (only confirmed reading real
-# files) -- treat as experimental until tested, same caveat as LfoSpec.shape.
+# CONFIRMED LIVE 2026-07-30 in real Serum 2 after fixing the two
+# raw<->displayed conversion bugs documented immediately below -- a
+# generated GranularOsc genuinely produces a grain-cloud texture,
+# cross-validated by ear against a real Factory Granular preset
+# (`808 - Texture`). A SCAN/playback-position system (`kParamScanRate`/
+# `kParamPosition`, on the OUTER `Oscillator{i}` container, not this table)
+# was found live but remains unwired -- see docs/PARAMETER_SCHEMA.md item 3.
 #
 # kParamDensity/kParamGrainLength's raw<->UI-displayed relationships --
 # decoded live 2026-07-30 after the FIRST real-Serum test of GranularOsc

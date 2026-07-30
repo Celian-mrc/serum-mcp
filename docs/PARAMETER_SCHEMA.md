@@ -1196,7 +1196,26 @@ improve generation quality if resolved:
    slows its scan position over the note's duration, presumably via the
    same `kParamScanRate`/`kParamPosition` system flagged above as still
    unwired and now confirmed to matter for real, intentional sound design
-   -- not just an edge case. MultiSampleOsc
+   -- not just an edge case.
+
+   **Update 2026-07-30, `SpectralOsc` separately live-tested and
+   confirmed too.** Same session: loaded a generated `SpectralOsc` preset
+   (`warp_mode='kGate'` on a noise source) in real Serum 2. Initial report
+   was also "very filtered and robotic" — but unlike Granular, this turned
+   out to be the CORRECT, intended character of a spectral gate effect,
+   not a bug: with `warp_amount=0` the engine correctly fell back to a
+   clean resynthesis of the source ("j'entends du noise" — the raw
+   air-can hiss, as expected); with `warp_amount=0.6` on a high note, the
+   user described "un son fluide et robotique... comme R2D2" — an apt,
+   positive description of exactly what spectral gating is supposed to
+   sound like. Both `GranularOsc` and `SpectralOsc` are now considered
+   **confirmed live**, closing out the "experimental, not yet tested"
+   caveat both carried since being modeled — `freq_lo`/`freq_hi`/
+   `filter_shift`/`filter_wet`'s own calibration is the one piece NOT
+   independently verified by this test (only `warp_mode`/`warp_amount`
+   were exercised) and should still be treated with the same suspicion
+   `granular_density`/`granular_grain_length` warranted before their fix.
+   MultiSampleOsc
    (used for realistic multisampled instrument patches, e.g. real
    pianos/guitars) is now the highest-value remaining gap — its own
    structure (`embedded_sfz` text + a `files` dict of per-sample metadata +

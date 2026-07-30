@@ -219,11 +219,14 @@ class OscillatorSpec(BaseModel):
         "wavetable/custom_harmonics/sample_source if set, but sample_playback_source "
         "takes priority over this if BOTH are set (only one non-wavetable engine can be "
         "active per slot). Decoded 2026-07-30 via a 626-preset corpus survey and VST3 "
-        "binary string mining -- NOT yet confirmed live for generation (only confirmed "
-        "reading real files), treat as experimental until tested. Only the controls below "
+        "binary string mining, then confirmed live in real Serum 2 (including fixing two "
+        "real unit-conversion bugs found that way, see granular_density/"
+        "granular_grain_length below) -- genuinely produces a grain-cloud texture, "
+        "cross-validated against a real Factory Granular preset. Only the controls below "
         "plus warp_amount/warp_mode are exposed; Serum's real GranularOsc has ~20 more "
         "params (window shape, BPM-synced density/length, unison trigger pattern, a "
-        "second randomizable warp lane, ...) this project doesn't generate yet -- see "
+        "second randomizable warp lane, a SCAN/playback-position system found live but "
+        "not yet wired up, ...) this project doesn't generate yet -- see "
         "docs/PARAMETER_SCHEMA.md.",
     )
     granular_density: float = Field(
@@ -281,8 +284,13 @@ class OscillatorSpec(BaseModel):
         "neutral spectral response; only the frequency-range and warp controls below are "
         "real. Takes priority over wavetable/custom_harmonics/sample_source, but "
         "sample_playback_source/granular_source take priority over this if set. Only "
-        ".wav is supported. NOT yet confirmed live for generation -- experimental, same "
-        "caveat as granular_source.",
+        ".wav is supported. Confirmed live 2026-07-30 in real Serum 2 (warp_mode='kGate' "
+        "on a noise source produced the expected robotic/vocoder-like gated character, "
+        "with warp_amount=0 correctly falling back to a clean resynthesis of the source). "
+        "freq_lo/freq_hi/filter_shift/filter_wet's own calibration was NOT independently "
+        "verified in that test -- treat those with the same suspicion "
+        "granular_density/granular_grain_length warranted before their fix, until "
+        "separately confirmed.",
     )
     spectral_warp_freq_lo: float = Field(
         20.0, ge=20.0, le=20000.0, description="spectral_source only. Hz, low edge of the "
