@@ -1215,6 +1215,57 @@ improve generation quality if resolved:
    independently verified by this test (only `warp_mode`/`warp_amount`
    were exercised) and should still be treated with the same suspicion
    `granular_density`/`granular_grain_length` warranted before their fix.
+
+   **Update 2026-07-31, automated audio-rendering verification closes two
+   more open questions, no human listening required.** Found
+   [wiillownet/serum-render](https://github.com/wiillownet/serum-render)
+   (built on [serum2-preset-loader](https://github.com/wiillownet/serum2-preset-loader)
+   + [DawDreamer](https://github.com/DBraun/DawDreamer)) — converts a real
+   `.SerumPreset` into the VST3 processor-state blob Serum 2 actually
+   understands (confirming, independently, this project's own CBOR schema
+   understanding: their documented preset-vs-processor-state diff — the
+   `"default"` string sentinel, dropped UI-only keys, added
+   `component`/`version` keys — matches exactly), then renders it to audio
+   completely headless. Set up as a standalone tool at `C:\serum-verify`
+   (kept OUT of this repo: DawDreamer is GPL-3.0, this project is MIT) with
+   a reusable `analyze_preset.py` extracting RMS/spectral centroid/onset
+   timing/pitch from a render.
+   - **Confirmed `spectral_warp_freq_lo`/`freq_hi` are correct as literal
+     Hz** (no conversion needed, unlike `granular_density`/
+     `granular_grain_length`): three renders of the same source with
+     `warp_mode='kGate'` and different `freq_lo`/`freq_hi` windows
+     produced spectral centroids of 102 Hz (20-500 Hz window), 6946 Hz
+     (5000-20000 Hz window), and 6485 Hz (full 20-20000 Hz range,
+     matching the source's own natural broadband character) — a clean,
+     monotonic, correctly-directioned result with no live-typing
+     calibration needed at all.
+   - **`kParamScanRate`/`kParamPosition` (the outer-`Oscillator{i}`
+     "SCAN" system flagged as unwired above) confirmed to have a real,
+     measurable effect**, resolving the earlier "sweeping it live made no
+     audible difference" finding as likely just too subtle over a short
+     manual listen: rendering the same `GranularOsc` preset for 3 seconds
+     at `kParamScanRate` raw values 0/50/100/200/-100 and measuring
+     spectral centroid across 6 time-segments found `0.0` nearly frozen
+     (10455→10445 Hz, ~70 Hz drift end-to-end) while nonzero values
+     showed real drift (up to ~700 Hz), and `200.0` (the highest tested)
+     produced a hard drop to silence in the last 2 of 6 segments —
+     consistent with scanning past the end of the ~5-second source file
+     within the render window. Confirms the mechanism is real and which
+     direction increases movement speed, but NOT yet an exact raw↔real-
+     world-rate calibration (no real Factory cross-reference gathered for
+     this one, unlike `granular_density`/`grain_length`'s `808 - Texture`
+     check) — still not wired into `OscillatorSpec`, now a well-evidenced
+     rather than purely theoretical next step.
+
+   This audio-analysis pipeline is now the go-to way to close open
+   calibration questions going forward — it turns "does this sound right"
+   from something only a human's ears could answer into something a
+   script can check directly (RMS for silence bugs, spectral centroid for
+   frequency-range/filtering claims, segmented centroid for time-varying
+   effects like scan), the same class of objective, mechanical gate
+   `auto-re-agent`'s build/test loop uses for compiled-code reversal (see
+   the "loop engineering" discussion this session) — adapted here for a
+   data-format-plus-audio-behavior reversal problem instead.
    MultiSampleOsc
    (used for realistic multisampled instrument patches, e.g. real
    pianos/guitars) is now the highest-value remaining gap — its own

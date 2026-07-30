@@ -287,10 +287,11 @@ class OscillatorSpec(BaseModel):
         ".wav is supported. Confirmed live 2026-07-30 in real Serum 2 (warp_mode='kGate' "
         "on a noise source produced the expected robotic/vocoder-like gated character, "
         "with warp_amount=0 correctly falling back to a clean resynthesis of the source). "
-        "freq_lo/freq_hi/filter_shift/filter_wet's own calibration was NOT independently "
-        "verified in that test -- treat those with the same suspicion "
-        "granular_density/granular_grain_length warranted before their fix, until "
-        "separately confirmed.",
+        "spectral_warp_freq_lo/freq_hi confirmed correct as literal Hz 2026-07-31 via "
+        "automated audio rendering (see docs/PARAMETER_SCHEMA.md item 3) -- a 20-500Hz "
+        "window and a 5000-20000Hz window on the same source produced spectral centroids "
+        "of 102Hz vs 6946Hz respectively, no conversion needed. filter_shift/filter_wet "
+        "remain unverified.",
     )
     spectral_warp_freq_lo: float = Field(
         20.0, ge=20.0, le=20000.0, description="spectral_source only. Hz, low edge of the "
