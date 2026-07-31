@@ -530,7 +530,23 @@ class EnvelopeSpec(BaseModel):
 
 
 class LfoSpec(BaseModel):
-    rate: float = Field(0.0, ge=0.0, le=100.0, description="normalized rate, not literal Hz")
+    rate: float = Field(
+        0.0,
+        ge=0.0,
+        le=100.0,
+        description="normalized rate, not literal Hz -- written as-is (no conversion), "
+        "so still choose it by feel/comparison, not by a target Hz. Partially "
+        "calibrated 2026-07-31 (see schema.LFO_PARAMS['kParamRate'] and "
+        "docs/PARAMETER_SCHEMA.md item 6a): with mode='Free'/beat_sync=False, raw "
+        "2-30 measured a clean, fast-doubling curve from ~0.5Hz to ~16Hz, but raw "
+        "beyond ~35 measured suspicious flat plateaus (a jump to 32Hz then, "
+        "confusingly, DOWN to ~5.7Hz for raw 55-100) not yet explained -- avoid "
+        "raw values above ~35 for anything where the exact perceived speed matters "
+        "until that's resolved; the low range is trustworthy. 0.0 (this field's own "
+        "default) writes nothing at all, landing on Serum's genuine absent-state "
+        "default instead ('1/4' BPM-synced, not 0Hz -- confirmed both by live UI "
+        "probing and, now, by audio measurement).",
+    )
     mode: str = Field("Free", description="'Free', 'Retrig', or 'Envelope'")
     beat_sync: bool = Field(False, description="tempo-synced rate instead of free-running Hz")
     delay: float = Field(

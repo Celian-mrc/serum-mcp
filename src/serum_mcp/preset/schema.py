@@ -1352,14 +1352,36 @@ LFO_PARAMS: dict[str, ParamDef] = {
         max=100.0,
         unit="normalized rate",
         confidence="uncertain",
-        notes="Hz/BPM mapping depends on kParamMode and beat-sync flags; mostly not "
-        "decoded, but 2026-07-29 empirical probing (real Serum, an LFO explicitly set "
-        "then read back raw) DID confirm two points: with kParamBeatSync absent (its own "
-        "true default, confirmed separately -- see LFO_PARAMS notes), setting the RATE "
-        "knob to exactly '1/8' writes kParamRate=10.66; setting it back to '1/4' makes "
-        "Serum omit the key again -- i.e. '1/4' BPM-synced IS the genuine absent-state "
-        "default (not a UI placeholder), confirming mapping.py's omit-when-default fix "
-        "is correct. The full Hz/BPM curve beyond these 2 points is still not decoded.",
+        notes="Hz/BPM mapping depends on kParamMode and beat-sync flags. Two points known "
+        "from 2026-07-29 live UI probing (beat-synced regime): with kParamBeatSync "
+        "absent (its own true default), setting the RATE knob to exactly '1/8' writes "
+        "kParamRate=10.66; setting it back to '1/4' makes Serum omit the key again -- "
+        "i.e. '1/4' BPM-synced IS the genuine absent-state default (not a UI "
+        "placeholder), confirming mapping.py's omit-when-default fix is correct. "
+        "2026-07-31, the separate FREE (beat_sync=False, explicit) Hz curve was "
+        "measured via the audio-rendering pipeline (see "
+        "docs/PARAMETER_SCHEMA.md item 6a and reference-serum-verify-audio-pipeline): "
+        "routed lfo0 -> filter0.cutoff, rendered, and measured the resulting cutoff's "
+        "cyclic rate via FFT of the frame-wise spectral centroid "
+        "(analyze_preset.detect_modulation_rate_hz). raw 2/5/10/20/30 -> measured "
+        "0.50/1.00/4.00/8.00/16.0 Hz -- clean, monotonic, consistent with Hz = 2^"
+        "(raw/10 + 1) across two independent mod-amount settings (90 and 15) and "
+        "multiple analysis window sizes. CONFIRMS the same-day absent-default finding "
+        "independently, from the audio side: rate=0.0 (which mapping.py omits "
+        "entirely, per _LFO_KEYS_OMIT_AT_DEFAULT) measured 2.00 Hz -- exactly a 120bpm "
+        "quarter note (60/120=0.5s period), matching serum-render's default host tempo. "
+        "**Still genuinely open, do not trust past raw~35**: raw 38-45 all measured the "
+        "SAME 32.0 Hz (not a continued doubling), and raw 55-100 all measured the SAME "
+        "5.67 Hz (a lower value than the 38-45 plateau, i.e. non-monotonic) -- "
+        "reproduced bit-for-bit across isolated single renders, batch renders, 2 "
+        "mod-amounts, and analysis windows down to hop_length=64/fmax=300Hz (ruling out "
+        "an obvious search-band or filter-clipping artifact). Genuinely undetermined "
+        "whether this is real (a stepped/quantized region of Serum's own Free-rate "
+        "curve, or a hard ceiling with a separate ultra-slow-rate region reusing the "
+        "same knob range) or a render/measurement-pipeline artifact specific to fast "
+        "control-rate modulation -- needs a live Serum GUI cross-check (turn RATE past "
+        "~40% while watching/listening) to disambiguate; don't repeat this exact sweep "
+        "expecting a different automated answer.",
     ),
     "kParamMode": ParamDef(
         "kParamMode",

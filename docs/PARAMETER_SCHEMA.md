@@ -1065,12 +1065,16 @@ improve generation quality if resolved:
    including the reusable method). Random turned out to be three
    independent sources, not one, which is why the original "Envelope/
    Velocity/Mod Wheel/Aftertouch/Pitch Bend/Key Track/Random" list maps to
-   more than seven resolved names. **Still unresolved, but out of original
-   scope** (only discovered by seeing Serum 2's real source picker):
-   `Release Velo`, `Active Voices`, `Voice Index`, `Voice Mod 1`/`2`, and
-   `Oscillators`/`Filters`/`Note Expression` as self-mod sources.
-   `subIndex` (`source[1]`) is unresolved for every source family (always 0
-   in every sample so far). `serum-mcp` now generates and reads back mod
+   more than seven resolved names. **`Release Velo` (37), `Active Voices`
+   (55), `Voice Mod 1`/`2` (56/57), and `Voice Index` (58) — resolved 2026-
+   07-30** (see item 12 above; `MOD_SOURCE_IDS` in `schema.py` has all
+   five). This paragraph previously listed them as still-unresolved; that
+   was stale — fixed 2026-07-31. **Still genuinely unresolved, out of
+   original scope**: `Oscillators`/`Filters`/`Note Expression` as self-mod
+   sources (never probed).
+   `subIndex` (`source[1]`) is unresolved for every source family outside
+   the aux-source mechanism (item 14) — always 0 in every other sample so
+   far. `serum-mcp` now generates and reads back mod
    routes for every confirmed source (`generation/spec.py::ModRouteSpec`);
    everything else still round-trips opaquely.
 1b. **Mod matrix destination coverage is narrower than `MOD_DEST_TARGETS`
@@ -1551,6 +1555,44 @@ improve generation quality if resolved:
    voice count ceiling, LFO/Chorus/Delay times where only normalized values
    were observed without a confirmed Hz/ms curve) — these are *observed*
    ranges from the sample, which may not be the true engine-enforced bounds.
+   6a. **`LFO_PARAMS['kParamRate']`'s FREE (non-beat-synced) Hz curve — partially
+   calibrated 2026-07-31 via the audio-rendering pipeline, but with a real,
+   unresolved anomaly at the high end.** Method: a single `LfoSpec(rate=X,
+   mode='Free', beat_sync=False)` routed `lfo0 -> filter0.cutoff`, rendered,
+   and measured via a new reusable helper,
+   `analyze_preset.detect_modulation_rate_hz` (FFT of the frame-wise
+   spectral centroid time series, restricted to a plausible LFO band) —
+   the general-purpose sibling of the chirp technique for "how fast does
+   this cycle" questions where the source isn't a synthetic chirp.
+   - **Confirmed, clean, reproducible (raw 2-30)**: 0.50/1.00/4.00/8.00/16.0
+     Hz at raw 2/5/10/20/30 — consistent with `Hz = 2^(raw/10 + 1)` across
+     two independent mod-amounts (90 and 15, ruling out cutoff-clipping
+     distortion as the driver) and multiple analysis window sizes.
+   - **Bonus cross-validation**: `rate=0.0` (this field's own schema
+     default, which `mapping.py` omits from `plainParams` entirely per
+     `_LFO_KEYS_OMIT_AT_DEFAULT`) measured 2.00 Hz — exactly a 120 BPM
+     quarter note (60/120 = 0.5s period), confirming from the AUDIO side
+     (not just live-UI-probing, the original method) that Serum's genuine
+     absent-state LFO default really is `'1/4'` BPM-synced, not silence/0Hz.
+   - **Genuinely unresolved, and don't re-attempt without new information**:
+     raw 38-45 all measured the identical 32.0 Hz (not a continued
+     doubling), and raw 55-100 all measured the identical ~5.67 Hz — LOWER
+     than the 38-45 plateau, i.e. non-monotonic. Reproduced bit-for-bit
+     across isolated single renders vs. batch renders, both tested
+     mod-amounts, and analysis windows down to `hop_length=64`/`fmax=300Hz`
+     (ruling out an obvious search-band-too-narrow or filter-clipping
+     explanation). Two live hypotheses, not disambiguated: a genuinely
+     stepped/quantized or non-monotonic region of Serum's real Free-rate
+     curve (some synths reuse the top of a rate knob's range for
+     ultra-slow "sync to song length" rates, which could plausibly look
+     like this), vs. a render/measurement-pipeline artifact specific to
+     fast control-rate modulation that this project's render/analysis
+     stack can't currently distinguish from the real thing. Needs a live
+     Serum GUI cross-check (turn RATE past ~40% while watching the
+     filter's own cutoff meter or listening) to resolve — not wired into
+     `LfoSpec.rate` as a conversion (still raw passthrough), and the raw
+     value stays documented as "choose by feel," not by a target Hz, for
+     anything above ~35.
 
 None of these block V1's stated goal (text description → valid, loadable
 `.SerumPreset` covering oscillators/filters/envelopes/macros/core FX) — they
