@@ -1640,6 +1640,33 @@ improve generation quality if resolved:
      value stays documented as "choose by feel," not by a target Hz, for
      anything above ~35.
 
+   6b. **`FX_PARAMS['FXChorus']['kParamRate']` — same technique, same
+   ~16.5/32Hz anomaly, now cross-validating item 6a's finding rather than
+   fixing it.** Method: `FxUnitSpec(type='FXChorus', params={'kParamRate':
+   X, 'kParamDepth': 26.0, 'kParamFeedback': 0.0})`, rendered a sustained
+   tone through it, measured via `detect_modulation_rate_hz`.
+   - **Confirmed, trustworthy**: raw 15/20 measured EXACTLY 15.0/20.0 Hz —
+     `"Hz (approx.)"` is genuine literal Hz at the top of the documented
+     0-20 range.
+   - **A second, DIFFERENT ambiguity found here (not seen calibrating the
+     LFO)**: raw 2-10 measured inconsistently 1x or 2x the raw value (e.g.
+     raw=3→6Hz, raw=4→4Hz, raw=5→10Hz, raw=7→14Hz — no clean split point).
+     Most likely `detect_modulation_rate_hz` locking onto the modulation's
+     2nd harmonic instead of its fundamental (spectral centroid can
+     respond similarly to a sweep's "up" and "down" halves for a symmetric
+     brightness effect like chorus/filter-cutoff, unlike an asymmetric
+     signal such as pitch) — added as a documented limitation on the
+     helper function itself (see
+     [[reference-serum-verify-audio-pipeline]]), not fixed.
+   - **The SAME ~16.5/32Hz plateau as item 6a**, at raw 0.5/1.0, on a
+     completely different module/preset/render setup. This repetition
+     across two unrelated calibration attempts is the strongest evidence
+     yet that it's a shared property of this render/measurement pipeline
+     (or a genuine, shared Serum modulation-rate quirk) rather than
+     something specific to either `kParamRate`'s own curve — treat any
+     `detect_modulation_rate_hz` result landing near 16.5 or 32 Hz for a
+     known-slow target rate as suspect on sight, going forward.
+
 None of these block V1's stated goal (text description → valid, loadable
 `.SerumPreset` covering oscillators/filters/envelopes/macros/core FX) — they
 bound what V1 can *express*, not whether what it writes is valid.

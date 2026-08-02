@@ -1397,7 +1397,12 @@ LFO_PARAMS: dict[str, ParamDef] = {
         "same knob range) or a render/measurement-pipeline artifact specific to fast "
         "control-rate modulation -- needs a live Serum GUI cross-check (turn RATE past "
         "~40% while watching/listening) to disambiguate; don't repeat this exact sweep "
-        "expecting a different automated answer.",
+        "expecting a different automated answer. **Cross-validated 2026-08-01**: "
+        "calibrating FX_PARAMS['FXChorus']['kParamRate'] independently (different "
+        "module, different render setup, same detect_modulation_rate_hz technique) hit "
+        "the SAME ~16.5/32 Hz plateau at very low/weak target rates -- strengthens the "
+        "'shared pipeline artifact' hypothesis over 'real non-monotonic Serum curve', "
+        "though still not proven either way.",
     ),
     "kParamMode": ParamDef(
         "kParamMode",
@@ -2260,7 +2265,22 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
     "FXChorus": {
         "kParamRate": ParamDef(
             "kParamRate", "float", default=0.5, min=0.0, max=20.0, unit="Hz (approx.)",
-            notes="Max corrected from 1.4 after finding a real Factory preset with rate=20.0.",
+            notes="Max corrected from 1.4 after finding a real Factory preset with rate=20.0. "
+            "Partially calibrated 2026-08-01 via the audio-rendering pipeline (same "
+            "detect_modulation_rate_hz technique as LFO_PARAMS['kParamRate'], see "
+            "docs/PARAMETER_SCHEMA.md item 6b): raw 15/20 measured EXACTLY 15.0/20.0 Hz "
+            "-- 'approx.' can be trusted as literal Hz at the top of the range. Raw "
+            "2-10 measured inconsistently 1x-2x the raw value (e.g. raw=4->4Hz but "
+            "raw=3->6Hz and raw=5->10Hz) -- plausibly the analysis locking onto the "
+            "2nd harmonic of the true rate (a symmetric brightness sweep can read as "
+            "2x in a spectral-centroid-based measurement) rather than a real curve "
+            "kink, unconfirmed. Raw 0.5/1.0 measured a fixed ~16.5/~32 Hz -- NOT a "
+            "multiple of the raw value at all, and matching (not coincidentally) the "
+            "exact same unexplained plateau found calibrating LFO_PARAMS['kParamRate'] "
+            "-- likely a shared pipeline artifact affecting any slow/weak target "
+            "modulation via this method, see that param's notes and "
+            "reference-serum-verify-audio-pipeline. Trust raw >= ~15 only; don't trust "
+            "the low end without a live Serum check.",
         ),
         "kParamDepth": ParamDef(
             "kParamDepth", "float", default=10.0, min=0.0, max=26.0, unit="ms (approx.)"
