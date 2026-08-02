@@ -1920,6 +1920,65 @@ def test_new_mod_destinations_2026_07_30_survey_round_trip(init_data):
     assert routes["global.voice_scaling_lfo_time"] == "macro4"
 
 
+def test_new_mod_destinations_2026_08_01_survey_round_trip(init_data):
+    """oscillator3.noise_initial_phase/noise_fine, arp.chance/offset/
+    transpose_range, fx{i}.width/hpf/lpf/lf_xover (FXUtils), fx{i}.freq2
+    (FXEQ) -- confirmed via an 876-preset corpus survey (Factory + every
+    third-party bank on this machine, not just the original 626), closing
+    the rest of item 1b's/Galaxy's remaining destination gaps."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        fx_chain=[
+            FxUnitSpec(type="FXUtils", wet=100.0),
+            FxUnitSpec(type="FXEQ", wet=100.0),
+        ],
+        mod_routes=[
+            ModRouteSpec(source="macro0", destination="oscillator3.noise_initial_phase", amount=10.0),
+            ModRouteSpec(source="macro1", destination="oscillator3.noise_fine", amount=11.0),
+            ModRouteSpec(source="macro2", destination="arp.chance", amount=12.0),
+            ModRouteSpec(source="macro3", destination="arp.offset", amount=13.0),
+            ModRouteSpec(source="macro4", destination="arp.transpose_range", amount=14.0),
+            ModRouteSpec(source="lfo0", destination="fx0.width", amount=15.0),
+            ModRouteSpec(source="lfo1", destination="fx0.hpf", amount=16.0),
+            ModRouteSpec(source="lfo2", destination="fx0.lpf", amount=17.0),
+            ModRouteSpec(source="lfo3", destination="fx0.lf_xover", amount=18.0),
+            ModRouteSpec(source="lfo4", destination="fx1.freq2", amount=19.0),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    expected = {
+        "ModSlot0": ("NoiseOsc", "kParamInitialPhase", 2),
+        "ModSlot1": ("NoiseOsc", "kParamFine", 1),
+        "ModSlot2": ("Arp", "kParamChance", 7),
+        "ModSlot3": ("Arp", "kParamOffset", 4),
+        "ModSlot4": ("Arp", "kParamTransposeRange", 3),
+        "ModSlot5": ("FXUtils", "kParamWidth", 3),
+        "ModSlot6": ("FXUtils", "kParamHPF", 7),
+        "ModSlot7": ("FXUtils", "kParamLPF", 8),
+        "ModSlot8": ("FXUtils", "kParamLFXover", 6),
+        "ModSlot9": ("FXEQ", "kParamFreq2", 2),
+    }
+    for slot, (dest_type, param_name, param_id) in expected.items():
+        assert data[slot]["destModuleTypeString"] == dest_type
+        assert data[slot]["destModuleParamName"] == param_name
+        assert data[slot]["destModuleParamID"] == param_id
+
+    extracted = extract_spec(data)
+    routes = {r.destination: r.source for r in extracted.mod_routes}
+    assert routes["oscillator3.noise_initial_phase"] == "macro0"
+    assert routes["oscillator3.noise_fine"] == "macro1"
+    assert routes["arp.chance"] == "macro2"
+    assert routes["arp.offset"] == "macro3"
+    assert routes["arp.transpose_range"] == "macro4"
+    assert routes["fx0.width"] == "lfo0"
+    assert routes["fx0.hpf"] == "lfo1"
+    assert routes["fx0.lpf"] == "lfo2"
+    assert routes["fx0.lf_xover"] == "lfo3"
+    assert routes["fx1.freq2"] == "lfo4"
+
+
 def test_fx_chain_edit_only_touches_racks_present(init_data):
     """A rack with zero entries in spec.fx_chain must be left untouched --
     most callers don't know rack 1/2 exist, so an edit that only mentions

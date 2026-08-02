@@ -1030,6 +1030,17 @@ would work for the source IDs; likely candidates from Serum's real source
 picker not yet probed: `Release Velo`, `Active Voices`, `Voice Index`,
 `Voice Mod 1`/`2`.
 
+**Update — every destination gap in this specific paragraph is now closed**
+(this paragraph is kept as-written for its historical count, not updated
+in place): `Arp` params, `NoiseOsc.kParamColor`, `FXEQ.kParamFreq2`,
+`FXUtils.kParamWidth`/`kParamLPF`, `VoicePanel.kParamGlobalScalingEnvTime`,
+and `VoiceFilter.kParamWet` are all in `MOD_DEST_TARGETS`/
+`FX_EXTRA_MOD_DEST_PARAMS` now (see item 1b below for the closure
+timeline). Source id `57` (`voice_mod2`) was also resolved 2026-07-30 (see
+item 12) — only `24` and `40` remain genuinely unresolved source IDs, and
+only a live-UI probe (not this doc's static/corpus techniques) can close
+those.
+
 None of the first two gaps caused incorrect/crashing output (both silently
 under-report, they don't corrupt anything) — but together, plus the filter
 and warp-lane fixes, they meant a "faithful" recreation built from
@@ -1104,9 +1115,28 @@ improve generation quality if resolved:
    filter1.var`). `VoiceFilter.kParamX`/`kParamY` also appeared as real mod
    destinations but with only 4/1 samples respectively, and aren't even
    modeled as static `FilterSpec` fields yet — left out, not enough
-   evidence. `NoiseOsc.kParamInitialPhase`/`kParamRandomPhase`/`kParamFine`
-   also appeared (7/1/3 samples) but are lower-value/rarer — not added this
-   round.
+   evidence.
+
+   **Closed further 2026-08-01** via a bigger, 876-preset corpus survey
+   (Factory + every third-party bank installed on this machine, not just
+   the original 626 — this project has since accumulated several more
+   banks). `VoiceFilter.kParamX`/`kParamY` stayed at essentially the same
+   4/1 samples even with ~40% more presets scanned — genuinely rare in
+   real content, not previously under-sampled, still left unwired.
+   Everything else with real, undiminished evidence got wired up:
+   `NoiseOsc.kParamInitialPhase`/`kParamFine` (7/6 samples,
+   `oscillator3.noise_initial_phase`/`noise_fine` — `kParamRandomPhase`
+   stayed at 1 sample, still not enough), `Arp.kParamChance`/`kParamOffset`/
+   `kParamTransposeRange` (7/7/6 samples, `arp.chance`/`arp.offset`/
+   `arp.transpose_range` — `kParamWrapPhantomNote`/`kParamRetrigRate`/
+   `kParamVeloTarget` stayed at 1-2 samples each, not added),
+   `FXUtils.kParamWidth`/`kParamHPF`/`kParamLPF`/`kParamLFXover` (~50/~30/
+   ~40/3 samples, `fx{i}.width`/`hpf`/`lpf`/`lf_xover` via
+   `FX_EXTRA_MOD_DEST_PARAMS`), and `FXEQ.kParamFreq2` (~60 samples,
+   `fx{i}.freq2`, same mechanism). All destModuleParamID values directly
+   observed from real files, not guessed. Verified round-trip with a
+   dedicated regression test
+   (`test_new_mod_destinations_2026_08_01_survey_round_trip`).
 2. **Filter cutoff Hz curve** (§4, Filters) — **calibrated 2026-07-31** via the
    [[reference-serum-verify-audio-pipeline]] (a full sweep, not one point):
    a `lowpass_24` filter fed White noise (full-spectrum, no self-bias) at

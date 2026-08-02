@@ -2120,6 +2120,16 @@ for _i in range(8):
 # destModuleParamID confirmed via the same 626-preset survey: kParamColor ->
 # 0 (53 samples). Closes part of item 1b's "NoiseOsc.kParamColor" gap.
 MOD_DEST_TARGETS["oscillator3.noise_color"] = ModDestDef("NoiseOsc", 3, "kParamColor", 0)
+# Closes the rest of NoiseOsc's item 1b gap -- confirmed 2026-08-01 via an
+# 876-preset corpus survey (Factory + every third-party bank on this
+# machine, not just the original 626): kParamInitialPhase (7 samples) and
+# kParamFine (6 samples) at destModuleParamID 2/1 respectively, same
+# fixed destModuleID=3 singleton as kParamColor above. kParamRandomPhase
+# (1 sample) stays unwired -- too little evidence.
+MOD_DEST_TARGETS["oscillator3.noise_initial_phase"] = ModDestDef(
+    "NoiseOsc", 3, "kParamInitialPhase", 2
+)
+MOD_DEST_TARGETS["oscillator3.noise_fine"] = ModDestDef("NoiseOsc", 3, "kParamFine", 1)
 del _i
 # `Global` is a singleton (destModuleID always 0), unlike everything above
 # which is per-slot. Confirmed live 2026-07-29 against TWO independent real
@@ -2134,6 +2144,14 @@ MOD_DEST_TARGETS["global.voice_amp"] = ModDestDef("Global", 0, "kParamVoiceAmp",
 # "Arp params"/"VoicePanel.kParamGlobalScalingEnvTime" gaps.
 MOD_DEST_TARGETS["arp.gate"] = ModDestDef("Arp", 0, "kParamGate", 6)
 MOD_DEST_TARGETS["arp.rate"] = ModDestDef("Arp", 0, "kParamRate", 1)
+# Closes 3 more of Galaxy's "still open" Arp routes -- confirmed 2026-08-01
+# via the same 876-preset survey: kParamChance (7 samples), kParamOffset
+# (7), kParamTransposeRange (6), all destModuleID 0 (Arp's own singleton).
+# kParamWrapPhantomNote/kParamRetrigRate/kParamVeloTarget (1-2 samples
+# each) stay unwired -- too little evidence yet.
+MOD_DEST_TARGETS["arp.chance"] = ModDestDef("Arp", 0, "kParamChance", 7)
+MOD_DEST_TARGETS["arp.offset"] = ModDestDef("Arp", 0, "kParamOffset", 4)
+MOD_DEST_TARGETS["arp.transpose_range"] = ModDestDef("Arp", 0, "kParamTransposeRange", 3)
 MOD_DEST_TARGETS["global.voice_scaling_env_time"] = ModDestDef(
     "VoicePanel", 0, "kParamGlobalScalingEnvTime", 58
 )
@@ -2158,6 +2176,23 @@ FX_EXTRA_MOD_DEST_PARAMS: dict[str, dict[str, tuple[str, int]]] = {
         # ModSlot0/2 (lfo0 -> FXUtils.kParamLevelOut, macro0 ->
         # FXUtils.kParamLevelOut).
         "level_out": ("kParamLevelOut", 2),
+        # Closes the rest of item 1b's "FXUtils.kParamWidth/kParamLPF" gap
+        # (plus HPF/LFXover, found alongside them) -- confirmed 2026-08-01
+        # via an 876-preset corpus survey (Factory + every third-party bank
+        # on this machine): kParamWidth (~50 samples across many
+        # destModuleIDs), kParamLPF (~40), kParamHPF (~30), kParamLFXover
+        # (3, rarer but still directly observed, same evidentiary bar as
+        # kParamBalance's original single confirmation above).
+        "width": ("kParamWidth", 3),
+        "hpf": ("kParamHPF", 7),
+        "lpf": ("kParamLPF", 8),
+        "lf_xover": ("kParamLFXover", 6),
+    },
+    "FXEQ": {
+        # Closes item 1b's "FXEQ.kParamFreq2" gap -- confirmed 2026-08-01,
+        # same 876-preset survey (~60 samples across many destModuleIDs,
+        # destModuleParamID consistently 2).
+        "freq2": ("kParamFreq2", 2),
     },
 }
 
