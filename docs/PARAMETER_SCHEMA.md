@@ -1845,11 +1845,31 @@ patterns) and resolved an ambiguity clustering had left genuinely unsettled
 | Voice Mod 1 (Serum UI: `Note > Voice Mod 1`) | `56` | Direct UI probe, `confirmed`, round 3. |
 | Voice Mod 2 (Serum UI: `Note > Voice Mod 2`) | `57` | Direct UI probe, `confirmed`, round 3. Resolves one of the two remaining Galaxy-recreation unknowns (`24`, `40`, `57` — see item 6 in the Galaxy investigation below); `24` and `40` remain open. |
 | Voice Index (Serum UI: `Note > Voice Index`) | `58` | Direct UI probe, `confirmed`, round 3. |
+| Noise OSC (self-mod, Serum UI: `Oscillators > Noise OSC`) | `20` | Direct UI probe, `confirmed`, round 4 (2026-08-01). Resolves one of the original `20`/`23` cluster gaps. NOT contiguous with the other self-mod oscillator sources (`49-52` below) despite being the same category in the UI. |
+| NoteOn Alt. (Serum UI: `Note > NoteOn Alt.`) | `23` | Direct UI probe, `confirmed`, round 4. Resolves the other `20`/`23` cluster gap. |
+| NoteOn Alt.2 (Serum UI: `Note > NoteOn Alt.2`) | `24` | Direct UI probe, `confirmed`, round 4. Resolves one of the two remaining Galaxy-recreation unknowns (`24`, `40`, `57`); only `40` remains open now. |
+| Expr X / Pan (Serum UI: `Note Expression > Expr X (Pan)`) | `34` | Direct UI probe, `confirmed`, round 4. MPE-style per-note expression; contiguous right after Pitch Bend (`33`). |
+| Expr Y / Timbre (Serum UI: `Note Expression > Expr Y (Timbre)`) | `35` | Direct UI probe, `confirmed`, round 4. |
+| Expr Z / Press. (Serum UI: `Note Expression > Expr Z (Press.)`) | `36` | Direct UI probe, `confirmed`, round 4. |
+| OSC A (self-mod, Serum UI: `Oscillators > OSC A`) | `49` | Direct UI probe, `confirmed`, round 4. First of a clean contiguous 6-block spanning the 3 melodic oscillators, Sub, and both filters — see the next 5 rows. |
+| OSC B (self-mod) | `50` | Direct UI probe, `confirmed`, round 4. |
+| OSC C (self-mod) | `51` | Direct UI probe, `confirmed`, round 4. |
+| SUB OSC (self-mod) | `52` | Direct UI probe, `confirmed`, round 4. |
+| Filter 1 (self-mod, Serum UI: `Filters > Filter 1`) | `53` | Direct UI probe, `confirmed`, round 4. Serum's own UI numbers filters 1-indexed here, unlike this project's 0-indexed `filter0`/`filter1` destination convention — `schema.MOD_SOURCE_IDS` keeps the 0-indexed convention for API consistency (`"filter0": 53`), see the table's source code comment. |
+| Filter 2 (self-mod) | `54` | Direct UI probe, `confirmed`, round 4 (`"filter1": 54`). |
 
-Note: `20`, `23`, `24`, `40` (within/near the probed `16-24` cluster and the
-Galaxy investigation's 3 unknowns) remain unidentified. Round 3's 5 new IDs
-(`37`, `55-58`) are NOT contiguous with each other or with `20`/`23` — don't
-assume adjacency within this range without probing.
+Round 4 (2026-08-01) resolved 12 new source names in one probe file, found
+by having the user screenshot every submenu of Serum 2's own MATRIX-tab
+source picker rather than guessing which names might still be unprobed —
+turned up 3 entire categories (`Oscillators`, `Filters`, `Note Expression`)
+this project had never even seen the contents of before, previously only
+referenced abstractly as "out of original scope" in this doc. **After this
+round, every single named entry in the picker (49 across every submenu) has
+a resolved id — none of them is `40`.** That makes `40` very unlikely to be
+reachable via the standard UI at all; see the note in `schema.py` right
+after `MOD_SOURCE_IDS`'s definition for the reasoning and a suggested
+alternate approach (work backwards from a real preset that uses it, the way
+`38`/"Fixed" was originally noticed, rather than more picker probing).
 
 All of the above are wired into `serum-mcp`, which generates and reads back
 routes for them (see `schema.MOD_SOURCE_IDS`, `generation/spec.py::ModRouteSpec`).
@@ -1860,17 +1880,19 @@ actually three independent sources), plus all 5 of the "Note"-category
 sources this project had only ever seen in the picker without a name-to-ID
 mapping.
 
-**Still genuinely unresolved**: `subIndex` (`source[1]`, see below), source
-ids `20`/`23` (within the originally-probed `16-24` cluster), `24`/`40`
-(the 2 remaining Galaxy-recreation unknowns), and `38` (`UN_PLACES_BA_Beyond`'s
-3 unreproduced routes — see the Dreams/Beyond investigation write-up below).
-`38` is NOT immediately adjacent to `Release Velo` (`37`) in the picker —
-probed the very next item in that list, which turned out to be plain `Velo`
-(id `16`, already-confirmed Velocity appearing a second time in the Note
-category), not a new source, so `38` isn't just "the next one down" and
-needs its own targeted probe rather than more positional guessing. The
-direct-probe method itself is proven fast and reusable (round 3 resolved 5
-IDs in one sitting from a single probe file).
+**Still genuinely unresolved, as of round 4 (2026-08-01)**: only `subIndex`
+(`source[1]`, see below) and source id `40` (one of the 3 original
+Galaxy-recreation unknowns — `24` and `57` are now both resolved). `38` was
+resolved separately as "Fixed" (item 14) — not adjacent to `Release Velo`
+(`37`) in the picker, the very next item down turned out to be plain `Velo`
+(id `16`, Velocity appearing a second time in the Note category), so it
+needed its own targeted probe rather than positional guessing, same lesson
+that motivated round 4's screenshot-every-submenu approach instead of more
+guessing. `40` is the one id that survived even a full picker sweep — see
+the note above the source table for why it's now suspected unreachable via
+the UI at all. The direct-probe method itself is proven fast and reusable
+across 4 rounds now (round 4 alone resolved 12 IDs in one sitting from a
+single probe file, after the user provided a screenshot of every submenu).
 
 **Method, for resolving what's left**: open Serum 2 on any preset, go to
 the MATRIX tab, pick an unresolved source from the `Source` column dropdown

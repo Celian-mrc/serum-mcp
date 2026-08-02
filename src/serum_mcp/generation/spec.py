@@ -719,7 +719,23 @@ class ModRouteSpec(BaseModel):
     MATRIX-tab name for a CONSTANT modulation offset -- ``amount`` alone,
     with no time-varying signal at all, useful for a permanent bias on a
     destination (e.g. a fixed pitch/tuning offset) without dedicating an LFO
-    or macro to it. A few more sources exist in Serum but aren't decoded --
+    or macro to it.
+
+    Resolved 2026-08-01, closing nearly the entire remaining source list:
+    ``note_on_alt``/``note_on_alt2`` (Note category, meaning unconfirmed
+    beyond the UI name, same caveat as ``voice_mod1``/``2``);
+    ``expr_pan``/``expr_timbre``/``expr_press`` (MPE-style per-note note
+    expression -- ``mod_wheel``/``aftertouch``-style continuous control,
+    only meaningful with an MPE-capable controller/DAW routing); and 7
+    SELF-MODULATION sources -- ``oscillator0``..``oscillator4`` (that
+    oscillator SLOT's own audio-rate output, same 0-indexed convention as
+    the destination side: 0/1/2/3/4 = Osc A/B/C/Noise/Sub) and
+    ``filter0``/``filter1`` (that filter's own audio-rate output) -- a
+    module using its own signal to modulate something else, distinct from
+    routing something INTO that module. Live audible behavior of the
+    self-modulation and note-expression sources not yet independently
+    tested, same "IDs confirmed, behavior not" caveat as the Note-category
+    sources above. One source id (``40``) remains genuinely unresolved --
     see docs/PARAMETER_SCHEMA.md §6.
 
     ``aux_source``/``aux_inverted`` expose Serum's general "Aux"/"Via"
@@ -754,7 +770,10 @@ class ModRouteSpec(BaseModel):
             "'pitch_bend', 'key_track', 'aftertouch', 'poly_aftertouch', "
             "'env0'..'env3', 'random1', 'random2', 'random_discrete', "
             "'release_velo', 'active_voices', 'voice_index', 'voice_mod1', "
-            "'voice_mod2', or 'fixed' (a constant offset, see class docstring)"
+            "'voice_mod2', 'fixed' (a constant offset, see class docstring), "
+            "'note_on_alt', 'note_on_alt2', 'expr_pan', 'expr_timbre', "
+            "'expr_press', 'oscillator0'..'oscillator4', or 'filter0'/'filter1' "
+            "(self-modulation sources, see class docstring)"
         )
     )
     destination: str = Field(description="e.g. 'filter0.cutoff', 'oscillator0.pitch', 'env0.decay'")

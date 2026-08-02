@@ -319,6 +319,66 @@ def test_mod_route_2026_07_29_note_family_probe_sources_round_trip(init_data):
     assert sources[26.0] == "voice_mod2"
 
 
+def test_mod_route_2026_08_01_round4_probe_sources_round_trip(init_data):
+    """note_on_alt/note_on_alt2/expr_pan/expr_timbre/expr_press/
+    oscillator0-4 (self-mod)/filter0-1 (self-mod) -- 12 source names found by
+    screenshotting every submenu of Serum 2's own MATRIX-tab source picker
+    (round 4, 2026-08-01), closing essentially the entire remaining source-id
+    gap in one probe file (only id 40 stays unresolved -- see
+    docs/PARAMETER_SCHEMA.md §6)."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[
+            ModRouteSpec(source="note_on_alt", destination="filter0.cutoff", amount=1.0),
+            ModRouteSpec(source="note_on_alt2", destination="filter0.cutoff", amount=2.0),
+            ModRouteSpec(source="oscillator3", destination="filter0.cutoff", amount=3.0),  # Noise OSC
+            ModRouteSpec(source="oscillator0", destination="filter0.cutoff", amount=4.0),  # OSC A
+            ModRouteSpec(source="oscillator1", destination="filter0.cutoff", amount=5.0),  # OSC B
+            ModRouteSpec(source="oscillator2", destination="filter0.cutoff", amount=6.0),  # OSC C
+            ModRouteSpec(source="oscillator4", destination="filter0.cutoff", amount=7.0),  # SUB OSC
+            ModRouteSpec(source="filter0", destination="filter1.cutoff", amount=8.0),  # Filter 1
+            ModRouteSpec(source="filter1", destination="filter0.cutoff", amount=9.0),  # Filter 2
+            ModRouteSpec(source="expr_pan", destination="filter0.cutoff", amount=10.0),
+            ModRouteSpec(source="expr_timbre", destination="filter0.cutoff", amount=11.0),
+            ModRouteSpec(source="expr_press", destination="filter0.cutoff", amount=12.0),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    expected_ids = {
+        "ModSlot0": 23,  # note_on_alt
+        "ModSlot1": 24,  # note_on_alt2
+        "ModSlot2": 20,  # oscillator3 (Noise OSC)
+        "ModSlot3": 49,  # oscillator0 (OSC A)
+        "ModSlot4": 50,  # oscillator1 (OSC B)
+        "ModSlot5": 51,  # oscillator2 (OSC C)
+        "ModSlot6": 52,  # oscillator4 (SUB OSC)
+        "ModSlot7": 53,  # filter0 (Filter 1)
+        "ModSlot8": 54,  # filter1 (Filter 2)
+        "ModSlot9": 34,  # expr_pan
+        "ModSlot10": 35,  # expr_timbre
+        "ModSlot11": 36,  # expr_press
+    }
+    for slot, source_id in expected_ids.items():
+        assert data[slot]["source"] == [source_id, 0]
+
+    extracted = extract_spec(data)
+    sources = {r.amount: r.source for r in extracted.mod_routes}
+    assert sources[1.0] == "note_on_alt"
+    assert sources[2.0] == "note_on_alt2"
+    assert sources[3.0] == "oscillator3"
+    assert sources[4.0] == "oscillator0"
+    assert sources[5.0] == "oscillator1"
+    assert sources[6.0] == "oscillator2"
+    assert sources[7.0] == "oscillator4"
+    assert sources[8.0] == "filter0"
+    assert sources[9.0] == "filter1"
+    assert sources[10.0] == "expr_pan"
+    assert sources[11.0] == "expr_timbre"
+    assert sources[12.0] == "expr_press"
+
+
 def test_mod_route_fixed_source_round_trip(init_data):
     """'fixed' -- Serum's own MATRIX-tab name for source id 38, decoded in
     depth 2026-07-30 (see docs/PARAMETER_SCHEMA.md item 14). A constant

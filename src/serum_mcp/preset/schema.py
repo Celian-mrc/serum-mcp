@@ -2049,7 +2049,51 @@ MOD_SOURCE_IDS: dict[str, int] = {
     # with ANY primary source, drawn from this exact same MOD_SOURCE_IDS
     # space (see ModRouteSpec.aux_source and mapping._build_modslot_entry).
     "fixed": 38,
+    # Resolved 2026-08-01 via the direct-UI-probe method (user screenshotted
+    # every source-picker submenu, then built one 12-row probe file covering
+    # every name this project had never seen before -- see
+    # docs/PARAMETER_SCHEMA.md §6). This closes essentially the entire
+    # remaining source-id gap in one sitting; only id 40 (one of Galaxy's 3
+    # original unknowns) is still unaccounted for despite every name in the
+    # picker now being identified -- see the note below.
+    "note_on_alt": 23,  # Serum UI: "NoteOn Alt." (Note category)
+    "note_on_alt2": 24,  # Serum UI: "NoteOn Alt.2" (Note category) -- one of
+    # Galaxy's original 3 unknown source ids (24, 40, 57; 57 resolved
+    # earlier as voice_mod2, only 40 remains open).
+    "expr_pan": 34,  # Serum UI: "Expr X (Pan)" -- MPE-style note expression,
+    # contiguous right after pitch_bend (33).
+    "expr_timbre": 35,  # Serum UI: "Expr Y (Timbre)"
+    "expr_press": 36,  # Serum UI: "Expr Z (Press.)"
+    # Self-modulation sources -- a module's own audio-rate output used to
+    # modulate something else (distinct from routing something INTO that
+    # module). Named with the SAME 0-indexed convention as this project's
+    # destination side (oscillator{i}.*, filter{i}.*) for consistency, even
+    # though Serum's own UI labels them 1-indexed ("OSC A"/"Filter 1").
+    "oscillator0": 49,  # Serum UI: "OSC A"
+    "oscillator1": 50,  # Serum UI: "OSC B"
+    "oscillator2": 51,  # Serum UI: "OSC C"
+    "oscillator4": 52,  # Serum UI: "SUB OSC" -- note oscillator3 (Noise) is
+    # NOT part of this contiguous 49-52 block, see "oscillator3" below --
+    # a genuine gap in Serum's own id assignment, not a probing error
+    # (independently re-confirmed by row order in the probe file).
+    "oscillator3": 20,  # Serum UI: "Noise OSC" -- resolves one of the
+    # original "20/23" cluster gaps from the first probe rounds.
+    "filter0": 53,  # Serum UI: "Filter 1"
+    "filter1": 54,  # Serum UI: "Filter 2"
 }
+# `20` and `40` (from the *original* Galaxy-recreation gap list) deserve a
+# closing note: `20` is now resolved above (`oscillator3`/"Noise OSC"). `40`
+# is NOT -- and after this probe, every single named entry in Serum 2's own
+# MATRIX-tab source picker (all 49 of them, across every submenu) has a
+# resolved id, none of which is 40. That makes `40` very unlikely to be
+# reachable via the standard UI at all -- plausibly a legacy/vestigial id
+# from an earlier Serum version's source list, or something gated behind a
+# state this project hasn't triggered (a specific engine/module combination
+# where the picker briefly shows an extra option). Further UI probing of the
+# picker itself is unlikely to resolve it; if it matters again, the more
+# promising angle is finding a REAL preset that uses it and working
+# backwards from context (mod-route amount curve, what it's paired with),
+# the same way `38` ("Fixed") was originally noticed.
 
 
 @dataclass(frozen=True)
