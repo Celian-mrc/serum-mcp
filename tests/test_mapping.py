@@ -1162,6 +1162,37 @@ def test_lfo_default_rate_and_beat_sync_omitted_not_written_explicitly(init_data
 
     extracted = extract_spec(data)
     assert extracted.lfos[0].rate == 0.0
+    # None (genuinely absent), not False -- LfoSpec.beat_sync is a 3-state
+    # bool | None; False now means "explicitly free-Hz", distinct from
+    # "untouched" (None). See LfoSpec.beat_sync's docstring for the
+    # 2026-08-01 fix (a plain bool here made free-Hz mode unreachable).
+    assert extracted.lfos[0].beat_sync is None
+
+
+def test_lfo_beat_sync_false_writes_explicitly_for_real_free_hz_mode(init_data):
+    """The 2026-08-01 fix: beat_sync=False (explicit) must actually WRITE
+    kParamBeatSync=False, not get silently omitted like the untouched
+    (None) case above -- otherwise free-Hz mode is unreachable through
+    PresetSpec at all. Found live: a user manually turning a calibration
+    preset's RATE knob saw it read 'BPM'/a note fraction instead of Hz,
+    even though the spec had passed beat_sync=False -- because it was a
+    plain bool defaulting to False, indistinguishable from 'not set'."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        lfos=[LfoSpec(rate=20.0, mode="Free", beat_sync=False)],
+    )
+    data = apply_spec(init_data, spec)
+
+    fp = data["LFO0"]["plainParams"]
+    # validate_params normalizes bool-kind params to CBOR-safe 0.0/1.0
+    # floats in place -- same convention as every other bool param here
+    # (e.g. kParamMono/kParamDotted elsewhere in this file), not special to
+    # beat_sync.
+    assert fp["kParamBeatSync"] == 0.0
+    assert fp["kParamRate"] == 20.0
+
+    extracted = extract_spec(data)
     assert extracted.lfos[0].beat_sync is False
 
 

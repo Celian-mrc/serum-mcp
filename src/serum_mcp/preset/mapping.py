@@ -149,7 +149,14 @@ _LFO_KEYS = {
 # project's own generated LFOs commonly set it to a real non-default value.
 _LFO_KEYS_OMIT_AT_DEFAULT = {
     "kParamRate": 0.0,
-    "kParamBeatSync": False,
+    # kParamBeatSync deliberately NOT here -- LfoSpec.beat_sync is a 3-state
+    # `bool | None` (None = omit, True/False = write explicitly) handled as
+    # a special case in the write loop below, not the generic
+    # value-equals-default comparison every other key here uses. A plain
+    # bool couldn't distinguish "explicitly want free-Hz mode" (False) from
+    # "didn't touch this" (also False, the natural Pydantic default) --
+    # real bug, made explicit free-Hz mode unreachable, fixed 2026-08-01.
+    # See LfoSpec.beat_sync's docstring for the full story.
     "kParamDelay": 0.0,
     "kParamRise": 0.0,
     "kParamMono": False,
@@ -1066,7 +1073,15 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
 
     for i, lfo in enumerate(spec.lfos):
         lfo_params = _plain_params(data, f"LFO{i}")
+        if lfo.beat_sync is not None:
+            lfo_params["kParamBeatSync"] = lfo.beat_sync
+        # else: leave whatever's already there untouched (e.g. an
+        # edit_preset call against an existing preset that already had this
+        # set) -- same "don't write, don't delete" convention every other
+        # omitted _LFO_KEYS entry follows via the `continue` below.
         for spec_key, param_key in _LFO_KEYS.items():
+            if spec_key == "beat_sync":
+                continue  # handled above -- 3-state, not a plain omit-at-default key
             value = getattr(lfo, spec_key)
             if param_key in _LFO_KEYS_OMIT_AT_DEFAULT and value == _LFO_KEYS_OMIT_AT_DEFAULT[param_key]:
                 # Same presence-forces-the-DSP-stage pattern as the

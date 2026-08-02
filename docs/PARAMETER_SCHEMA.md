@@ -1601,44 +1601,70 @@ improve generation quality if resolved:
    voice count ceiling, LFO/Chorus/Delay times where only normalized values
    were observed without a confirmed Hz/ms curve) — these are *observed*
    ranges from the sample, which may not be the true engine-enforced bounds.
-   6a. **`LFO_PARAMS['kParamRate']`'s FREE (non-beat-synced) Hz curve — partially
-   calibrated 2026-07-31 via the audio-rendering pipeline, but with a real,
-   unresolved anomaly at the high end.** Method: a single `LfoSpec(rate=X,
-   mode='Free', beat_sync=False)` routed `lfo0 -> filter0.cutoff`, rendered,
-   and measured via a new reusable helper,
-   `analyze_preset.detect_modulation_rate_hz` (FFT of the frame-wise
-   spectral centroid time series, restricted to a plausible LFO band) —
-   the general-purpose sibling of the chirp technique for "how fast does
-   this cycle" questions where the source isn't a synthetic chirp.
-   - **Confirmed, clean, reproducible (raw 2-30)**: 0.50/1.00/4.00/8.00/16.0
-     Hz at raw 2/5/10/20/30 — consistent with `Hz = 2^(raw/10 + 1)` across
-     two independent mod-amounts (90 and 15, ruling out cutoff-clipping
-     distortion as the driver) and multiple analysis window sizes.
-   - **Bonus cross-validation**: `rate=0.0` (this field's own schema
-     default, which `mapping.py` omits from `plainParams` entirely per
-     `_LFO_KEYS_OMIT_AT_DEFAULT`) measured 2.00 Hz — exactly a 120 BPM
-     quarter note (60/120 = 0.5s period), confirming from the AUDIO side
-     (not just live-UI-probing, the original method) that Serum's genuine
-     absent-state LFO default really is `'1/4'` BPM-synced, not silence/0Hz.
-   - **Genuinely unresolved, and don't re-attempt without new information**:
-     raw 38-45 all measured the identical 32.0 Hz (not a continued
-     doubling), and raw 55-100 all measured the identical ~5.67 Hz — LOWER
-     than the 38-45 plateau, i.e. non-monotonic. Reproduced bit-for-bit
-     across isolated single renders vs. batch renders, both tested
-     mod-amounts, and analysis windows down to `hop_length=64`/`fmax=300Hz`
-     (ruling out an obvious search-band-too-narrow or filter-clipping
-     explanation). Two live hypotheses, not disambiguated: a genuinely
-     stepped/quantized or non-monotonic region of Serum's real Free-rate
-     curve (some synths reuse the top of a rate knob's range for
-     ultra-slow "sync to song length" rates, which could plausibly look
-     like this), vs. a render/measurement-pipeline artifact specific to
-     fast control-rate modulation that this project's render/analysis
-     stack can't currently distinguish from the real thing. Needs a live
-     Serum GUI cross-check (turn RATE past ~40% while watching the
-     filter's own cutoff meter or listening) to resolve — not wired into
-     `LfoSpec.rate` as a conversion (still raw passthrough), and the raw
-     value stays documented as "choose by feel," not by a target Hz, for
-     anything above ~35.
+   6a. **`LFO_PARAMS['kParamRate']`'s FREE (non-beat-synced) Hz curve —
+   RETRACTED then correctly recalibrated 2026-08-01.** Original 2026-07-31
+   attempt: a single `LfoSpec(rate=X, mode='Free', beat_sync=False)` routed
+   `lfo0 -> filter0.cutoff`, rendered, and measured via a new reusable
+   helper, `analyze_preset.detect_modulation_rate_hz` (FFT of the
+   frame-wise spectral centroid time series) — the general-purpose sibling
+   of the chirp technique for "how fast does this cycle" questions where
+   the source isn't a synthetic chirp. That attempt reported a clean
+   `Hz = 2^(raw/10 + 1)` curve for raw 2-30 plus a "genuinely unresolved"
+   anomaly above raw~35 — **both wrong, or at least half-wrong, and traced
+   to a real product bug, not a Serum quirk.**
+
+   **The bug**: `LfoSpec.beat_sync` was a plain `bool` defaulting to
+   `False` — mapping.py's omit-at-default logic (see the "presence forces
+   the DSP stage" pattern elsewhere in this doc) then treated any
+   `beat_sync=False` spec as "untouched" and omitted `kParamBeatSync`
+   entirely, silently falling back to Serum's real absent-state default
+   (BPM-SYNCED, not free-Hz). Every preset in the original calibration
+   sweep was therefore measured in the wrong mode — the whole "curve" was
+   an artifact of note-value-quantized BPM-sync behavior misread as a Hz
+   curve, not the real free-Hz mapping at all.
+
+   **Found by the user, not by automated testing** — a live-testing request
+   asked them to manually turn a calibration preset's RATE knob in Serum
+   while watching the filter's cutoff, and they immediately noticed the
+   knob's own display read `"BPM"` mode with a note fraction (`"1/16"`)
+   instead of Hz. The automated audio-only pipeline could never have caught
+   this on its own (it only ever inspects the rendered waveform, never the
+   preset's own loaded UI state) — this is exactly the class of bug
+   `[[feedback-serum-mcp-validate-in-real-serum]]` exists to catch, and a
+   second confirmation that audio-pipeline automation and live-Serum
+   testing are complementary, not substitutes for each other.
+
+   **Real fix** (not just a doc correction): `LfoSpec.beat_sync` is now a
+   3-state `bool | None` — `None` (default) omits the key, matching
+   Serum's real absent-default (BPM-synced); `True`/`False` now WRITE
+   explicitly, making free-Hz mode reachable through `PresetSpec` for the
+   first time. This was a real, generally-impactful bug: ANY previously
+   generated preset that intended `beat_sync=False` (free-running Hz LFO)
+   silently got a tempo-synced LFO instead, not just this calibration
+   experiment.
+
+   **Recalibrated with the fix in place, genuine free-Hz mode confirmed
+   this time**: raw 2/5/10/20/30 measured 2.0/5.0/10.0/20.0/30.0 Hz — an
+   EXACT 1:1 match. **`raw kParamRate IS literal Hz` in free mode, no curve
+   at all** — trust this for raw <= ~30, a much simpler and more useful
+   result than the retracted "curve." `rate=0.0` (which still separately
+   omits `kParamRate` itself — a correct, unrelated omission) measured
+   6.25Hz, presumably Serum's own genuine free-mode rate default; not
+   independently confirmed.
+
+   **The high-range anomaly is CONFIRMED REAL, independent of the
+   beat_sync bug** (this re-run used the fixed code and still hit it): raw
+   40/60/80 all measured the identical 21.6Hz (a different specific value
+   than the original buggy run's 32.0Hz, as expected since the underlying
+   data was completely different this time), while 50/70/90/100 gave
+   inconsistent, non-monotonic values (11.6/18.4/8.4/23.2Hz). Genuinely
+   undetermined whether this is real Serum behavior above a certain rate,
+   or a render/measurement-pipeline artifact specific to fast control-rate
+   modulation — needs a live Serum GUI cross-check (turn RATE past ~35-40%
+   while watching the filter's own cutoff meter or listening) to resolve.
+   Not wired into `LfoSpec.rate` as a conversion beyond documenting the
+   confirmed raw<=30 range; the raw value stays "don't trust it" for
+   anything above ~35.
 
    6b. **`FX_PARAMS['FXChorus']['kParamRate']` — same technique, same
    ~16.5/32Hz anomaly, now cross-validating item 6a's finding rather than
@@ -1658,14 +1684,16 @@ improve generation quality if resolved:
      signal such as pitch) — added as a documented limitation on the
      helper function itself (see
      [[reference-serum-verify-audio-pipeline]]), not fixed.
-   - **The SAME ~16.5/32Hz plateau as item 6a**, at raw 0.5/1.0, on a
-     completely different module/preset/render setup. This repetition
-     across two unrelated calibration attempts is the strongest evidence
-     yet that it's a shared property of this render/measurement pipeline
-     (or a genuine, shared Serum modulation-rate quirk) rather than
-     something specific to either `kParamRate`'s own curve — treat any
-     `detect_modulation_rate_hz` result landing near 16.5 or 32 Hz for a
-     known-slow target rate as suspect on sight, going forward.
+   - **A ~16.5/32Hz plateau at raw 0.5/1.0** — originally written up as
+     matching item 6a's LFO-rate anomaly and cited as cross-validation that
+     it's a shared pipeline artifact. **That framing no longer holds**:
+     item 6a's original finding was RETRACTED 2026-08-01 (it had been
+     measuring the wrong LFO mode entirely due to an unrelated `beat_sync`
+     bug, not a real anomaly) — so this FXChorus finding is back to being a
+     single, uncorroborated data point, not confirmed by a second source.
+     Still real and reproducible on its own terms (`FXChorus` has no
+     `beat_sync`-equivalent field, so it's unaffected by that bug), just
+     don't cite it as cross-validated with the LFO investigation anymore.
 
 None of these block V1's stated goal (text description → valid, loadable
 `.SerumPreset` covering oscillators/filters/envelopes/macros/core FX) — they

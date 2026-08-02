@@ -534,21 +534,38 @@ class LfoSpec(BaseModel):
         0.0,
         ge=0.0,
         le=100.0,
-        description="normalized rate, not literal Hz -- written as-is (no conversion), "
-        "so still choose it by feel/comparison, not by a target Hz. Partially "
-        "calibrated 2026-07-31 (see schema.LFO_PARAMS['kParamRate'] and "
-        "docs/PARAMETER_SCHEMA.md item 6a): with mode='Free'/beat_sync=False, raw "
-        "2-30 measured a clean, fast-doubling curve from ~0.5Hz to ~16Hz, but raw "
-        "beyond ~35 measured suspicious flat plateaus (a jump to 32Hz then, "
-        "confusingly, DOWN to ~5.7Hz for raw 55-100) not yet explained -- avoid "
-        "raw values above ~35 for anything where the exact perceived speed matters "
-        "until that's resolved; the low range is trustworthy. 0.0 (this field's own "
-        "default) writes nothing at all, landing on Serum's genuine absent-state "
-        "default instead ('1/4' BPM-synced, not 0Hz -- confirmed both by live UI "
-        "probing and, now, by audio measurement).",
+        description="With mode='Free' and beat_sync=False (both required for this to "
+        "mean anything -- see beat_sync's own docstring for a real bug this project "
+        "shipped where free-Hz mode was silently unreachable, fixed 2026-08-01), this "
+        "IS literal Hz -- confirmed via audio-rendering calibration, exact 1:1 match at "
+        "raw 2/5/10/20/30 -> 2.0/5.0/10.0/20.0/30.0 Hz. Trust this for raw <= ~30. "
+        "Above raw~35-40, real Serum behavior gets genuinely erratic/non-monotonic "
+        "(confirmed on the FIXED code, not just the old buggy measurement) -- avoid "
+        "raw values above ~35 for anything where the exact perceived speed matters, "
+        "see schema.LFO_PARAMS['kParamRate'] and docs/PARAMETER_SCHEMA.md item 6a for "
+        "the full retraction/recalibration writeup. 0.0 (this field's own default) "
+        "writes nothing at all UNLESS beat_sync is also explicitly set -- see that "
+        "field's docstring -- landing on Serum's genuine absent-state default instead "
+        "('1/4' BPM-synced, not 0Hz).",
     )
     mode: str = Field("Free", description="'Free', 'Retrig', or 'Envelope'")
-    beat_sync: bool = Field(False, description="tempo-synced rate instead of free-running Hz")
+    beat_sync: bool | None = Field(
+        None,
+        description="True = tempo-synced rate (BPM note values); False = free-running Hz; "
+        "None (default) = leave unset, which is Serum's own genuine default and is ALSO "
+        "tempo-synced, not Hz -- confirmed both by live UI probing and by audio "
+        "measurement (see LFO_PARAMS['kParamRate'] notes). "
+        "**Real bug, fixed 2026-08-01**: this field used to be a plain `bool` defaulting "
+        "to `False`, which made explicit free-Hz mode UNREACHABLE -- `False` was "
+        "indistinguishable from 'not set' and got silently omitted by mapping.py's "
+        "omit-at-default logic, always falling back to Serum's real (synced) default "
+        "regardless of intent. Found live by a user manually turning a calibration "
+        "preset's RATE knob and noticing it read 'BPM'/a note fraction instead of Hz, "
+        "which invalidated an earlier 'confirmed' free-Hz curve calibration that had "
+        "silently been measuring the BPM-synced curve instead (see PARAMETER_SCHEMA.md "
+        "item 6a's retraction). Pass `beat_sync=False` explicitly now to genuinely get "
+        "free-Hz mode; leave unset (None) for Serum's real tempo-synced default.",
+    )
     delay: float = Field(
         0.0,
         ge=0.0,

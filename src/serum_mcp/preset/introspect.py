@@ -423,7 +423,11 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             LfoSpec(
                 rate=_resolve(pp, "kParamRate", schema.LFO_PARAMS),
                 mode=_resolve(pp, "kParamMode", schema.LFO_PARAMS),
-                beat_sync=bool(_resolve(pp, "kParamBeatSync", schema.LFO_PARAMS)),
+                # None when genuinely absent (Serum's real tempo-synced
+                # default), not schema.LFO_PARAMS's own `default=False` --
+                # matches LfoSpec.beat_sync's 3-state semantics (see its
+                # docstring), fixed 2026-08-01 alongside the write-side bug.
+                beat_sync=(pp.get("kParamBeatSync") if isinstance(pp, dict) else None),
                 delay=_resolve(pp, "kParamDelay", schema.LFO_PARAMS),
                 rise=_resolve(pp, "kParamRise", schema.LFO_PARAMS),
                 smooth=_resolve(pp, "kParamSmooth", schema.LFO_PARAMS),
