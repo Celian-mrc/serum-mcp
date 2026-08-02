@@ -1195,9 +1195,25 @@ VOICE_FILTER_PARAMS: dict[str, ParamDef] = {
         max=1.0,
         unit="normalized cutoff",
         confidence="uncertain",
-        notes="0=fully closed, 1=fully open. VST3 dump gives exactly one calibration "
-        "point: normalized 0.5 ~= 425 Hz at default resonance. The full Hz curve "
-        "(believed log/exponential, ~9 Hz to ~19 kHz) has not been reverse-engineered.",
+        notes="0=fully closed, 1=fully open. Calibrated 2026-07-31 via the audio-"
+        "rendering pipeline (see docs/PARAMETER_SCHEMA.md item 2 and "
+        "reference-serum-verify-audio-pipeline): an 11-point sweep on lowpass_24 "
+        "fed white noise, measuring 85%-energy spectral rolloff, gives 0.05->21.5Hz "
+        "through 1.00->14427.2Hz, roughly log-linear through the middle with some "
+        "flattening at both extremes. Treat as the best current reference table, not "
+        "a closed-form formula (rolloff85 is a proxy for -3dB point, and the "
+        "flattening at the extremes could be a real curve feature or a proxy "
+        "artifact, not disambiguated). Still `uncertain` because this table is "
+        "specific to lowpass_24 -- not independently confirmed for every other "
+        "filter type in the enum above (comb/formant/moog/etc. plausibly use a "
+        "different Freq curve or a different role for this knob entirely). Confirmed "
+        "2026-08-01 via VST3 binary string mining: DistComb1BP/1LP/2BP/2LP's "
+        "'COMBFRQ' UI knob (previously flagged as an unconfirmed possible 5th "
+        "filter param) is THIS param under a type-specific label, not a separate "
+        "one -- the binary's automatable-param enum for VoiceFilter has no "
+        "separate Comb-frequency ID, and 'CombFrq'/'LP Frq'/'HP Frq' sit adjacent "
+        "in the string table as per-type label variants of kParamFreq (the same "
+        "pattern as kParamVar's per-type relabeling below).",
     ),
     "kParamReso": ParamDef(
         "kParamReso",

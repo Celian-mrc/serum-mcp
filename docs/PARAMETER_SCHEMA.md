@@ -1456,6 +1456,22 @@ improve generation quality if resolved:
    5th parameter or a relabeling of an existing one, but a plausible
    secondary contributor, not yet investigated.
 
+   **RESOLVED 2026-08-01, via VST3 binary string mining** (the same
+   technique that decoded `RoutingSlot`/`ModSlot`'s private params): it's a
+   relabeling, not a new parameter. `VoiceFilter`'s full automatable-param
+   enum, found in the binary's own debug strings, is exactly `kParamEnable,
+   kParamWet, kParamType, kParamFreq, kParamReso, kParamDrive, kParamVar,
+   kParamStereo, kParamLevelOut, kParamX, kParamY` — no separate
+   `kParamCombFrq`/similar ID exists. `"CombFrq"` sits directly adjacent to
+   `"LP Frq"`/`"HP Frq"` in the binary's string table (`...kParamWarpVar\0
+   ...BitOr\0CombFrq\0LP Frq\0HP Frq\0seq\0...kParamFreq\0...`) — a set of
+   per-filter-type UI label variants for the SAME `kParamFreq` knob
+   (already modeled as `FilterSpec.cutoff`), the same pattern already
+   documented for `kParamVar` ("Var" knob relabeled per type, e.g. comb
+   spacing/formant blend). No `PresetSpec`/`schema.py` change needed —
+   `cutoff` already covers this; `DistComb1BP`'s "COMBFRQ" IS `cutoff`,
+   just displayed under a filter-type-specific name.
+
    **Update 2026-07-30, the storage FORMAT is now decoded** (the *reading*
    half of this gap; *generating* a new curve from a description is still
    open, see below). Investigating `SpectralOsc`'s own `flex` curve data
