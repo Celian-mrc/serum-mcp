@@ -1750,6 +1750,52 @@ improve generation quality if resolved:
      re-measuring via an asymmetric destination signal (e.g. pitch)
      immune to the harmonic-doubling effect.
 
+   6d. **`FX_PARAMS['FXDelay']['kParamTimeL']`/`['kParamTimeR']` —
+   CONFIRMED literal seconds, but only after finding and fixing a THIRD
+   instance of the exact `beat_sync` bug class first found on the LFO
+   (item 6a).** Method: a sharp transient (fast-attack/near-zero-sustain
+   envelope) through `FXDelay` with `kParamFeedback>0` for repeats,
+   measuring the echo spacing via onset detection — a new, simpler
+   sibling to `detect_modulation_rate_hz` for effects whose "rate" shows
+   up as discrete repeats rather than a continuous cyclic sweep.
+
+   First attempt (kParamTimeL/R set, nothing else) measured a suspicious,
+   unmistakably QUANTIZED pattern rather than a smooth curve: raw
+   0.05/0.1/0.15/0.2/0.25/0.3 measured gaps of ~0.255/~0.5/~1.0/~2.0/~2.0
+   (identical to 0.2!)/~4.0 seconds — doubling at irregular raw intervals,
+   with a flat plateau between 0.2 and 0.25. This pattern (not a smooth
+   curve, doubling instead of scaling proportionally, a plateau where nothing
+   changed at all) was immediately recognizable as the same signature as
+   the LFO's BPM-synced/note-quantized fallback behavior.
+
+   Mining the VST3 binary's own debug strings (same technique that
+   decoded RoutingSlot/ModSlot/COMBFRQ) confirmed it: `FXDelay`'s real
+   automatable-param enum is `kParamEnable, kParamWet, kParamFreq,
+   kParamBW, kParamBeatSync, kParamLink, kParamTimeL, kParamTimeR,
+   kParamMode, kParamFeedback, kParamOffsetL, kParamOffsetR,
+   kParamLevelOut, kParamHQ` — `kParamBeatSync` had never been catalogued
+   in this project's schema at all, so no serum-mcp-generated `FXDelay`
+   has ever set it, meaning every one has silently fallen back to Serum's
+   real (BPM-synced) default instead of the literal seconds
+   `kParamTimeL`/`TimeR`'s `unit="seconds"` label implied — a real,
+   generally-impactful bug, not just a calibration-script mistake, same
+   as item 6a's LFO finding.
+
+   Re-tested with `kParamBeatSync: False` passed explicitly via
+   `FxUnitSpec.params` (validated fine — `_build_fx_entry` already allows
+   unrecognized keys through via `allow_unknown=True`, so this required NO
+   mapping.py code change, only a schema addition): the SAME raw values
+   measured near-exact literal seconds (0.05→0.046, 0.1→0.105, 0.2→0.197,
+   0.3→0.302 — all within onset-detection timing noise of the raw value
+   itself). `kParamBeatSync` is now in `FX_PARAMS['FXDelay']`, confirmed;
+   `FxUnitSpec.params`'s own docstring documents the gotcha directly so a
+   calling model doesn't need to have read this. 6 more real, previously
+   uncatalogued `FXDelay` private params (`kParamMode`, `kParamLink`,
+   `kParamBW`, `kParamOffsetL`/`kParamOffsetR`, `kParamHQ`) turned up in
+   the same binary string mining — added to the schema for round-trip
+   safety, meanings inferred from position/naming only, not independently
+   investigated.
+
 None of these block V1's stated goal (text description → valid, loadable
 `.SerumPreset` covering oscillators/filters/envelopes/macros/core FX) — they
 bound what V1 can *express*, not whether what it writes is valid.

@@ -645,7 +645,19 @@ class MacroSpec(BaseModel):
 class FxUnitSpec(BaseModel):
     type: str = Field(description="one of the FX_TYPE_IDS names, e.g. 'FXReverb'")
     wet: float = Field(50.0, ge=0.0, le=100.0)
-    params: dict[str, float | str] = Field(default_factory=dict)
+    params: dict[str, float | str] = Field(
+        default_factory=dict,
+        description="Type-specific plainParams, e.g. {'kParamRate': 2.0}. Key names and "
+        "ranges: see list_parameters()['fx_params'][type]. GOTCHA for FXDelay "
+        "specifically: kParamTimeL/kParamTimeR only mean literal seconds when "
+        "kParamBeatSync is ALSO passed here as explicit False -- e.g. "
+        "{'kParamTimeL': 0.25, 'kParamTimeR': 0.25, 'kParamBeatSync': False} for a "
+        "250ms delay. Omitting kParamBeatSync falls back to Serum's real (BPM-synced/"
+        "note-quantized) default, silently making kParamTimeL/R NOT mean seconds at all "
+        "-- confirmed live 2026-08-01 (same class of bug as LfoSpec.beat_sync). Bool "
+        "values like this work fine as plain Python True/False despite this field's "
+        "float|str type hint.",
+    )
     rack: int = Field(
         0,
         ge=0,

@@ -1932,6 +1932,36 @@ def test_fxutils_level_out_mod_destination(init_data):
     assert routes["fx0.level_out"] == "lfo0"
 
 
+def test_fxdelay_beat_sync_false_writes_explicitly_for_real_seconds(init_data):
+    """FXDelay.kParamBeatSync -- a real, never-before-catalogued param found
+    2026-08-01 via VST3 binary string mining, same bug class as
+    LfoSpec.beat_sync: kParamTimeL/kParamTimeR's 'unit=seconds' label only
+    holds when kParamBeatSync is explicitly False; every serum-mcp-
+    generated FXDelay before this fix silently omitted it and fell back to
+    Serum's real BPM-synced default instead. Confirmed live via onset-
+    detection echo-timing measurement -- see docs/PARAMETER_SCHEMA.md item
+    6d. No mapping.py change needed (FxUnitSpec.params already allows
+    unrecognized keys through), only the schema.py FX_PARAMS addition this
+    test locks in."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        fx_chain=[
+            FxUnitSpec(
+                type="FXDelay",
+                wet=100.0,
+                params={"kParamTimeL": 0.1, "kParamTimeR": 0.1, "kParamBeatSync": False},
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    fp = data["FXRack0"]["FX"][0]["FXDelay"]["plainParams"]
+    assert fp["kParamTimeL"] == 0.1
+    assert fp["kParamTimeR"] == 0.1
+    assert fp["kParamBeatSync"] == 0.0  # bool-kind normalized to CBOR-safe float
+
+
 def test_oscillator_warp_amount2_mod_destination(init_data):
     """WTOsc.kParamWarp2 (destModuleParamID 3) -- the second warp lane's own
     amount as a mod destination, distinct from warp_amount (ID 0) and

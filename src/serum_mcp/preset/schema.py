@@ -2413,10 +2413,80 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
     },
     "FXDelay": {
         "kParamTimeL": ParamDef(
-            "kParamTimeL", "float", default=0.25, min=0.001, max=0.34, unit="seconds"
+            "kParamTimeL", "float", default=0.25, min=0.001, max=0.34, unit="seconds",
+            confidence="confirmed",
+            notes="CONFIRMED literal seconds 2026-08-01 via the audio-rendering pipeline "
+            "(a sharp transient through the delay, feedback>0 for repeats, measuring the "
+            "echo gap via onset detection) -- but ONLY when kParamBeatSync (see below) is "
+            "explicitly False. Real bug found in the process, same class as "
+            "LFO_PARAMS['kParamRate']'s beat_sync issue: kParamBeatSync was never "
+            "catalogued in this schema at all (found via VST3 binary string mining, same "
+            "technique as the COMBFRQ/RoutingSlot/ModSlot investigations), so no "
+            "serum-mcp-generated FXDelay has ever set it -- meaning every one has been "
+            "silently falling back to Serum's real (BPM-synced/note-quantized) default, "
+            "NOT literal seconds as this label implied. Raw 0.05/0.1/0.2/0.3 measured "
+            "clean note-value-like jumps (~0.255/~0.5/~2.0/~2.0/~4.0s -- doubling at "
+            "irregular raw intervals, unmistakably a quantized/synced pattern, not a "
+            "smooth curve) when kParamBeatSync was left absent; with kParamBeatSync=False "
+            "explicitly written, the SAME raw values measured near-exact literal seconds "
+            "(0.05->0.046, 0.1->0.105, 0.2->0.197, 0.3->0.302, all within onset-detection "
+            "noise of the raw value itself). Pass `kParamBeatSync: False` explicitly in "
+            "FxUnitSpec.params whenever kParamTimeL/R should mean literal seconds.",
         ),
         "kParamTimeR": ParamDef(
-            "kParamTimeR", "float", default=0.25, min=0.001, max=0.32, unit="seconds"
+            "kParamTimeR", "float", default=0.25, min=0.001, max=0.32, unit="seconds",
+            confidence="confirmed", notes="See kParamTimeL -- identical finding/fix.",
+        ),
+        "kParamBeatSync": ParamDef(
+            "kParamBeatSync", "bool", default=False, confidence="confirmed",
+            notes="Never catalogued before 2026-08-01 (found via VST3 binary string "
+            "mining while investigating why kParamTimeL/R's calibration looked "
+            "note-quantized instead of linear) -- see kParamTimeL's notes for the full "
+            "story. Presumed genuine absent-state default is BPM-synced (True-like), "
+            "mirroring LFO_PARAMS['kParamRate']'s own beat_sync default, but NOT "
+            "independently confirmed via the omit-vs-explicit-True comparison that "
+            "nailed that down for the LFO case -- only confirmed that explicit False "
+            "unlocks literal-seconds kParamTimeL/R. Not yet exposed as a dedicated "
+            "OscillatorSpec-style field -- pass `kParamBeatSync: False` directly via "
+            "FxUnitSpec.params (validated fine, `_build_fx_entry` allows unknown-to-"
+            "common-schema keys through for any FX type) whenever literal-second delay "
+            "times are wanted.",
+        ),
+        "kParamMode": ParamDef(
+            "kParamMode", "float", confidence="uncertain",
+            notes="Found via the same 2026-08-01 binary string mining as kParamBeatSync "
+            "above, never independently investigated -- likely a delay-topology enum "
+            "(e.g. normal/ping-pong/dual-mono) given it sits alongside kParamLink/"
+            "kParamOffsetL/kParamOffsetR in the same automatable-param group, but the "
+            "real values/kind (float vs enum) aren't confirmed. Documented for "
+            "round-trip safety only.",
+        ),
+        "kParamLink": ParamDef(
+            "kParamLink", "bool", default=False, confidence="uncertain",
+            notes="Found via binary string mining, presumably 'link L/R times together' "
+            "given its position next to kParamTimeL/R -- not independently confirmed.",
+        ),
+        "kParamBW": ParamDef(
+            "kParamBW", "float", confidence="uncertain",
+            notes="Found via binary string mining; also independently spotted as a real, "
+            "uncatalogued key surviving edit-round-trip passthrough on real third-party "
+            "content during the 2026-07-28 stress test (see PARAMETER_SCHEMA.md item at "
+            "the top of §5). Presumably the tone filter's bandwidth, alongside "
+            "kParamFreq -- not independently confirmed.",
+        ),
+        "kParamOffsetL": ParamDef(
+            "kParamOffsetL", "float", confidence="uncertain",
+            notes="Found via binary string mining, presumably a per-channel timing "
+            "offset/micro-delay alongside kParamOffsetR -- not independently confirmed.",
+        ),
+        "kParamOffsetR": ParamDef(
+            "kParamOffsetR", "float", confidence="uncertain",
+            notes="See kParamOffsetL.",
+        ),
+        "kParamHQ": ParamDef(
+            "kParamHQ", "bool", default=False, confidence="uncertain",
+            notes="Found via binary string mining, presumably a high-quality/"
+            "oversampling toggle -- not independently confirmed.",
         ),
         "kParamFeedback": ParamDef(
             "kParamFeedback", "float", default=30.0, min=0.0, max=90.0, unit="%",
