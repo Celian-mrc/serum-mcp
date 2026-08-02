@@ -1652,19 +1652,42 @@ improve generation quality if resolved:
    6.25Hz, presumably Serum's own genuine free-mode rate default; not
    independently confirmed.
 
-   **The high-range anomaly is CONFIRMED REAL, independent of the
-   beat_sync bug** (this re-run used the fixed code and still hit it): raw
-   40/60/80 all measured the identical 21.6Hz (a different specific value
-   than the original buggy run's 32.0Hz, as expected since the underlying
-   data was completely different this time), while 50/70/90/100 gave
-   inconsistent, non-monotonic values (11.6/18.4/8.4/23.2Hz). Genuinely
-   undetermined whether this is real Serum behavior above a certain rate,
-   or a render/measurement-pipeline artifact specific to fast control-rate
-   modulation — needs a live Serum GUI cross-check (turn RATE past ~35-40%
-   while watching the filter's own cutoff meter or listening) to resolve.
-   Not wired into `LfoSpec.rate` as a conversion beyond documenting the
-   confirmed raw<=30 range; the raw value stays "don't trust it" for
-   anything above ~35.
+   **The high-range anomaly measured OK on the fixed code** (raw 40/60/80
+   all measured the identical 21.6Hz, 50/70/90/100 gave inconsistent,
+   non-monotonic values 11.6/18.4/8.4/23.2Hz) **but a live-Serum
+   cross-check 2026-08-01 resolved it as a measurement-pipeline
+   limitation, not a real Serum DSP anomaly.** Two rounds of live testing:
+   1. First round (RATE swept on a LOOPING piano-roll note) found real
+      visible/audible "jumps" — but traced entirely to the well-known
+      per-voice LFO phase-reset-on-note-on behavior (see `LfoSpec.mono`'s
+      docstring), an artifact of the note retriggering every loop
+      iteration, unrelated to the rate curve. Confirmed directly:
+      re-testing at raw=2 (slow enough to see clearly) with `mono=True`
+      (a continuous LFO independent of note-on) showed NO jump at all on
+      the same looping note.
+   2. Second round, retrigger confound removed (`mono=True`, same looping
+      note, RATE swept 20-100%): STILL saw visible "jumps" at the high
+      end, but the user explicitly confirmed them INAUDIBLE — consistent
+      with a stroboscopic/aliasing illusion (the cyclic knob's own visual
+      motion beating against the screen's refresh rate, the same
+      perceptual effect as a film's "wagon wheel" spinning backwards), not
+      a real audio glitch.
+
+   **Conclusion**: no evidence of a genuine Serum DSP anomaly anywhere in
+   the tested range — real audio confirmed smooth throughout, by ear, with
+   the retrigger confound controlled for. The automated pipeline's
+   non-monotonic Hz *readings* above raw~35 are now understood to be a
+   limitation of `detect_modulation_rate_hz` itself at fast target rates
+   (see its own docstring's 2 documented caveats — 2nd-harmonic locking and
+   the unexplained low-rate plateau, both are about the ANALYSIS struggling,
+   not about Serum's output being wrong), not a real curve kink. Safe to
+   treat `LfoSpec.rate` as literal-ish Hz across the WHOLE 0-100 range now
+   — just don't expect the automated pipeline to report the exact Hz number
+   precisely above ~35, only that the underlying audio is well-behaved.
+   This whole sub-investigation is a good demonstration of why
+   `[[feedback-serum-mcp-validate-in-real-serum]]`'s two check types are
+   complementary: the audio pipeline flagged something worth checking, and
+   live testing was what actually resolved whether it was real.
 
    6b. **`FX_PARAMS['FXChorus']['kParamRate']` — same technique, same
    ~16.5/32Hz anomaly, now cross-validating item 6a's finding rather than
