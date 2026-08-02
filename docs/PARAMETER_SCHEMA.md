@@ -1718,6 +1718,38 @@ improve generation quality if resolved:
      `beat_sync`-equivalent field, so it's unaffected by that bug), just
      don't cite it as cross-validated with the LFO investigation anymore.
 
+   6c. **`FX_PARAMS['FXFlanger']`/`['FXPhaser']['kParamRate']` — calibrated
+   2026-08-01, same technique, and the 2nd-harmonic-locking hypothesis from
+   item 6b gets its strongest evidence yet.** Method identical to 6b
+   (sustained tone through the FX, `kParamDepth=100`, `kParamFeedback=0`,
+   measured via `detect_modulation_rate_hz`).
+   - **FXFlanger**: measured Hz was EXACTLY 2x the raw value across ALL 7
+     points tested (raw 1/2/3/5/7/9/10 → 2/4/6/10/14/18/20 Hz) — far more
+     uniform than FXChorus's erratic 1x/2x flip-flopping, which on its own
+     might suggest a genuine "2x" Serum curve rather than a measurement
+     artifact. Leaning toward artifact anyway (2nd-harmonic-locking, same
+     as item 6b) because a flanger's sharp comb-filter notches produce an
+     especially strong, symmetric brightness swing — exactly the condition
+     `detect_modulation_rate_hz`'s own docstring already flags as prone to
+     this — but this is NOT independently disambiguated from "Serum really
+     does use a 2x-scaled Hz curve for flangers specifically."
+   - **FXPhaser**: mostly the same ~2x pattern (raw 1/2/10/15/18/20 →
+     2/4/20/30/36/40 Hz) but with ONE clean break — raw=5 measured 20Hz
+     (4x, not the ~10Hz/2x the pattern predicts). This inconsistency is
+     itself evidence AGAINST "genuine fixed 2x curve" and FOR "harmonic-
+     locking instability" — a real fixed-ratio Serum curve has no reason to
+     misbehave at exactly one tested point. Re-verified the raw=18/20
+     high-end readings aren't a search-band artifact (identical result
+     with `fmax_hz` raised from 40 to 100).
+   - **Working assumption, not a confirmed fact**: both params are
+     presumed to actually be `raw = Hz` like every other similarly-labeled
+     rate param calibrated this project (LFO free rate, FXChorus's own
+     confirmed raw>=15 range) — `detect_modulation_rate_hz` reporting
+     ~2x is treated as the tool's own bias, not Serum's real curve.
+     Resolving this for certain needs either a live Serum check or
+     re-measuring via an asymmetric destination signal (e.g. pitch)
+     immune to the harmonic-doubling effect.
+
 None of these block V1's stated goal (text description → valid, loadable
 `.SerumPreset` covering oscillators/filters/envelopes/macros/core FX) — they
 bound what V1 can *express*, not whether what it writes is valid.

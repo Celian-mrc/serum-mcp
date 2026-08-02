@@ -2364,7 +2364,20 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
     "FXFlanger": {
         "kParamRate": ParamDef(
             "kParamRate", "float", default=0.5, min=0.0, max=10.0, unit="Hz (approx.)",
-            notes="Max corrected from 5.1 after finding a real preset with rate=9.3.",
+            notes="Max corrected from 5.1 after finding a real preset with rate=9.3. "
+            "Calibrated 2026-08-01 via the audio-rendering pipeline (same technique as "
+            "FXChorus): measured Hz was EXACTLY 2x the raw value across all 7 points "
+            "tested (raw 1/2/3/5/7/9/10 -> 2/4/6/10/14/18/20 Hz), a suspiciously perfect "
+            "and uniform ratio, not the erratic 1x/2x flip-flopping seen calibrating "
+            "FXChorus's low range. Most likely explanation: detect_modulation_rate_hz's "
+            "known 2nd-harmonic-locking limitation (see its own docstring) is unusually "
+            "STRONG and consistent for a flanger's sharp, symmetric comb-filter-notch "
+            "brightness sweep -- meaning the true curve is presumably raw=Hz, matching "
+            "every other similarly-labeled rate param calibrated this project (LFO free "
+            "rate, FXChorus's own confirmed raw>=15 range), not a genuine '2x' Serum "
+            "curve. NOT independently disambiguated (would need a live Serum check or a "
+            "differently-shaped destination signal) -- treat 'raw=Hz' as the working "
+            "assumption, not a confirmed fact, for this specific param.",
         ),
         "kParamDepth": ParamDef("kParamDepth", "float", default=50.0, min=0.0, max=100.0, unit="%"),
         "kParamFeedback": ParamDef(
@@ -2377,7 +2390,15 @@ FX_PARAMS: dict[str, dict[str, ParamDef]] = {
     },
     "FXPhaser": {
         "kParamRate": ParamDef(
-            "kParamRate", "float", default=1.0, min=0.0, max=20.0, unit="Hz (approx.)"
+            "kParamRate", "float", default=1.0, min=0.0, max=20.0, unit="Hz (approx.)",
+            notes="Calibrated 2026-08-01, same technique/caveat as FXFlanger above: "
+            "measured Hz was ~2x raw at most points (raw 1/2/10/15/18/20 -> 2/4/20/30/"
+            "36/40 Hz) but NOT perfectly consistent -- raw=5 measured 20Hz (4x, not the "
+            "expected ~10Hz/2x), an outlier that itself supports 'harmonic-locking "
+            "instability' over 'genuine clean 2x curve' (a real fixed-ratio Serum curve "
+            "shouldn't have produced this one inconsistent point). Same working "
+            "assumption as FXFlanger: true curve presumably raw=Hz, not independently "
+            "confirmed.",
         ),
         "kParamDepth": ParamDef("kParamDepth", "float", default=50.0, min=0.0, max=100.0, unit="%"),
         "kParamFeedback": ParamDef(
