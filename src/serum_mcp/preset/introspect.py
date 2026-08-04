@@ -667,7 +667,38 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             ),
             pattern=pattern_notes or None,
             pattern_step_beats=pattern_step_beats,
+            chance=clip_pp.get("kParamChance") if isinstance(clip_pp, dict) else None,
+            offset=clip_pp.get("kParamOffset") if isinstance(clip_pp, dict) else None,
+            transpose_range=(
+                clip_pp.get("kParamTransposeRange") if isinstance(clip_pp, dict) else None
+            ),
+            retrig_rate=clip_pp.get("kParamRetrigRate") if isinstance(clip_pp, dict) else None,
+            first_note_retrig=(
+                bool(clip_pp["kParamFirstNoteRetrig"])
+                if isinstance(clip_pp, dict) and "kParamFirstNoteRetrig" in clip_pp
+                else None
+            ),
+            note_retrig=(
+                bool(clip_pp["kParamNoteRetrig"])
+                if isinstance(clip_pp, dict) and "kParamNoteRetrig" in clip_pp
+                else None
+            ),
+            velo_enabled=(
+                bool(clip_pp["kParamVeloEnabled"])
+                if isinstance(clip_pp, dict) and "kParamVeloEnabled" in clip_pp
+                else None
+            ),
+            velo_target=clip_pp.get("kParamVeloTarget") if isinstance(clip_pp, dict) else None,
+            wrap_range=clip_pp.get("kParamWrapRange") if isinstance(clip_pp, dict) else None,
+            wrap_phantom_note=(
+                clip_pp.get("kParamWrapPhantomNote") if isinstance(clip_pp, dict) else None
+            ),
         )
+
+    # Opaque passthrough, see PresetSpec.voice_panel's docstring -- only
+    # captured when it's a real dict (not the untouched "default" sentinel).
+    voice_panel_pp = (data.get("VoicePanel0", {}) or {}).get("plainParams")
+    voice_panel = dict(voice_panel_pp) if isinstance(voice_panel_pp, dict) else None
 
     return PresetSpec(
         name="",
@@ -680,5 +711,6 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         fx_chain=fx_chain,
         mod_routes=mod_routes,
         arp=arp_spec,
+        voice_panel=voice_panel,
         **{"global": global_spec},
     )

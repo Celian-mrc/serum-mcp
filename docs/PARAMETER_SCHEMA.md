@@ -121,12 +121,12 @@ A decompressed CBOR payload's top-level keys, as observed:
 | `Global0` | master volume, mono, portamento, poly count, ... | Partially |
 | `ModSlot0`..`ModSlot63` | the 64-slot mod matrix | Partially — all destinations + LFO/Macro sources, see §6 |
 | `FXRack0`..`FXRack2` | 3 independent, PARALLEL effects racks, each an ordered `FX` list | Yes, all 3 (since 2026-07-29 — see §4) |
-| `Arp0`, `ArpClip0`..`ArpClip11`, `arpBankDisplayName` | arpeggiator | No — round-trips untouched |
+| `Arp0`, `ArpClip0`..`ArpClip11`, `arpBankDisplayName` | arpeggiator | Yes, `ArpClip0` only (algorithmic shapes + `pattern`; see §4 Arpeggiator) — `ArpClip1`..`11` round-trip untouched |
 | `MidiClip0`..`MidiClip11`, `ClipPlayer`, `ClipPlayer0`, `clipBankDisplayName` | MIDI clip player | No — round-trips untouched |
 | `PitchQuantizer0` | scale/quantizer | No — round-trips untouched |
 | `RetriggerState0` | legato/retrigger config | No — round-trips untouched |
 | `RoutingSlot0`..`RoutingSlot6` | FX bus routing | No — round-trips untouched |
-| `VoicePanel0` | voice-level scaling options | No — round-trips untouched |
+| `VoicePanel0` | voice-level scaling options (`kParamGlobalScalingLfoTime`/`EnvTime`, ~30 per-voice unison-randomization params) | Yes, opaque passthrough (`PresetSpec.voice_panel`, since 2026-08-04 — see §5 item 12) |
 | `SerumGUI` | window/panel layout | No — round-trips untouched |
 | `mpeEnabled`, `mpeConfig`, `mpePitchBendRange` | MPE settings | No — round-trips untouched |
 | `lockOversampling`, `lockTuning`, `scalars` | misc engine flags | No — round-trips untouched |
@@ -523,9 +523,25 @@ the *same* enum on its own schedule):
 `kParamRate`'s real musical meaning (note division? Hz?) is **uncertain**
 — only 2 distinct values seen across 844 presets; most enabled clips don't
 set it explicitly at all. `kParamGate` can exceed 100% (observed up to
-~146, legato overlap into the next step). Two more `Arp0`/`ArpClip` fields
-(`kParamLaunchQuantize`, note-level velocity/retrig/chance humanization
-params) are cataloged in `schema.py` but not exposed via `ArpSpec` yet.
+~146, legato overlap into the next step). `kParamLaunchQuantize` is
+cataloged in `schema.py` but not exposed via `ArpSpec` yet.
+
+**8 more `ArpClip` "playback" fields exposed 2026-08-04** (`chance`,
+`offset`, `transpose_range`, `retrig_rate`, `first_note_retrig`,
+`note_retrig` — generalized beyond Pattern-mode-only, `velo_enabled`,
+`velo_target`, `wrap_range` — also generalized beyond Pattern-mode-only,
+`wrap_phantom_note`): found live diagnosing a real "the recreated arp's
+range doesn't match the original, and the gate never seems to evolve"
+report. Only 3 of these (`chance`/`offset`/`transpose_range`) were
+previously known at all, and only as mod-matrix DESTINATIONS
+(`MOD_DEST_TARGETS["arp.*"]`) — their STATIC/base values were never
+modeled. A 71-arp-enabled-preset survey of the local corpus found all 8
+real and minority-present (6-31%), so — matching this project's
+"presence forces the DSP stage" convention — they're optional fields,
+omitted (Serum's own default applies) unless explicitly set. See
+`ArpSpec`'s docstrings in `generation/spec.py` for per-field details and
+observed value ranges (several remain UNCERTAIN in exact units/meaning,
+e.g. `offset`/`retrig_rate`/`wrap_phantom_note`).
 
 **Confirmed live** (2026-07-29, real Serum 2 in FL Studio 21), both modes:
 the original `_ArpTest/` presets (`up_down` and `chord` shapes, algorithmic
@@ -1225,6 +1241,60 @@ improve generation quality if resolved:
    the raw notes are presumably just Serum's own generated realization of
    that algorithm (not user-authored data worth preserving) — a real
    feature-scope boundary, not a bug, and not pursued this round.
+
+   **Update 2026-08-04 — RESOLVED, Galaxy recreation reaches 100% audible
+   parity ("c'est identique à 100%").** The 27/27-mod-route/full-diff
+   verification above was a structural/data match, not a live-listening
+   one — the user then actually loaded the recreation and, across 3
+   rounds of live listening, found real remaining gaps the data diff
+   alone hadn't flagged as audible:
+   - **`VoicePanel0` was a whole module never modeled at all** — silently
+     dropped by `extract_spec`, never written by `apply_spec`. It holds
+     `kParamGlobalScalingLfoTime`/`kParamGlobalScalingEnvTime` (global
+     time-scale multipliers affecting every LFO/envelope uniformly —
+     Galaxy's real value is `1000.0`) plus ~30 per-voice
+     unison-randomization params (`kParamVoice{1-8}Detune/EnvTime/
+     FilterCutoff/Mod1/Mod2/Pan`, `kParamGlobalRandomOscPan`). Symptom:
+     "all the LFOs sound the same rate but much faster" despite the raw
+     `LFO0`-`9` module data being provably byte-identical — the
+     multiplier lives entirely outside those modules. Fixed via
+     `PresetSpec.voice_panel: dict[str, float] | None`, an OPAQUE
+     passthrough (same convention as `FxUnitSpec.flex` above) — the
+     scaling params' exact numeric scale/units still isn't decoded, only
+     that omitting the key silently reverts to Serum's unscaled default.
+   - **8 `ArpClip` "playback" params never modeled as static fields** (see
+     the Arpeggiator section in §4) — symptom: "ARP range doesn't match"
+     and "the gate never seems to evolve." `kParamWrapRange` (14.0 in
+     Galaxy vs. this project's old Pattern-mode-only hardcoded 12.0) and
+     `kParamChance` (89.9% — some arp steps don't play, which is what
+     read as "gate evolving") were the two most audible/visible of the 8.
+   - **The remaining "8-bit"-sounding character traced to the
+     hand-authored test-recreation script itself, not a code gap.**
+     `gen_galaxy_recreation.py` (a manually-transcribed `PresetSpec`,
+     built by hand-reading raw CBOR across earlier sessions) turned out
+     to be missing a whole FX unit (`FXSplitMS`, a mid/side split) and 3
+     `flex` waveshaping curves on `FXDistortion` units (kSineShaper/
+     kSoftClip/kDiode1 — without a real curve, Serum uses a flat/default
+     shaper curve, audibly harsher/more digital) — plus 12 of the real
+     preset's 27 mod routes it had simply never transcribed by hand (both
+     `FXSplitMS`/`FX_PARAMS` flex support already existed in code since
+     2026-07-30/08-01; this was purely a manual-transcription gap in the
+     test script, invisible to the earlier structural diff because that
+     diff compared two REAL preset files, not the hand-typed spec against
+     the real one). **Fix: stop hand-patching the manual script and
+     regenerate via a straight `extract_spec(real_data)` →
+     `apply_spec()`/`generate_preset()` round-trip instead** — this
+     captures everything the code currently knows how to extract/write in
+     one shot, eliminating manual-transcription drift as a source of
+     bugs. Re-verified 27/27 mod routes (unordered-set comparison) and
+     byte-identical `flex`/`LFO0-3` data before handing off for the
+     listening test that confirmed 100% parity.
+   - **Methodological takeaway**: once code-level extraction/generation is
+     solid, prefer a genuine `extract_spec`/`apply_spec` round-trip over
+     maintaining a hand-authored recreation script for verification — a
+     hand-typed spec silently drifts from ground truth in a way that's
+     easy to mistake for a code bug when it's actually a transcription
+     gap in the test fixture itself.
 2. **Filter cutoff Hz curve** (§4, Filters) — **calibrated 2026-07-31** via the
    [[reference-serum-verify-audio-pipeline]] (a full sweep, not one point):
    a `lowpass_24` filter fed White noise (full-spectrum, no self-bias) at

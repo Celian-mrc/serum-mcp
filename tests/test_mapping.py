@@ -1733,6 +1733,75 @@ def test_arp_writes_arp0_and_arpclip0(init_data):
     assert extracted.arp.transpose_shape == "converge"
 
 
+def test_arp_playback_fields_2026_08_04_round_trip(init_data):
+    """The 8 ArpClip params found live 2026-08-04 diagnosing a real 'ARP
+    range doesn't match, gate never evolves' report -- previously only
+    known as mod-matrix DESTINATIONS (some of them), never as static
+    fields at all. Values below are Galaxy's real ArpClip0 data."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        arp=ArpSpec(
+            shape="random_drift",
+            rate=0.4615384638309479,
+            gate=18.421052396297455,
+            dotted=True,
+            transpose_shift=12.0,
+            transpose_shape="down",
+            chance=89.91228342056274,
+            offset=1.0,
+            transpose_range=2.0,
+            retrig_rate=11.0,
+            first_note_retrig=True,
+            note_retrig=True,
+            velo_enabled=True,
+            wrap_range=14.0,
+        ),
+    )
+    data = apply_spec(init_data, spec)
+    clip = data["ArpClip0"]["plainParams"]
+    assert clip["kParamChance"] == 89.91228342056274
+    assert clip["kParamOffset"] == 1.0
+    assert clip["kParamTransposeRange"] == 2.0
+    assert clip["kParamRetrigRate"] == 11.0
+    assert clip["kParamFirstNoteRetrig"] == 1.0
+    assert clip["kParamNoteRetrig"] == 1.0
+    assert clip["kParamVeloEnabled"] == 1.0
+    assert clip["kParamWrapRange"] == 14.0
+
+    extracted = extract_spec(data)
+    assert extracted.arp.chance == 89.91228342056274
+    assert extracted.arp.offset == 1.0
+    assert extracted.arp.transpose_range == 2.0
+    assert extracted.arp.retrig_rate == 11.0
+    assert extracted.arp.first_note_retrig is True
+    assert extracted.arp.note_retrig is True
+    assert extracted.arp.velo_enabled is True
+    assert extracted.arp.wrap_range == 14.0
+
+
+def test_arp_playback_fields_unset_omitted(init_data):
+    """Unset (the default) must NOT write any of the 8 new fields -- they're
+    all minority-present in real content (6-31%), matching this project's
+    'omission means real Serum default' convention used everywhere else."""
+    spec = PresetSpec(name="X", description="", arp=ArpSpec(shape="up_down"))
+    data = apply_spec(init_data, spec)
+    clip = data["ArpClip0"]["plainParams"]
+    for key in (
+        "kParamChance",
+        "kParamOffset",
+        "kParamTransposeRange",
+        "kParamRetrigRate",
+        "kParamFirstNoteRetrig",
+        "kParamNoteRetrig",
+        "kParamVeloEnabled",
+        "kParamVeloTarget",
+        "kParamWrapRange",
+        "kParamWrapPhantomNote",
+    ):
+        assert key not in clip, key
+
+
 def test_arp_unset_leaves_existing_arp_untouched(init_data):
     """Same 'None means don't touch' contract as `global` -- an edit that
     doesn't mention arp at all must not silently disable/reset an arp the
@@ -2021,6 +2090,36 @@ def test_fx_flex_opaque_round_trip(init_data):
 
     extracted = extract_spec(data)
     assert extracted.fx_chain[0].flex == real_flex
+
+
+def test_voice_panel_opaque_round_trip(init_data):
+    """PresetSpec.voice_panel -- found 2026-08-01 root-causing a real 'the
+    recreated preset's LFOs sound audibly faster than the original' report:
+    VoicePanel0 (kParamGlobalScalingLfoTime/EnvTime + per-voice unison
+    randomization) was never modeled at all, so extract_spec silently
+    dropped it and apply_spec never wrote it back. Real values below are
+    Galaxy's actual VoicePanel0.plainParams."""
+    real_voice_panel = {
+        "kParamGlobalRandomOscPan": 18.000000715255737,
+        "kParamGlobalScalingEnvTime": 162.18102398133,
+        "kParamGlobalScalingLfoTime": 1000.0,
+        "kParamVoice1Detune": 1.2987017631530762,
+    }
+    spec = PresetSpec(name="X", description="", voice_panel=real_voice_panel)
+    data = apply_spec(init_data, spec)
+
+    assert data["VoicePanel0"]["plainParams"] == real_voice_panel
+
+    extracted = extract_spec(data)
+    assert extracted.voice_panel == real_voice_panel
+
+
+def test_voice_panel_untouched_when_unset(init_data):
+    spec = PresetSpec(name="X", description="")
+    data = apply_spec(init_data, spec)
+
+    assert data.get("VoicePanel0") == init_data.get("VoicePanel0")
+    assert extract_spec(data).voice_panel is None
 
 
 def test_fx_wet_and_lfo_macro_mod_destinations(init_data):

@@ -1327,8 +1327,8 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             # arp.rate field, was the field actually isolated as the real
             # fix for a live "stuck on one note" bug), but consistent with
             # every working example and never observed to cause harm.
-            clip_params["kParamNoteRetrig"] = True
-            clip_params["kParamWrapRange"] = 12.0
+            clip_params["kParamNoteRetrig"] = arp.note_retrig if arp.note_retrig is not None else True
+            clip_params["kParamWrapRange"] = arp.wrap_range if arp.wrap_range is not None else 12.0
             clip_params["kParamWrapTranspose"] = True
         else:
             clip_params["kParamShape"] = _resolve_arp_shape(arp.shape)
@@ -1337,6 +1337,10 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             # previous Pattern-mode note list must not leave stale notes
             # behind now that kParamShape no longer says "Pattern".
             clip_container["clip"] = {}
+            if arp.note_retrig is not None:
+                clip_params["kParamNoteRetrig"] = arp.note_retrig
+            if arp.wrap_range is not None:
+                clip_params["kParamWrapRange"] = arp.wrap_range
 
         clip_params["kParamRate"] = arp.rate
         clip_params["kParamGate"] = arp.gate
@@ -1359,6 +1363,28 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         clip_params["kParamTransposeShift"] = arp.transpose_shift
         if arp.transpose_shape is not None:
             clip_params["kParamTransposeShape"] = _resolve_arp_shape(arp.transpose_shape)
+        if arp.chance is not None:
+            clip_params["kParamChance"] = arp.chance
+        if arp.offset is not None:
+            clip_params["kParamOffset"] = arp.offset
+        if arp.transpose_range is not None:
+            clip_params["kParamTransposeRange"] = arp.transpose_range
+        if arp.retrig_rate is not None:
+            clip_params["kParamRetrigRate"] = arp.retrig_rate
+        if arp.first_note_retrig is not None:
+            clip_params["kParamFirstNoteRetrig"] = arp.first_note_retrig
+        if arp.velo_enabled is not None:
+            clip_params["kParamVeloEnabled"] = arp.velo_enabled
+        if arp.velo_target is not None:
+            clip_params["kParamVeloTarget"] = arp.velo_target
+        if arp.wrap_phantom_note is not None:
+            clip_params["kParamWrapPhantomNote"] = arp.wrap_phantom_note
         validate_params(clip_key, clip_params, schema.ARPCLIP_PARAMS, allow_unknown=True)
+
+    if spec.voice_panel is not None:
+        # Opaque passthrough -- see PresetSpec.voice_panel's docstring. Written
+        # verbatim, same convention as FxUnitSpec.flex.
+        voice_panel_container = data.setdefault("VoicePanel0", {})
+        voice_panel_container["plainParams"] = dict(spec.voice_panel)
 
     return data

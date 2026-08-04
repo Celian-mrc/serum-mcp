@@ -1084,6 +1084,83 @@ class ArpSpec(BaseModel):
         "(16th notes, the default) matches the most common real value, but the real "
         "format allows any grid; use 0.5 for 8th notes, 1.0 for quarter notes, etc.",
     )
+    chance: float | None = Field(
+        None,
+        ge=0.0,
+        le=100.0,
+        description="% chance each step actually plays a note (real presets observed "
+        "0-90%); unset (the default, ~7% real-corpus presence) means Serum's own "
+        "always-play default. Found live 2026-08-04 diagnosing a 'the arp sounds too "
+        "static/regular, gate never seems to evolve' report -- this project never wrote "
+        "kParamChance at all before, so every generated arp always played every step.",
+    )
+    offset: float | None = Field(
+        None,
+        description="UNCERTAIN exact meaning/units (real values observed: -8, -6, 1) -- "
+        "likely a step/timing offset for the pattern. ~9% real-corpus presence. Leave "
+        "unset unless copying a value extracted from a real preset.",
+    )
+    transpose_range: float | None = Field(
+        None,
+        ge=0.0,
+        le=24.0,
+        description="semitone (approx.) range the transpose lane wraps/folds within -- "
+        "independent of `wrap_range`, which is the note-pattern's own wrap range. ~18% "
+        "real-corpus presence.",
+    )
+    retrig_rate: float | None = Field(
+        None,
+        description="UNCERTAIN exact meaning/units (real values observed: 4, 5, 11) -- "
+        "only meaningful alongside `note_retrig`/`first_note_retrig`. ~18% real-corpus "
+        "presence.",
+    )
+    first_note_retrig: bool | None = Field(
+        None,
+        description="whether the arp's first note re-triggers like the rest of the "
+        "pattern (vs. sustaining through). ~13% real-corpus presence, only ever "
+        "observed True when present.",
+    )
+    note_retrig: bool | None = Field(
+        None,
+        description="whether notes re-trigger on each step. For shape='pattern' this "
+        "project always writes True regardless of this field (see ARPCLIP_PARAMS "
+        "notes) unless explicitly overridden here; for every other shape it's unset "
+        "(omitted) by default -- ~31% real-corpus presence, so it's a real, "
+        "independently-meaningful toggle outside Pattern mode too.",
+    )
+    velo_enabled: bool | None = Field(
+        None,
+        description="whether note velocity affects the arp (see `velo_target` for the "
+        "amount). ~18% real-corpus presence.",
+    )
+    velo_target: float | None = Field(
+        None,
+        ge=0.0,
+        le=100.0,
+        description="amount (%) velocity affects the arp when `velo_enabled` is True -- "
+        "exact target parameter UNCERTAIN. Real values observed: 3-95%. ~16% "
+        "real-corpus presence.",
+    )
+    wrap_range: float | None = Field(
+        None,
+        ge=0.0,
+        le=24.0,
+        description="semitone (approx.) range the note pattern wraps/folds within. For "
+        "shape='pattern' this project always writes 12.0 unless explicitly overridden "
+        "here; for every other shape it's unset (omitted) by default -- ~24% "
+        "real-corpus presence (real values observed: 1, 2, 12, 14), so it's a real, "
+        "independently-meaningful control outside Pattern mode too. Found live "
+        "2026-08-04: Galaxy's real value is 14.0 vs. this project's old Pattern-only "
+        "hardcoded 12.0, part of a real 'ARP range doesn't match' report.",
+    )
+    wrap_phantom_note: float | None = Field(
+        None,
+        ge=0.0,
+        le=100.0,
+        description="UNCERTAIN exact meaning (% chance of an extra 'phantom' note at "
+        "the wrap point?) -- real values observed: 20-82%. ~6% real-corpus presence, "
+        "low sample count, treat as lower-confidence than the other Arp fields.",
+    )
 
 
 class PresetSpec(BaseModel):
@@ -1139,6 +1216,25 @@ class PresetSpec(BaseModel):
         "(the default) leaves the arp completely untouched -- omit it entirely rather "
         "than passing ArpSpec(enabled=False) unless you specifically want to disable "
         "an arp that's already on.",
+    )
+    voice_panel: dict[str, float] | None = Field(
+        None,
+        description="OPAQUE passthrough for the VoicePanel module's raw plainParams -- "
+        "found 2026-08-01 root-causing a real 'recreated preset's LFOs sound audibly "
+        "faster than the original despite byte-identical LFO data' bug: this module was "
+        "never modeled at all (extract_spec silently dropped it, apply_spec never wrote "
+        "it), so a real preset's VoicePanel0 -- which can carry kParamGlobalScalingLfoTime/"
+        "kParamGlobalScalingEnvTime (global time-scale multipliers affecting EVERY LFO/"
+        "envelope uniformly; Galaxy's real value was 1000.0 vs. Serum's own unscaled "
+        "default when the key is absent) plus ~30 per-voice unison-randomization params "
+        "(kParamVoice{1-8}Detune/EnvTime/FilterCutoff/Mod1/Mod2/Pan, "
+        "kParamGlobalRandomOscPan) -- was always silently lost on recreation. The exact "
+        "numeric scale/units of kParamGlobalScalingLfoTime/EnvTime are NOT yet confirmed "
+        "(is 1000.0 a percentage, i.e. 10x? some other encoding?), so treat this the same "
+        "way as FxUnitSpec.flex: only ever set it by copying the dict extract_spec read "
+        "off an existing preset (round-trip/preserve), do NOT hand-author values "
+        "expecting a specific resulting speed/randomization amount. Leave unset for "
+        "Serum's own unscaled/default VoicePanel behavior.",
     )
 
     model_config = {"populate_by_name": True}

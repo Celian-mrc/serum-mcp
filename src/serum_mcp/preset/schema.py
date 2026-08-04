@@ -1908,9 +1908,12 @@ ARPCLIP_PARAMS["kParamNoteRetrig"] = ParamDef(
     "diagnostic (holding every other field constant one at a time) found the ACTUAL "
     "cause was kParamRate (see there), not this field. This field was present in every "
     "working configuration tested but never individually proven necessary in "
-    "isolation. apply_spec still writes 1.0 when arp.pattern is set, since it's "
-    "present in every real working example found and never observed to cause harm, "
-    "but treat its necessity as unconfirmed, not established.",
+    "isolation. apply_spec still writes 1.0 when arp.pattern is set (unless "
+    "ArpSpec.note_retrig overrides it), since it's present in every real working "
+    "example found and never observed to cause harm, but treat its necessity as "
+    "unconfirmed, not established. Also independently real and settable OUTSIDE "
+    "Pattern mode (31.0% real-corpus presence across all arp-enabled presets, found "
+    "2026-08-04) -- see ArpSpec.note_retrig.",
 )
 ARPCLIP_PARAMS["kParamWrapRange"] = ParamDef(
     "kParamWrapRange",
@@ -1920,11 +1923,15 @@ ARPCLIP_PARAMS["kParamWrapRange"] = ParamDef(
     max=24.0,
     unit="semitones (approx.)",
     confidence="uncertain",
-    notes="Real values observed: 1.0, 2.0, 12.0, 24.0. Likely the pitch range the "
-    "pattern wraps/folds within, unconfirmed. Same status as kParamNoteRetrig: present "
-    "in every working Pattern-mode configuration tested (default 12.0, one octave), "
-    "never individually isolated as necessary -- kParamRate was the actual fix for the "
-    "'stuck on one note' bug this was originally (incorrectly) blamed alongside.",
+    notes="Real values observed: 1.0, 2.0, 12.0, 14.0, 24.0. Likely the pitch range "
+    "the pattern wraps/folds within, unconfirmed. Same status as kParamNoteRetrig: "
+    "present in every working Pattern-mode configuration tested (default 12.0, one "
+    "octave), never individually isolated as necessary -- kParamRate was the actual "
+    "fix for the 'stuck on one note' bug this was originally (incorrectly) blamed "
+    "alongside. Also independently real and settable OUTSIDE Pattern mode (23.9% "
+    "real-corpus presence across all arp-enabled presets, found 2026-08-04 "
+    "diagnosing a real 'ARP range doesn't match' report -- Galaxy's actual value is "
+    "14.0) -- see ArpSpec.wrap_range.",
 )
 ARPCLIP_PARAMS["kParamWrapTranspose"] = ParamDef(
     "kParamWrapTranspose",
@@ -1935,6 +1942,60 @@ ARPCLIP_PARAMS["kParamWrapTranspose"] = ParamDef(
     "kParamWrapRange/kParamNoteRetrig -- written (True) whenever arp.pattern is set, "
     "present in every working configuration tested, never individually isolated as "
     "necessary.",
+)
+# The 8 params below were previously only known as MOD-MATRIX DESTINATIONS
+# (see MOD_DEST_TARGETS["arp.*"]) -- their STATIC/base values were never
+# modeled at all until 2026-08-04, found diagnosing a real "the recreated
+# arp's range doesn't match, and the gate never seems to evolve" report.
+# Presence rates below are from a 71-arp-enabled-preset survey of the local
+# Factory + third-party corpus (a different, larger population than the
+# mod-destination survey, since a static value doesn't require an actual
+# ModSlot routing to it).
+ARPCLIP_PARAMS["kParamChance"] = ParamDef(
+    "kParamChance", "float", default=100.0, min=0.0, max=100.0, unit="%",
+    confidence="observed",
+    notes="% chance each step actually plays a note. 7.0% real-corpus presence "
+    "(observed 0-90%); absent means Serum's own always-play default.",
+)
+ARPCLIP_PARAMS["kParamOffset"] = ParamDef(
+    "kParamOffset", "float", default=0.0, confidence="uncertain",
+    notes="Real values observed: -8, -6, 1. Likely a step/timing offset, exact "
+    "units unconfirmed. 8.5% real-corpus presence.",
+)
+ARPCLIP_PARAMS["kParamTransposeRange"] = ParamDef(
+    "kParamTransposeRange", "float", default=0.0, min=0.0, max=24.0,
+    unit="semitones (approx.)", confidence="uncertain",
+    notes="Real values observed: 1, 2. Independent of kParamWrapRange (that's the "
+    "note pattern's own wrap range, this is the transpose lane's). 18.3% "
+    "real-corpus presence.",
+)
+ARPCLIP_PARAMS["kParamRetrigRate"] = ParamDef(
+    "kParamRetrigRate", "float", confidence="uncertain",
+    notes="Real values observed: 4, 5, 11. Exact meaning/units unconfirmed, only "
+    "meaningful alongside kParamNoteRetrig/kParamFirstNoteRetrig. 18.3% "
+    "real-corpus presence.",
+)
+ARPCLIP_PARAMS["kParamFirstNoteRetrig"] = ParamDef(
+    "kParamFirstNoteRetrig", "bool", default=False, confidence="observed",
+    notes="Only ever observed at 1.0. 12.7% real-corpus presence.",
+)
+ARPCLIP_PARAMS["kParamVeloEnabled"] = ParamDef(
+    "kParamVeloEnabled", "bool", default=False, confidence="observed",
+    notes="Only ever observed at 1.0. 18.3% real-corpus presence. See "
+    "kParamVeloTarget for the amount.",
+)
+ARPCLIP_PARAMS["kParamVeloTarget"] = ParamDef(
+    "kParamVeloTarget", "float", default=0.0, min=0.0, max=100.0, unit="%",
+    confidence="uncertain",
+    notes="Real values observed: 3-95%. Exact target parameter velocity affects "
+    "unconfirmed. 15.5% real-corpus presence.",
+)
+ARPCLIP_PARAMS["kParamWrapPhantomNote"] = ParamDef(
+    "kParamWrapPhantomNote", "float", default=0.0, min=0.0, max=100.0, unit="%",
+    confidence="uncertain",
+    notes="Real values observed: 20-82%. Exact meaning unconfirmed (possibly % "
+    "chance of an extra note at the wrap point). Only 5.6% real-corpus presence, "
+    "lowest-confidence of this group.",
 )
 
 # ModSlot0..ModSlot63: the mod matrix. Structurally confirmed (destModuleID /
