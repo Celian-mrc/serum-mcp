@@ -13,6 +13,7 @@ from serum_mcp.generation.spec import (
     FilterSpec,
     FxUnitSpec,
     GlobalSpec,
+    LfoCurvePointSpec,
     LfoSpec,
     ModRouteSpec,
     OscillatorSpec,
@@ -1217,6 +1218,114 @@ def test_lfo_beat_sync_false_writes_explicitly_for_real_free_hz_mode(init_data):
 
     extracted = extract_spec(data)
     assert extracted.lfos[0].beat_sync is False
+
+
+def test_lfo_curve_writes_inverted_y_and_required_display_fields(init_data):
+    """LfoSpec.curve -- generatable since 2026-08-01, decoded via ground-
+    truth reverse calibration (see docs/PARAMETER_SCHEMA.md item 4): the
+    user hand-drew a known shape in real Serum, saved it, and this project
+    read back the raw curveData Serum itself wrote. Confirmed Serum's own
+    storage is Y-axis INVERTED (0.0=top, 1.0=bottom) -- LfoCurvePointSpec
+    uses the natural convention (0.0=bottom, 1.0=top), inverted here.
+    curveDisplayName='Custom' + pathData={} are also required or Serum
+    silently ignores curveData and shows an empty graph -- found comparing
+    a real preset's full raw LFO0 dict against what this project wrote."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        lfos=[
+            LfoSpec(
+                mode="Free",
+                curve=[
+                    LfoCurvePointSpec(x=0.0, y=0.1, tension=0.5),
+                    LfoCurvePointSpec(x=0.3, y=0.9, tension=0.2),
+                    LfoCurvePointSpec(x=1.0, y=0.3, tension=0.8),
+                ],
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    lfo0 = data["LFO0"]
+    assert lfo0["curveDisplayName"] == "Custom"
+    assert lfo0["pathData"] == {}
+    cd = lfo0["curveData"]
+    assert cd["numPoints"] == 2
+    assert cd["xVals"] == [0.0, 0.3, 1.0]
+    # yVals is Y-INVERTED relative to LfoCurvePointSpec.y (1 - y)
+    assert cd["yVals"] == pytest.approx([0.9, 0.1, 0.7])
+    assert cd["curveVals"] == [0.5, 0.2, 0.8]
+
+    extracted = extract_spec(data)
+    ex_curve = extracted.lfos[0].curve
+    assert [p.x for p in ex_curve] == pytest.approx([0.0, 0.3, 1.0])
+    assert [p.y for p in ex_curve] == pytest.approx([0.1, 0.9, 0.3])
+    assert [p.tension for p in ex_curve] == pytest.approx([0.5, 0.2, 0.8])
+
+
+def test_lfo_curve_2point_falling_rejected(init_data):
+    """A confirmed real Serum rendering bug (docs/PARAMETER_SCHEMA.md item
+    4): a 2-point curve whose 2nd point is LOWER than its 1st (natural
+    terms) renders as a blank/inert graph -- raise instead of silently
+    shipping a preset that loads fine but does nothing audible."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        lfos=[
+            LfoSpec(
+                curve=[
+                    LfoCurvePointSpec(x=0.0, y=0.9),
+                    LfoCurvePointSpec(x=1.0, y=0.1),
+                ]
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="must be RISING"):
+        apply_spec(init_data, spec)
+
+
+def test_lfo_curve_2point_rising_accepted(init_data):
+    """The safe direction of the same 2-point bug above -- a rising 2-point
+    curve is fine."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        lfos=[LfoSpec(curve=[LfoCurvePointSpec(x=0.0, y=0.1), LfoCurvePointSpec(x=1.0, y=0.9)])],
+    )
+    data = apply_spec(init_data, spec)
+    assert data["LFO0"]["curveData"]["yVals"] == pytest.approx([0.9, 0.1])
+
+
+@pytest.mark.parametrize(
+    "bad_curve,match",
+    [
+        ([LfoCurvePointSpec(x=0.0, y=0.5)], "at least 2 points"),
+        (
+            [LfoCurvePointSpec(x=0.1, y=0.1), LfoCurvePointSpec(x=1.0, y=0.9)],
+            r"\[0\]\.x must be 0\.0",
+        ),
+        (
+            [LfoCurvePointSpec(x=0.0, y=0.1), LfoCurvePointSpec(x=0.9, y=0.9)],
+            r"\[-1\]\.x must be 1\.0",
+        ),
+        (
+            [
+                LfoCurvePointSpec(x=0.0, y=0.1),
+                LfoCurvePointSpec(x=0.5, y=0.5),
+                LfoCurvePointSpec(x=0.3, y=0.7),
+                LfoCurvePointSpec(x=1.0, y=0.9),
+            ],
+            "strictly increasing",
+        ),
+    ],
+)
+def test_lfo_curve_invalid_shapes_rejected(init_data, bad_curve, match):
+    """The other real-corpus invariants (99.7%/3051-sample survey, see
+    docs/PARAMETER_SCHEMA.md item 4): x[0]=0.0, x[-1]=1.0, strictly
+    increasing -- reject rather than silently write a malformed curve."""
+    spec = PresetSpec(name="X", description="", lfos=[LfoSpec(curve=bad_curve)])
+    with pytest.raises(ValueError, match=match):
+        apply_spec(init_data, spec)
 
 
 def test_lfo_default_delay_rise_mono_swing_dotted_triplets_rate10x_omitted(init_data):

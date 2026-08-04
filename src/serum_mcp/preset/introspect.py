@@ -19,6 +19,7 @@ from serum_mcp.generation.spec import (
     FilterSpec,
     FxUnitSpec,
     GlobalSpec,
+    LfoCurvePointSpec,
     LfoSpec,
     MacroSpec,
     ModRouteSpec,
@@ -441,10 +442,25 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
 
     lfos = []
     for i in range(10):
-        pp = (data.get(f"LFO{i}", {}) or {}).get("plainParams")
+        lfo_container = data.get(f"LFO{i}", {}) or {}
+        pp = lfo_container.get("plainParams")
         raw_lfo_type = _resolve(pp, "kParamType", schema.LFO_PARAMS)
+        raw_curve = lfo_container.get("curveData")
+        curve = None
+        if isinstance(raw_curve, dict) and isinstance(raw_curve.get("xVals"), list):
+            # Inverse of mapping._build_lfo_curve_data -- Serum's own
+            # storage is Y-axis inverted (0=top, 1=bottom), LfoCurvePointSpec
+            # uses the natural convention (0=bottom, 1=top). See that
+            # function's docstring / docs/PARAMETER_SCHEMA.md item 4.
+            curve = [
+                LfoCurvePointSpec(x=x, y=1.0 - y, tension=t)
+                for x, y, t in zip(
+                    raw_curve["xVals"], raw_curve["yVals"], raw_curve["curveVals"]
+                )
+            ]
         lfos.append(
             LfoSpec(
+                curve=curve,
                 rate=_resolve(pp, "kParamRate", schema.LFO_PARAMS),
                 mode=_resolve(pp, "kParamMode", schema.LFO_PARAMS),
                 # None when genuinely absent (Serum's real tempo-synced

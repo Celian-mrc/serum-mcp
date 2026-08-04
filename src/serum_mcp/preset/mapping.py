@@ -14,7 +14,14 @@ from pathlib import Path
 from typing import Any
 
 from serum_mcp import config
-from serum_mcp.generation.spec import ArpSpec, FxUnitSpec, ModRouteSpec, OscillatorSpec, PresetSpec
+from serum_mcp.generation.spec import (
+    ArpSpec,
+    FxUnitSpec,
+    LfoCurvePointSpec,
+    ModRouteSpec,
+    OscillatorSpec,
+    PresetSpec,
+)
 
 from . import sample_library, schema, wavetable
 from .validator import validate_params
@@ -515,6 +522,49 @@ def _build_arp_clip(arp: ArpSpec) -> dict[str, Any]:
         )
     notes.sort(key=lambda n: n["timeStamp"])
     return {"notes": notes}
+
+
+def _build_lfo_curve_data(curve: list[LfoCurvePointSpec], *, lfo_index: int) -> dict[str, Any]:
+    """Convert ``LfoSpec.curve`` (natural y, 0=bottom/1=top) into Serum's own
+    raw ``curveData`` storage (Y-axis INVERTED: 0=top, 1=bottom) -- see
+    ``LfoCurvePointSpec``'s docstring and docs/PARAMETER_SCHEMA.md item 4
+    for the ground-truth-calibration story behind this inversion.
+
+    Enforces the invariants a 3051-sample real-corpus survey found
+    (``xVals[0] == 0.0``, ``xVals[-1] == 1.0``, strictly increasing) and a
+    real, confirmed Serum-side rendering bug for exactly-2-point curves
+    (a curve whose 2nd point is LOWER than its 1st -- i.e. Serum's own
+    inverted storage ends up ASCENDING -- renders as a blank/inert graph;
+    only descending-in-storage-terms, i.e. rising-in-natural-terms, 2-point
+    curves work). Raises rather than silently shipping a preset that loads
+    fine but renders as a dead flat/default LFO.
+    """
+    if len(curve) < 2:
+        raise ValueError(f"LFO{lfo_index}.curve needs at least 2 points, got {len(curve)}")
+    if curve[0].x != 0.0:
+        raise ValueError(f"LFO{lfo_index}.curve[0].x must be 0.0, got {curve[0].x}")
+    if curve[-1].x != 1.0:
+        raise ValueError(f"LFO{lfo_index}.curve[-1].x must be 1.0, got {curve[-1].x}")
+    for prev, nxt in zip(curve, curve[1:]):
+        if nxt.x <= prev.x:
+            raise ValueError(
+                f"LFO{lfo_index}.curve x values must be strictly increasing, "
+                f"got {prev.x} then {nxt.x}"
+            )
+    if len(curve) == 2 and curve[1].y <= curve[0].y:
+        raise ValueError(
+            f"LFO{lfo_index}.curve: a 2-point curve must be RISING (curve[1].y > "
+            f"curve[0].y) -- a falling 2-point curve is a confirmed Serum rendering "
+            "bug (renders as a blank/inert graph, see docs/PARAMETER_SCHEMA.md item "
+            "4). Add a 3rd point (even a redundant midpoint) for a falling shape."
+        )
+
+    return {
+        "numPoints": len(curve) - 1,
+        "xVals": [p.x for p in curve],
+        "yVals": [1.0 - p.y for p in curve],
+        "curveVals": [p.tension for p in curve],
+    }
 
 
 def _build_fx_entry(fx: FxUnitSpec) -> dict[str, Any]:
@@ -1116,6 +1166,16 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         lfo_params["kParamMode"] = lfo.mode
         if lfo.shape is not None:
             lfo_params["kParamType"] = schema.SIMPLE_LFO_TYPES.get(lfo.shape, lfo.shape)
+        if lfo.curve is not None:
+            lfo_container = data.setdefault(f"LFO{i}", {})
+            lfo_container["curveData"] = _build_lfo_curve_data(lfo.curve, lfo_index=i)
+            # Required alongside curveData or Serum silently ignores it and
+            # shows "Default"/an empty graph instead -- found live
+            # 2026-08-01 comparing a real preset's full raw LFO dict
+            # against what this project was writing (see
+            # docs/PARAMETER_SCHEMA.md item 4).
+            lfo_container["curveDisplayName"] = "Custom"
+            lfo_container.setdefault("pathData", {})
         validate_params(f"LFO{i}", lfo_params, schema.LFO_PARAMS, allow_unknown=True)
 
     for i, macro in enumerate(spec.macros):

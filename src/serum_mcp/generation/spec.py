@@ -584,6 +584,60 @@ class EnvelopeSpec(BaseModel):
     )
 
 
+class LfoCurvePointSpec(BaseModel):
+    """One point of a hand-drawn LFO curve (``LfoSpec.curve``).
+
+    Decoded 2026-08-01 via ground-truth reverse calibration: the user
+    hand-drew a known shape directly in Serum's own curve editor, saved
+    it, and this project read back the raw ``curveData`` Serum itself
+    wrote. Confirmed Serum's own storage is Y-AXIS INVERTED (``0.0`` =
+    top of the display, ``1.0`` = bottom) -- this class's ``y`` field
+    uses the NATURAL convention instead (``0.0`` = bottom, ``1.0`` = top,
+    matching how anyone would describe a curve out loud), with the
+    inversion handled internally by ``mapping.py`` so callers never need
+    to think about it. See docs/PARAMETER_SCHEMA.md item 4 for the full
+    investigation, including why 3 rounds of forward-guessing (write data,
+    observe the render) produced confusing results before switching to
+    this reverse-calibration method.
+    """
+
+    x: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Horizontal position, 0=start of the LFO cycle, 1=end. The first "
+        "point in a curve must be x=0.0 and the last must be x=1.0 (Serum's own "
+        "invariant, confirmed across a 3051-sample corpus survey with 99.7% "
+        "compliance) -- points in between must be strictly increasing.",
+    )
+    y: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Height, NATURAL convention: 0.0=bottom of the curve display, "
+        "1.0=top (this is the OPPOSITE of Serum's own raw storage, which is Y-axis "
+        "inverted -- mapping.py flips it automatically, so just describe the shape "
+        "the way you'd say it out loud: 'starts low, rises to a peak, drops back down' "
+        "means y values like [0.1, 0.9, 0.1]).",
+    )
+    tension: float = Field(
+        0.5,
+        ge=0.0,
+        le=1.0,
+        description="Tension/shape of the segment LEADING INTO this point (i.e. "
+        "tension on point[i] shapes the segment from point[i-1] to point[i]; "
+        "meaningless/ignored on the first point, since no segment leads into it). "
+        "0.5 is exact linear (confirmed both by real-corpus frequency -- the "
+        "overwhelming majority value -- and by a live-Serum ground-truth test showing "
+        "a perfectly straight-sided segment). Values below 0.5 bow a RISING segment "
+        "concave/ease-out (fast start, slow finish toward this point); above 0.5 bows "
+        "it convex/ease-in (slow start, fast finish) -- confirmed live 2026-08-01 by "
+        "changing only one segment's tension against a known-straight ground-truth "
+        "reference and observing just that segment bow. The exact quantitative curve "
+        "(vs. just the qualitative direction) is not independently confirmed -- treat "
+        "extreme values (near 0.0 or 1.0) with more suspicion than moderate ones "
+        "(0.2-0.8) until verified further.",
+    )
+
+
 class LfoSpec(BaseModel):
     rate: float = Field(
         0.0,
@@ -641,16 +695,31 @@ class LfoSpec(BaseModel):
         None,
         description=(
             "one of: random_sh, rossler, lorenz, path -- named algorithmic LFO shapes "
-            "(chaotic attractors / randomization), NOT a plain sine/triangle/square/saw "
-            "(those are stored as hand-drawn curve data this project can't generate yet, "
-            "so leave this unset for a normal-shaped LFO -- unset keeps whatever curve "
-            "the base preset already has, it does NOT mean 'off'). random_sh ('S&H' in "
+            "(chaotic attractors / randomization). For a plain sine/triangle/square/saw "
+            "or any other hand-drawn shape, use `curve` instead (now generatable, see "
+            "that field) -- leaving BOTH unset keeps whatever curve the base preset "
+            "already has, it does NOT mean 'off'. Setting `shape` and `curve` together "
+            "is meaningless (Serum uses one or the other); prefer `curve` when the "
+            "caller has an actual shape description in mind. random_sh ('S&H' in "
             "Serum's UI) is a stepped-random hold, good for glitchy/robotic movement; "
             "rossler/lorenz are smooth-but-unpredictable organic chaotic modulation, "
             "good for 'evolving'/'alive' textures; path is unconfirmed in character. "
             "NOT yet confirmed live for generation (only confirmed reading real files) "
             "-- treat as experimental until tested."
         ),
+    )
+    curve: list[LfoCurvePointSpec] | None = Field(
+        None,
+        description="A hand-drawn LFO curve as an explicit list of points -- generatable "
+        "since 2026-08-01 (see LfoCurvePointSpec for the full story and its `y`/`tension` "
+        "semantics). Requires at least 2 points; the first must have x=0.0 and the last "
+        "x=1.0. **2-point curves have a real, confirmed Serum-side rendering bug**: only "
+        "a curve where the second point's y is HIGHER than the first's (a rising shape) "
+        "renders correctly -- a falling 2-point curve renders as a blank/inert graph. "
+        "This is enforced (raises ValueError) rather than silently shipping a broken "
+        "preset; use a 3rd point (even a redundant midpoint) to work around it for a "
+        "falling 2-point shape. Leave unset (together with `shape`) to keep whatever "
+        "curve the base preset already has.",
     )
     mono: bool = Field(
         False,

@@ -1705,19 +1705,59 @@ improve generation quality if resolved:
      This confirms the core shape: **`curveVals` is a per-segment tension
      control, symmetric around `0.5`=linear, bowing opposite directions
      above/below center** — exactly the qualitative behavior the Vital
-     `powerScale` hypothesis predicts, even though the exact quantitative
-     formula (and a full explanation of the point/axis layout — the
-     3-point test's on-screen shape didn't match this project's naive
-     "y=1 is top, y=0 is bottom, points plot left-to-right at face value"
-     expectation, suggesting some remapping or axis convention not yet
-     understood) remain unresolved. **Not wired into any `PresetSpec`
-     field yet** — confirmed to have a real, directionally-predictable
-     effect, but not enough to safely expose a "generate a curve with
-     shape X" feature without nailing down the exact formula and the
-     point-layout mystery first. Good, well-scoped next step for a future
-     session: systematically vary one `curveVals` value at a time across
-     many points (0.0, 0.1, ..., 1.0) on a single fixed 3-point curve and
-     screenshot each, to fit the exact formula numerically.
+     `powerScale` hypothesis predicts.
+
+   **RESOLVED 2026-08-01 — the axis/point-layout mystery, via ground-truth
+   reverse calibration (not forward guessing).** The 3-point/5-point
+   synthetic tests above produced shapes that didn't match this project's
+   naive assumption ("`y=1` is top, `y=0` is bottom, points plot at face
+   value") — rather than keep guessing forward, switched to the same
+   method that cracked every mod-source ID in this doc: have the user
+   hand-draw a KNOWN shape directly in Serum's own curve editor (a simple
+   rise-then-drop, straight lines, no bowing), save it, and read back the
+   raw `curveData` Serum itself wrote as ground truth. Result:
+   `xVals=[0.0, 0.248, 0.501, 0.749, 1.0]`,
+   `yVals=[1.0, 0.757, 0.499, 0.257, 1.0]`, `curveVals` all `0.5`. Both
+   endpoints (the LOW points of the hand-drawn shape, on-screen) stored
+   `yVal=1.0`; the peak (the HIGH point on-screen) stored the LOWEST
+   `yVal` (`0.257`, closest to `0.0`) among the 5. **`yVals` is Y-AXIS
+   INVERTED**: `0.0` = top of the display, `1.0` = bottom — confirmed
+   directly, not inferred. `xVals` behaves normally (0=left, 1=right).
+   This single correction retroactively explains every "unexpected" shape
+   from the earlier synthetic tests (the code was reading its own numbers
+   correctly the whole time; the MENTAL MODEL of which end was "up" was
+   backwards). Re-tested by taking the ground-truth `xVals`/`yVals`
+   verbatim and changing ONLY the first segment's `curveVals` from `0.5`
+   to `0.2`: that segment alone bowed (fast-rise-then-flatten, concave)
+   while the rest of the curve stayed pixel-identical to the reference —
+   clean, unambiguous, per-segment confirmation with a known baseline to
+   compare against, unlike the earlier blind forward tests. Direction
+   confirmed consistent with the Vital hypothesis:
+   `curveVals < 0.5` → concave/ease-out (fast start, slow finish) on a
+   rising segment; `curveVals > 0.5` → convex/ease-in (slow start, fast
+   finish) — matching `power < 0` vs `power > 0` in the researched
+   formula. The exact quantitative scale (what `max_power` is) is still
+   not pinned down, but the model is now solid enough to generate real
+   curves from.
+
+   **WIRED AND LIVE-CONFIRMED 2026-08-01 — `LfoSpec.curve`.** Implemented
+   in `mapping.py`/`introspect.py` (`_build_lfo_curve_data`, natural
+   `y`/Y-axis-inverted storage conversion, auto-injecting
+   `curveDisplayName`/`pathData`, enforcing the 2-point-falling-curve
+   rejection and the `x[0]=0.0`/`x[-1]=1.0`/strictly-increasing corpus
+   invariants as `ValueError`s rather than silently shipping a broken
+   curve). Verified end-to-end through the REAL public API (not a raw
+   patch): generated a 4-point rise-to-peak-then-drop shape via
+   `generate_preset`, loaded it in real Serum, and the on-screen curve
+   matched the intended shape (peak at the specified x, correct bow
+   direction from the non-neutral tension) — the first LFO-curve-shape
+   generation this project has ever shipped and confirmed live. One
+   remaining soft/cosmetic observation, not a correctness issue: adjacent
+   segments with different tensions appeared to blend smoothly at their
+   shared point rather than meeting at a sharp corner, suggesting Serum's
+   renderer may do some cross-segment smoothing beyond this project's
+   simple independent-per-segment model — noted for a future closer look,
+   doesn't change the shape's overall correctness.
 5. **RESOLVED 2026-07-30, all 16 FX types now have param schemas.**
    `FXSplit`/`FXSplit3`/`FXSplitMS` were assumed to need "nested
    band-splitter containers, not a flat `plainParams` dict" — a 626-preset
