@@ -1375,12 +1375,21 @@ ENV_PARAMS: dict[str, ParamDef] = {
 # plain params and are still NOT modeled/generated -- most basic shapes
 # (sine/triangle/square/saw/etc) are stored purely as curve points, not a
 # named type, and decoding that point format is out of scope for now.
-# `curveVals`' own interpolation semantics have a plausible but UNCONFIRMED
-# working hypothesis as of 2026-08-01 (internet research into Vital's
-# open-source curve-editor formula, cross-checked against this project's
-# own corpus distribution) -- see docs/PARAMETER_SCHEMA.md item 4 for the
-# full writeup; needs a live Serum GUI test to actually verify, not wired
-# into any code here.
+# `curveVals` -- live-Serum-GUI-tested 2026-08-01 (see docs/
+# PARAMETER_SCHEMA.md item 4 for the full writeup). CONFIRMED to have a
+# real, symmetric-around-0.5 tension effect on 3+ point curves (0.5 =
+# exactly linear, 0.2/0.8 bow the same segment in opposite directions --
+# qualitatively matching a power-curve hypothesis from researching Vital's
+# open-source curve editor), but the exact formula and the on-screen
+# point/axis layout aren't nailed down, and a 2-point curve shows NO
+# curveVals effect at all (always a straight line). Also found along the
+# way: loading a real curveData preset via Serum's own GUI requires
+# `curveDisplayName: "Custom"` (+ empty `pathData: {}`) alongside
+# `curveData` or Serum ignores it silently; and 2-point curves with
+# yVals[1] > yVals[0] ("ascending") render as a blank graph -- always use
+# yVals[0] > yVals[1] ("descending") for any hand-crafted 2-point curve.
+# Not wired into any PresetSpec field yet -- not enough to safely expose a
+# "generate a curve" feature without fitting the exact formula first.
 #
 # `kParamType`, found live 2026-07-29 while diagnosing why a recreated
 # preset ("Galaxy") sounded nothing like the real one despite every other

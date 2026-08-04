@@ -1649,13 +1649,75 @@ improve generation quality if resolved:
    `[0,1]`-normalized UI knob remapped to something like Vital's `power`
    via `power = (curveVals - 0.5) * 2 * max_power`, with `curveVals=0.5`
    landing on `power=0` (linear), matching this project's own independent
-   finding that `0.5` is the confirmed "untouched/neutral" value. **Still
-   entirely unconfirmed** — this is a plausible, testable STARTING POINT
-   for the next live-Serum-GUI session, not a decoded formula: hand-craft
-   2-3 presets with known `curveVals` values away from 0.5 (e.g. 0.2,
-   0.5, 0.8), load each in real Serum's GUI (not via the audio pipeline,
-   which can't apply custom curveData at all per the dead-end above), and
-   compare the on-screen curve shape against this formula's prediction.
+   finding that `0.5` is the confirmed "untouched/neutral" value.
+
+   **Update 2026-08-01, live-Serum-GUI test session — real progress, 3 new
+   findings, core hypothesis partially confirmed.** Unlike the
+   audio-rendering pipeline (which can't apply custom `curveData` at all
+   via state-injection), loading a genuine `.SerumPreset` FILE through
+   Serum's own GUI (drag-drop/preset browser) turned out to be a usable
+   test path — but only after clearing two new, previously-unknown
+   obstacles:
+
+   1. **`curveDisplayName: "Custom"` (+ an empty `pathData: {}` sibling)
+      is REQUIRED**, alongside `curveData` itself, for Serum to recognize
+      and display a custom curve at all. Without it, Serum silently shows
+      "Default" in the shape dropdown and an empty graph, completely
+      ignoring the `curveData` present in the file — found by comparing a
+      real preset's full raw `LFO0` dict (not just `curveData`) against
+      what this project was writing, the same "diff the WHOLE structure,
+      not just the field you think matters" lesson as several other
+      findings in this doc.
+   2. **A real, reproducible rendering constraint for 2-point curves,
+      mechanism unexplained**: a curve where `yVals[1] > yVals[0]`
+      ("ascending") renders as a completely BLANK graph; ANY curve with
+      `yVals[1] < yVals[0]` ("descending") renders correctly. Confirmed
+      across 5 separate test files, ruling out several other hypotheses
+      along the way (not about touching exact 0.0/1.0 — a near-0
+      ascending curve `[0.001, 0.999]` still failed; not about `xVals`'s
+      endpoint). Root cause not investigated further — treat this as a
+      hard constraint for now: **always make 2-point test/generated
+      curves descending** (`yVals[0] > yVals[1]`) or they silently won't
+      render/apply at all.
+   3. **`curveVals` has NO visible effect on a 2-point curve** (only one
+      segment exists) — 3 identical-looking descending lines at
+      `curveVals` 0.2/0.5/0.8. This isn't evidence against the hypothesis;
+      it suggests 2-point curves may just always render as a straight
+      segment regardless of tension (nothing to "bow" with only one
+      segment's start/end fixed, or a Serum-side special case).
+
+   **Re-tested with a 3-point curve (2 segments) — curveVals CONFIRMED to
+   have a real, visible effect, and the direction matches the power-curve
+   hypothesis.** 3 points (`xVals=[0, 0.5, 1.0]`, `yVals=[0.999, 0.5,
+   0.001]`), varying only `curveVals[1]` (the first segment's tension) at
+   0.2/0.5/0.8, `curveVals[2]` fixed at neutral 0.5:
+   - **`curveVals=0.5`**: a perfectly symmetric, dead-straight-sided
+     triangle — both segments render as straight lines. Strong
+     confirmation that 0.5 really is exact linear/neutral, now visually
+     confirmed rather than just inferred from corpus frequency.
+   - **`curveVals=0.2`**: the varied (first) segment bows one direction
+     (a fairly direct rise, steep drop immediately after the peak that
+     flattens out).
+   - **`curveVals=0.8`**: the SAME segment bows the OPPOSITE direction
+     from 0.2 (rises quickly then plateaus/rounds off approaching the
+     peak) — while the unvaried second segment (`curveVals=0.5` in all 3)
+     stays visibly similar across all three images.
+     This confirms the core shape: **`curveVals` is a per-segment tension
+     control, symmetric around `0.5`=linear, bowing opposite directions
+     above/below center** — exactly the qualitative behavior the Vital
+     `powerScale` hypothesis predicts, even though the exact quantitative
+     formula (and a full explanation of the point/axis layout — the
+     3-point test's on-screen shape didn't match this project's naive
+     "y=1 is top, y=0 is bottom, points plot left-to-right at face value"
+     expectation, suggesting some remapping or axis convention not yet
+     understood) remain unresolved. **Not wired into any `PresetSpec`
+     field yet** — confirmed to have a real, directionally-predictable
+     effect, but not enough to safely expose a "generate a curve with
+     shape X" feature without nailing down the exact formula and the
+     point-layout mystery first. Good, well-scoped next step for a future
+     session: systematically vary one `curveVals` value at a time across
+     many points (0.0, 0.1, ..., 1.0) on a single fixed 3-point curve and
+     screenshot each, to fit the exact formula numerically.
 5. **RESOLVED 2026-07-30, all 16 FX types now have param schemas.**
    `FXSplit`/`FXSplit3`/`FXSplitMS` were assumed to need "nested
    band-splitter containers, not a flat `plainParams` dict" — a 626-preset
