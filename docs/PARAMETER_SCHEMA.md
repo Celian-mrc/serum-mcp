@@ -1617,6 +1617,45 @@ improve generation quality if resolved:
    into a live Serum instance for rendering. Recorded in
    [[reference-serum-verify-audio-pipeline]] so a future session doesn't
    repeat this exact dead end.
+
+   **Update 2026-08-01, internet research produced a concrete, testable
+   hypothesis for `curveVals` (not a confirmation — still needs a live
+   Serum GUI test to verify).** Searched for prior public reverse-
+   engineering of Serum's preset format (`KennethWussmann/serum-preset-
+   packager`, `0xdevalias`'s gists) — both confirm this project is ahead
+   of any publicly documented work; neither has decoded the mod-matrix
+   `source[1]`/aux mechanism or the curve-point format at all, so no
+   direct answer was available there. Pivoted to **Vital** (`mtytel/vital`
+   on GitHub, GPLv3) — a different but closely comparable open-source
+   wavetable synth with its own point-based LFO/envelope curve editor.
+   Its curve-interpolation code (`LineGenerator::getValueBetweenPoints`,
+   `vital::futils::powerScale`) uses an exact, inspectable formula for a
+   single scalar "power" value per point:
+
+   ```cpp
+   powerScale(t, power) = (exp(power * t) - 1) / (exp(power) - 1)   // power != 0
+   powerScale(t, power) = t                                          // power == 0 (linear)
+   ```
+
+   i.e. a one-parameter exponential warp of the linear blend position
+   `t` between two points — `power` near 0 is linear, positive/negative
+   values bow the segment concave/convex. This is a common, generic DSP
+   idiom (not Vital-specific), and a real-corpus check of this project's
+   OWN 150-preset sample (2471 real `curveVals` entries) is consistent
+   with it being the same convention: values cluster tightly around
+   **0.5 as the overwhelming majority/default** (2078/2471, ~84%), with a
+   **near-symmetric spread either side** (mean 0.495, observed range
+   ~0.000–0.954) — exactly the shape you'd expect if `curveVals` is a
+   `[0,1]`-normalized UI knob remapped to something like Vital's `power`
+   via `power = (curveVals - 0.5) * 2 * max_power`, with `curveVals=0.5`
+   landing on `power=0` (linear), matching this project's own independent
+   finding that `0.5` is the confirmed "untouched/neutral" value. **Still
+   entirely unconfirmed** — this is a plausible, testable STARTING POINT
+   for the next live-Serum-GUI session, not a decoded formula: hand-craft
+   2-3 presets with known `curveVals` values away from 0.5 (e.g. 0.2,
+   0.5, 0.8), load each in real Serum's GUI (not via the audio pipeline,
+   which can't apply custom curveData at all per the dead-end above), and
+   compare the on-screen curve shape against this formula's prediction.
 5. **RESOLVED 2026-07-30, all 16 FX types now have param schemas.**
    `FXSplit`/`FXSplit3`/`FXSplitMS` were assumed to need "nested
    band-splitter containers, not a flat `plainParams` dict" — a 626-preset
@@ -2088,6 +2127,22 @@ and reusable across 5 rounds now (round 4 alone resolved 12 IDs in one
 sitting from a single probe file, after the user provided a screenshot of
 every submenu; round 5 resolved the one holdout via corpus survey +
 one targeted real-preset read instead).
+
+**Reassessed 2026-08-01 — `subIndex` is arguably not a genuine open
+question at all, just leftover cautious phrasing.** Revisited while
+researching whether public prior art existed for it (it doesn't — see the
+`curveVals` research note above; no one else has published anything on
+Serum 2's `source[1]`/aux mechanism either). Every non-zero `subIndex`
+value this project has ever observed across every corpus survey resolved
+cleanly as a valid aux-source id from the exact same `MOD_SOURCE_IDS`
+space (item 14) — there is no residual category of non-zero values left
+unexplained. The only theoretical gap is whether `subIndex=0` could ever
+mean something OTHER than "no aux source" in some untested context — but
+`0` never collides with any real source id, so this is a clean,
+unambiguous sentinel already, not a live mystery. Downgrading this from
+"open question" to "settled in practice, no further action planned"
+unless a future investigation surfaces a genuinely unexplained non-zero
+`subIndex` value that doesn't map to a known source id.
 
 **Method, for resolving what's left**: open Serum 2 on any preset, go to
 the MATRIX tab, pick an unresolved source from the `Source` column dropdown

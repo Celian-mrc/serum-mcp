@@ -1375,6 +1375,12 @@ ENV_PARAMS: dict[str, ParamDef] = {
 # plain params and are still NOT modeled/generated -- most basic shapes
 # (sine/triangle/square/saw/etc) are stored purely as curve points, not a
 # named type, and decoding that point format is out of scope for now.
+# `curveVals`' own interpolation semantics have a plausible but UNCONFIRMED
+# working hypothesis as of 2026-08-01 (internet research into Vital's
+# open-source curve-editor formula, cross-checked against this project's
+# own corpus distribution) -- see docs/PARAMETER_SCHEMA.md item 4 for the
+# full writeup; needs a live Serum GUI test to actually verify, not wired
+# into any code here.
 #
 # `kParamType`, found live 2026-07-29 while diagnosing why a recreated
 # preset ("Galaxy") sounded nothing like the real one despite every other
