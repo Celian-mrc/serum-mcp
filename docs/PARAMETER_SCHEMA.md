@@ -115,17 +115,17 @@ A decompressed CBOR payload's top-level keys, as observed:
 | `VoiceFilter0`, `VoiceFilter1` | Filter 1, Filter 2 | Yes |
 | `Filter` | shared filter section UI mix knob | No |
 | `Env0`..`Env3` | the 4 envelopes | Yes |
-| `LFO0`..`LFO9` | the 10 LFOs | Partially (rate/mode only, not curve-drawn shapes) |
+| `LFO0`..`LFO9` | the 10 LFOs | Yes, incl. hand-drawn `curveData` shapes (`LfoSpec.curve`, since 2026-08-01 — see §5 item 4) |
 | `LFOPointModBus0`..`LFOPointModBus15` | point-editor LFO mod busses | No |
 | `Macro0`..`Macro7` | the 8 macro knobs | Yes |
-| `Global0` | master volume, mono, portamento, poly count, ... | Partially |
+| `Global0` | master volume, mono, portamento, poly count, tuning, bend range, swing, ... | Yes (25 fields via `GlobalSpec` as of 2026-08-05 — see §4 Macros & Global) |
 | `ModSlot0`..`ModSlot63` | the 64-slot mod matrix | Partially — all destinations + LFO/Macro sources, see §6 |
 | `FXRack0`..`FXRack2` | 3 independent, PARALLEL effects racks, each an ordered `FX` list | Yes, all 3 (since 2026-07-29 — see §4) |
 | `Arp0`, `ArpClip0`..`ArpClip11`, `arpBankDisplayName` | arpeggiator | Yes, `ArpClip0` only (algorithmic shapes + `pattern`; see §4 Arpeggiator) — `ArpClip1`..`11` round-trip untouched |
 | `MidiClip0`..`MidiClip11`, `ClipPlayer`, `ClipPlayer0`, `clipBankDisplayName` | MIDI clip player | No — round-trips untouched |
 | `PitchQuantizer0` | scale/quantizer | No — round-trips untouched |
 | `RetriggerState0` | legato/retrigger config | No — round-trips untouched |
-| `RoutingSlot0`..`RoutingSlot6` | FX bus routing | No — round-trips untouched |
+| `RoutingSlot0`..`RoutingSlot6` | osc-to-filter / filter-to-output routing | Yes (`OscillatorSpec.filter_routing`/`filter_balance`, `FilterSpec.output_routing` — see §5 items 16-17) |
 | `VoicePanel0` | voice-level scaling options (`kParamGlobalScalingLfoTime`/`EnvTime`, ~30 per-voice unison-randomization params) | Yes, opaque passthrough (`PresetSpec.voice_panel`, since 2026-08-04 — see §5 item 12) |
 | `SerumGUI` | window/panel layout | No — round-trips untouched |
 | `mpeEnabled`, `mpeConfig`, `mpePitchBendRange` | MPE settings | No — round-trips untouched |
@@ -387,11 +387,41 @@ poly count, and `limit_same_note_polyphony`
 832 real `Global0` slots surveyed, always `True` when present — presumed
 to cap voice-stacking when the same note retriggers rapidly, e.g. under a
 fast arp, rather than letting overlapping voices for one note pile up),
-all generatable via `GlobalSpec`; a handful of rarer global params
-(`kParamS1Compatibility` — a legacy Serum-1-porting flag, deliberately not
-generalized since it's not relevant to freshly-generated content — voice
-count, tuning, MPE bend range, FX bus routing) are documented in
-`schema.py` but not yet wired into generation.
+FX bus volumes/destinations, all generatable via `GlobalSpec`.
+
+**15 more `Global0` fields exposed 2026-08-05**, same full-key-audit
+technique used on `Arp0`/`ArpClip` the same day (every `kParam*` ever
+observed in `Global0` across the local corpus, not just already-modeled
+ones), prompted by a direct "are ALL the ARP controls reverse-engineered?"
+question that then extended naturally to Global once Arp's audit closed:
+`bend_range_up`/`bend_range_down` (pitch bend range, semitones — real
+values observed 12-24 up, -1 to -12 down), `legato`, `porta_always`/
+`porta_scaled`/`portamento_curve` (finer portamento behavior beyond the
+already-modeled `portamento_time`), `swing`/`swing_div` (global timing
+swing), `transpose` (whole-instrument semitone shift), `global_tuning`
+(A4 reference pitch, Hz), `oversampling`, `s1_compatibility` (a legacy
+Serum-1-porting flag — previously catalogued but deliberately left
+unwired; now wired since a caller round-tripping/editing a real ported
+preset needs it preserved), `use_ultra_on_render`, `voice_priority`
+(voice-stealing priority — raw string, no `ParamDef`, only 1 sample/1
+distinct value observed, same "too little evidence for a trustworthy
+enum" reasoning as 3 of the Arp string fields), `note_latch`, and
+`voice_amp` (the STATIC/base value of the same `kParamVoiceAmp` key
+already usable as a mod-matrix destination — distinct concept, only 1
+real sample). **3 of these were directly confirmed against a real Serum
+GLOBAL-tab screenshot** (`reference/serum_ui_screenshots/README.md`,
+`serum-global.png`): `s1_compatibility` = "S1 COMPATIBILITY MODE"
+checkbox, `global_tuning` = "TUNING: A = 440 Hz", `oversampling` =
+"QUALITY" dropdown. That same screenshot also resolved a real open
+question from the Galaxy investigation: the "SCALING" row's "ENVS:
+162%"/"LFOS: 1000% RATE" readout matches `VoicePanel0`'s raw
+`kParamGlobalScalingEnvTime`/`LfoTime` values EXACTLY, confirming those
+are PERCENTAGES (100% = neutral) — see `PresetSpec.voice_panel`'s
+docstring. Deliberately NOT modeled from this same audit:
+`kParamModWheel` (a last-known CC1 performance-state value, not preset
+design data), `kParamProgram` (constant `6.0` across every sample — an
+internal format/version marker), `kParamMidiOut` (constant `'ClipPlayer'`
+— internal routing target, only 1 distinct value ever observed).
 
 ### Effects
 

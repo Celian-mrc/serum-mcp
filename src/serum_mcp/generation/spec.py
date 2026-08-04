@@ -862,6 +862,117 @@ class GlobalSpec(BaseModel):
         None,
         description="Same as fx_bus1_destination, for FX Bus 2.",
     )
+    # 15 more Global0 fields found 2026-08-05 in a full key audit (same
+    # technique/prompt as ArpSpec's 2026-08-05 batch: every kParam* ever
+    # observed in Global0 across the local corpus, not just already-modeled
+    # ones). 3 (kParamS1Compatibility/kParamGlobalTuning/kParamOversampling)
+    # were also directly confirmed against a real Serum GLOBAL-tab
+    # screenshot (see reference/serum_ui_screenshots/README.md's
+    # serum-global.png entry). Deliberately NOT modeled from that same
+    # survey: kParamModWheel (looks like a last-known CC1 performance-state
+    # value, not preset design data), kParamProgram (constant 6.0 across
+    # every sample -- an internal format/version marker), kParamMidiOut
+    # (constant 'ClipPlayer' -- internal routing target, only 1 distinct
+    # value ever observed).
+    bend_range_up: float | None = Field(
+        None,
+        description="Pitch bend range, upward, in semitones. Real values observed: 12, "
+        "24. Leave unset for Serum's own default.",
+    )
+    bend_range_down: float | None = Field(
+        None,
+        description="Pitch bend range, downward, in semitones -- stored as the raw "
+        "(typically negative) value, not a magnitude. Real values observed: -1, -12.",
+    )
+    legato: bool | None = Field(
+        None, description="legato mode (notes played while holding another don't "
+        "retrigger envelopes). ~13% real-corpus presence, only ever observed True.",
+    )
+    porta_always: bool | None = Field(
+        None,
+        description="UNCERTAIN exact meaning -- likely 'apply portamento_time to every "
+        "note change, not just legato-overlapping ones'. Only ever observed True when "
+        "present.",
+    )
+    porta_scaled: bool | None = Field(
+        None,
+        description="UNCERTAIN exact meaning -- likely 'scale portamento_time by the "
+        "pitch distance being glided, instead of a constant time regardless of "
+        "distance'. Only ever observed True when present.",
+    )
+    portamento_curve: float | None = Field(
+        None,
+        description="UNCERTAIN exact meaning/units -- likely the glide's easing shape. "
+        "Real values observed: 11-100.",
+    )
+    swing: float | None = Field(
+        None,
+        ge=0.0,
+        le=100.0,
+        description="Global swing amount, %. Real values observed: 50-58% (50% = no "
+        "swing/straight timing is the likely neutral value, unconfirmed).",
+    )
+    swing_div: float | None = Field(
+        None,
+        description="UNCERTAIN exact meaning/units -- likely which note subdivision "
+        "`swing` applies to. Real values observed: 1, 2.",
+    )
+    transpose: float | None = Field(
+        None,
+        description="Global transpose, semitones -- applies to the whole instrument, "
+        "distinct from any per-oscillator/per-arp transpose. Real values observed: "
+        "-24 to +12.",
+    )
+    global_tuning: float | None = Field(
+        None,
+        gt=0.0,
+        description="Reference pitch for A4, Hz (e.g. 440.0 = standard concert pitch). "
+        "CONFIRMED via a real Serum GLOBAL tab screenshot ('TUNING: A = 440 Hz' "
+        "matches the raw kParamGlobalTuning value exactly). Real non-default values "
+        "observed: 432, 435 (alternate historical tunings). Leave unset for 440.0.",
+    )
+    oversampling: float | None = Field(
+        None,
+        description="Audio quality/oversampling setting -- CONFIRMED to correspond to "
+        "the GLOBAL tab's 'QUALITY' dropdown (screenshot showed 'High'), but only ONE "
+        "raw value (2.0) has actually been observed in real content, so the other "
+        "option(s)' ordinal(s) (e.g. for 'Low') aren't confirmed. Leave unset unless "
+        "copying a value extracted from a real preset.",
+    )
+    s1_compatibility: bool | None = Field(
+        None,
+        description="'S1 COMPATIBILITY MODE' in the GLOBAL tab (CONFIRMED via a real "
+        "screenshot) -- a legacy-behavior toggle for presets ported from Serum 1. Only "
+        "ever observed True when present; leave unset for new presets.",
+    )
+    use_ultra_on_render: bool | None = Field(
+        None,
+        description="UNCERTAIN exact meaning -- likely forces Serum's highest internal "
+        "quality mode specifically during offline/bounce rendering (vs. real-time "
+        "playback). Only ever observed True when present.",
+    )
+    voice_priority: str | None = Field(
+        None,
+        description="UNCERTAIN, raw Serum enum string (voice-stealing priority?) -- "
+        "only 'Low' observed so far, 1 sample. Written through UNVALIDATED (no known "
+        "enum set yet) -- only ever set this by copying a value extracted from a real "
+        "preset.",
+    )
+    note_latch: bool | None = Field(
+        None,
+        description="UNCERTAIN exact meaning (likely a note-hold/latch toggle, notes "
+        "keep sounding after release). Only 1 real sample observed, very low "
+        "confidence.",
+    )
+    voice_amp: float | None = Field(
+        None,
+        description="Static/base value for Global's voice-amp scaling -- DISTINCT from "
+        "using 'global.voice_amp' as a mod-matrix DESTINATION (already supported, see "
+        "ModRouteSpec): this is the same underlying kParamVoiceAmp key's own base "
+        "value, never modeled before. Only 1 real sample observed (0.43), very low "
+        "confidence -- leave unset unless copying a value extracted from a real "
+        "preset.",
+    )
 
 
 class ModRouteSpec(BaseModel):
@@ -1331,13 +1442,20 @@ class PresetSpec(BaseModel):
         "envelope uniformly; Galaxy's real value was 1000.0 vs. Serum's own unscaled "
         "default when the key is absent) plus ~30 per-voice unison-randomization params "
         "(kParamVoice{1-8}Detune/EnvTime/FilterCutoff/Mod1/Mod2/Pan, "
-        "kParamGlobalRandomOscPan) -- was always silently lost on recreation. The exact "
-        "numeric scale/units of kParamGlobalScalingLfoTime/EnvTime are NOT yet confirmed "
-        "(is 1000.0 a percentage, i.e. 10x? some other encoding?), so treat this the same "
-        "way as FxUnitSpec.flex: only ever set it by copying the dict extract_spec read "
-        "off an existing preset (round-trip/preserve), do NOT hand-author values "
-        "expecting a specific resulting speed/randomization amount. Leave unset for "
-        "Serum's own unscaled/default VoicePanel behavior.",
+        "kParamGlobalRandomOscPan) -- was always silently lost on recreation. "
+        "kParamGlobalScalingLfoTime/EnvTime's units are now CONFIRMED as PERCENTAGES "
+        "(100% = neutral/unscaled) via a real Serum GLOBAL-tab screenshot 2026-08-05: "
+        "the 'SCALING' row's 'ENVS: 162%'/'LFOS: 1000% RATE' readout matched Galaxy's "
+        "raw values (162.18/1000.0) exactly -- Galaxy's LFOs were deliberately scaled "
+        "to 10x their normal cycle time. The per-voice unison-randomization params' "
+        "exact bar-to-value mapping (the GLOBAL tab's 'VOICE CONTROL' panel) is still "
+        "NOT decoded. Given the scaling params' units are now understood, treat this "
+        "the same way as FxUnitSpec.flex regardless: only ever set it by copying the "
+        "dict extract_spec read off an existing preset (round-trip/preserve) -- do NOT "
+        "hand-author values, since this is still a single opaque dict (no individual "
+        "friendly fields yet) and mixing a hand-picked scaling % into an otherwise-"
+        "copied dict risks an inconsistent VoicePanel0 state. Leave unset for Serum's "
+        "own unscaled/default VoicePanel behavior.",
     )
 
     model_config = {"populate_by_name": True}

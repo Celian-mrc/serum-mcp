@@ -1284,7 +1284,43 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             global_params["kParamFXBus2Dest"] = (
                 1.0 if spec.global_.fx_bus2_destination == "master" else 2.0
             )
+        if spec.global_.bend_range_up is not None:
+            global_params["kParamBendRangeUp"] = spec.global_.bend_range_up
+        if spec.global_.bend_range_down is not None:
+            global_params["kParamBendRangeDn"] = spec.global_.bend_range_down
+        if spec.global_.legato is not None:
+            global_params["kParamLegato"] = spec.global_.legato
+        if spec.global_.porta_always is not None:
+            global_params["kParamPortaAlways"] = spec.global_.porta_always
+        if spec.global_.porta_scaled is not None:
+            global_params["kParamPortaScaled"] = spec.global_.porta_scaled
+        if spec.global_.portamento_curve is not None:
+            global_params["kParamPortamentoCurve"] = spec.global_.portamento_curve
+        if spec.global_.swing is not None:
+            global_params["kParamSwing"] = spec.global_.swing
+        if spec.global_.swing_div is not None:
+            global_params["kParamSwingDiv"] = spec.global_.swing_div
+        if spec.global_.transpose is not None:
+            global_params["kParamTranspose"] = spec.global_.transpose
+        if spec.global_.global_tuning is not None:
+            global_params["kParamGlobalTuning"] = spec.global_.global_tuning
+        if spec.global_.oversampling is not None:
+            global_params["kParamOversampling"] = spec.global_.oversampling
+        if spec.global_.s1_compatibility is not None:
+            global_params["kParamS1Compatibility"] = spec.global_.s1_compatibility
+        if spec.global_.use_ultra_on_render is not None:
+            global_params["kParamUseUltraOnRender"] = spec.global_.use_ultra_on_render
+        if spec.global_.note_latch is not None:
+            global_params["kParamNoteLatch"] = spec.global_.note_latch
+        if spec.global_.voice_amp is not None:
+            global_params["kParamVoiceAmp"] = spec.global_.voice_amp
         validate_params("Global0", global_params, schema.GLOBAL_PARAMS, allow_unknown=True)
+        # kParamVoicePriority has no GLOBAL_PARAMS entry (see the schema.py
+        # comment above it, same reasoning as ARPCLIP_PARAMS's uncatalogued
+        # string-enum fields) -- written after validation so it's never
+        # typechecked against an incomplete enum guess.
+        if spec.global_.voice_priority is not None:
+            global_params["kParamVoicePriority"] = spec.global_.voice_priority
 
     # Like `global`, arp is a single nested object (not a list), and unset
     # (spec.arp is None, the default) must leave Arp0/ArpClip0 completely

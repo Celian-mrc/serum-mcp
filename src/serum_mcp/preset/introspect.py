@@ -635,6 +635,50 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         fx_bus2_destination={1.0: "master", 2.0: "direct"}.get(
             global_pp.get("kParamFXBus2Dest") if isinstance(global_pp, dict) else None
         ),
+        bend_range_up=global_pp.get("kParamBendRangeUp") if isinstance(global_pp, dict) else None,
+        bend_range_down=(
+            global_pp.get("kParamBendRangeDn") if isinstance(global_pp, dict) else None
+        ),
+        legato=(
+            bool(global_pp["kParamLegato"])
+            if isinstance(global_pp, dict) and "kParamLegato" in global_pp
+            else None
+        ),
+        porta_always=(
+            bool(global_pp["kParamPortaAlways"])
+            if isinstance(global_pp, dict) and "kParamPortaAlways" in global_pp
+            else None
+        ),
+        porta_scaled=(
+            bool(global_pp["kParamPortaScaled"])
+            if isinstance(global_pp, dict) and "kParamPortaScaled" in global_pp
+            else None
+        ),
+        portamento_curve=(
+            global_pp.get("kParamPortamentoCurve") if isinstance(global_pp, dict) else None
+        ),
+        swing=global_pp.get("kParamSwing") if isinstance(global_pp, dict) else None,
+        swing_div=global_pp.get("kParamSwingDiv") if isinstance(global_pp, dict) else None,
+        transpose=global_pp.get("kParamTranspose") if isinstance(global_pp, dict) else None,
+        global_tuning=global_pp.get("kParamGlobalTuning") if isinstance(global_pp, dict) else None,
+        oversampling=global_pp.get("kParamOversampling") if isinstance(global_pp, dict) else None,
+        s1_compatibility=(
+            bool(global_pp["kParamS1Compatibility"])
+            if isinstance(global_pp, dict) and "kParamS1Compatibility" in global_pp
+            else None
+        ),
+        use_ultra_on_render=(
+            bool(global_pp["kParamUseUltraOnRender"])
+            if isinstance(global_pp, dict) and "kParamUseUltraOnRender" in global_pp
+            else None
+        ),
+        voice_priority=global_pp.get("kParamVoicePriority") if isinstance(global_pp, dict) else None,
+        note_latch=(
+            bool(global_pp["kParamNoteLatch"])
+            if isinstance(global_pp, dict) and "kParamNoteLatch" in global_pp
+            else None
+        ),
+        voice_amp=global_pp.get("kParamVoiceAmp") if isinstance(global_pp, dict) else None,
     )
 
     arp_pp = (data.get("Arp0", {}) or {}).get("plainParams")

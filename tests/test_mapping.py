@@ -1576,6 +1576,100 @@ def test_global_default_fields_omitted_2026_08_01(init_data):
     assert "kParamPortamentoTime" not in gp
 
 
+def test_global_second_field_batch_2026_08_05_round_trip(init_data):
+    """15 more Global0 fields found 2026-08-05 in a full key audit (same
+    technique/prompt as ArpSpec's 2026-08-05 batch). 3 (s1_compatibility/
+    global_tuning/oversampling) were also confirmed against a real Serum
+    GLOBAL-tab screenshot. voice_priority has no ParamDef (see the
+    schema.py comment above kParamVoicePriority) so is unvalidated."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        **{
+            "global": GlobalSpec(
+                bend_range_up=24.0,
+                bend_range_down=-12.0,
+                legato=True,
+                porta_always=True,
+                porta_scaled=True,
+                portamento_curve=50.0,
+                swing=55.0,
+                swing_div=2.0,
+                transpose=-12.0,
+                global_tuning=432.0,
+                oversampling=2.0,
+                s1_compatibility=True,
+                use_ultra_on_render=True,
+                voice_priority="Low",
+                note_latch=True,
+                voice_amp=0.43,
+            )
+        },
+    )
+    data = apply_spec(init_data, spec)
+    gp = data["Global0"]["plainParams"]
+    assert gp["kParamBendRangeUp"] == 24.0
+    assert gp["kParamBendRangeDn"] == -12.0
+    assert gp["kParamLegato"] == 1.0
+    assert gp["kParamPortaAlways"] == 1.0
+    assert gp["kParamPortaScaled"] == 1.0
+    assert gp["kParamPortamentoCurve"] == 50.0
+    assert gp["kParamSwing"] == 55.0
+    assert gp["kParamSwingDiv"] == 2.0
+    assert gp["kParamTranspose"] == -12.0
+    assert gp["kParamGlobalTuning"] == 432.0
+    assert gp["kParamOversampling"] == 2.0
+    assert gp["kParamS1Compatibility"] == 1.0
+    assert gp["kParamUseUltraOnRender"] == 1.0
+    assert gp["kParamVoicePriority"] == "Low"
+    assert gp["kParamNoteLatch"] == 1.0
+    assert gp["kParamVoiceAmp"] == 0.43
+
+    extracted = extract_spec(data)
+    g = extracted.global_
+    assert g.bend_range_up == 24.0
+    assert g.bend_range_down == -12.0
+    assert g.legato is True
+    assert g.porta_always is True
+    assert g.porta_scaled is True
+    assert g.portamento_curve == 50.0
+    assert g.swing == 55.0
+    assert g.swing_div == 2.0
+    assert g.transpose == -12.0
+    assert g.global_tuning == 432.0
+    assert g.oversampling == 2.0
+    assert g.s1_compatibility is True
+    assert g.use_ultra_on_render is True
+    assert g.voice_priority == "Low"
+    assert g.note_latch is True
+    assert g.voice_amp == 0.43
+
+
+def test_global_second_field_batch_unset_omitted(init_data):
+    spec = PresetSpec(name="X", description="", **{"global": GlobalSpec()})
+    data = apply_spec(init_data, spec)
+    gp = data["Global0"]["plainParams"]
+    for key in (
+        "kParamBendRangeUp",
+        "kParamBendRangeDn",
+        "kParamLegato",
+        "kParamPortaAlways",
+        "kParamPortaScaled",
+        "kParamPortamentoCurve",
+        "kParamSwing",
+        "kParamSwingDiv",
+        "kParamTranspose",
+        "kParamGlobalTuning",
+        "kParamOversampling",
+        "kParamS1Compatibility",
+        "kParamUseUltraOnRender",
+        "kParamVoicePriority",
+        "kParamNoteLatch",
+        "kParamVoiceAmp",
+    ):
+        assert key not in gp, key
+
+
 def test_lfo_smooth_omitted_at_default_2026_08_01(init_data):
     """kParamSmooth -- found live 2026-08-01 recreating Galaxy: its unused
     LFOs lacked it entirely, and a 2652-slot corpus survey confirmed 94%

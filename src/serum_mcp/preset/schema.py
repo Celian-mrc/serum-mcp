@@ -1672,6 +1672,101 @@ GLOBAL_PARAMS: dict[str, ParamDef] = {
         notes="Same as kParamFXBus1Dest, for FX Bus 2 (6 real occurrences of 1.0, 2 of "
         "2.0 in the same 626-preset survey).",
     ),
+    # 15 more Global0 fields found 2026-08-05, same full-key-audit technique
+    # as ARPCLIP_PARAMS's 2026-08-05 batch above (see that block's leading
+    # comment for the method). See GlobalSpec's docstrings in
+    # generation/spec.py for per-field details; 3 of these were also
+    # confirmed against a real Serum GLOBAL-tab screenshot (see
+    # reference/serum_ui_screenshots/README.md).
+    "kParamBendRangeUp": ParamDef(
+        "kParamBendRangeUp", "float", default=2.0, min=0.0, max=48.0,
+        unit="semitones", confidence="uncertain",
+        notes="Real values observed: 12, 24.",
+    ),
+    "kParamBendRangeDn": ParamDef(
+        "kParamBendRangeDn", "float", default=-2.0, min=-48.0, max=0.0,
+        unit="semitones", confidence="uncertain",
+        notes="Real values observed: -1, -12. Stored as the raw (typically negative) "
+        "value.",
+    ),
+    "kParamLegato": ParamDef(
+        "kParamLegato", "bool", default=False, confidence="uncertain",
+        notes="Only ever observed True when present. ~11% real-corpus presence.",
+    ),
+    "kParamPortaAlways": ParamDef(
+        "kParamPortaAlways", "bool", default=False, confidence="uncertain",
+        notes="UNCERTAIN exact meaning. Only ever observed True when present.",
+    ),
+    "kParamPortaScaled": ParamDef(
+        "kParamPortaScaled", "bool", default=False, confidence="uncertain",
+        notes="UNCERTAIN exact meaning. Only ever observed True when present.",
+    ),
+    "kParamPortamentoCurve": ParamDef(
+        "kParamPortamentoCurve", "float", confidence="uncertain",
+        notes="UNCERTAIN exact meaning/units. Real values observed: 11-100.",
+    ),
+    "kParamSwing": ParamDef(
+        "kParamSwing", "float", default=50.0, min=0.0, max=100.0, unit="%",
+        confidence="uncertain",
+        notes="Real values observed: 50-58%. 50% presumed neutral/straight timing, "
+        "unconfirmed.",
+    ),
+    "kParamSwingDiv": ParamDef(
+        "kParamSwingDiv", "float", confidence="uncertain",
+        notes="UNCERTAIN exact meaning/units. Real values observed: 1, 2.",
+    ),
+    "kParamTranspose": ParamDef(
+        "kParamTranspose", "float", default=0.0, min=-48.0, max=48.0,
+        unit="semitones", confidence="observed",
+        notes="Real values observed: -24 to +12.",
+    ),
+    "kParamGlobalTuning": ParamDef(
+        "kParamGlobalTuning", "float", default=440.0, min=0.0, unit="Hz",
+        confidence="confirmed",
+        notes="CONFIRMED via a real Serum GLOBAL tab screenshot 2026-08-05 ('TUNING: "
+        "A = 440 Hz' matches the raw value exactly). Real non-default values observed: "
+        "432, 435.",
+    ),
+    "kParamOversampling": ParamDef(
+        "kParamOversampling", "float", confidence="uncertain",
+        notes="Corresponds to the GLOBAL tab's QUALITY dropdown (confirmed via "
+        "screenshot 2026-08-05), but only ONE raw value (2.0) has been observed -- "
+        "other option(s)' ordinal(s) unconfirmed.",
+    ),
+    "kParamS1Compatibility": ParamDef(
+        "kParamS1Compatibility", "bool", default=False, confidence="confirmed",
+        notes="'S1 COMPATIBILITY MODE' in the GLOBAL tab, CONFIRMED via a real "
+        "screenshot 2026-08-05 -- a legacy-behavior toggle for presets ported from "
+        "Serum 1. Only ever observed True when present (157 real occurrences).",
+    ),
+    "kParamUseUltraOnRender": ParamDef(
+        "kParamUseUltraOnRender", "bool", default=False, confidence="uncertain",
+        notes="UNCERTAIN exact meaning. Only ever observed True when present.",
+    ),
+    "kParamNoteLatch": ParamDef(
+        "kParamNoteLatch", "bool", default=False, confidence="uncertain",
+        notes="UNCERTAIN exact meaning. Only 1 real sample observed, very low "
+        "confidence.",
+    ),
+    "kParamVoiceAmp": ParamDef(
+        "kParamVoiceAmp", "float", confidence="uncertain",
+        notes="Static/base value for the same key already used as a mod-matrix "
+        "DESTINATION (see MOD_DEST_TARGETS['global.voice_amp']) -- this is its own "
+        "base value, never modeled before. Only 1 real sample observed (0.43), very "
+        "low confidence.",
+    ),
+    # kParamVoicePriority deliberately NOT catalogued here -- only 1 sample,
+    # 1 distinct value ('Low') ever observed, same reasoning as
+    # ARPCLIP_PARAMS's uncatalogued string-enum fields (see that block's
+    # comment): a restrictive kind="enum" ParamDef risks validation-failing
+    # a real preset using an unobserved value. Round-tripped via
+    # GlobalSpec.voice_priority regardless, just unvalidated.
+    #
+    # Deliberately NOT modeled/catalogued at all (see GlobalSpec's leading
+    # comment on this batch): kParamModWheel (last-known CC1 performance
+    # state, not preset design data), kParamProgram (constant 6.0 -- an
+    # internal format/version marker), kParamMidiOut (constant 'ClipPlayer'
+    # -- internal routing target, 1 distinct value ever observed).
 }
 
 # RoutingSlot0-6: per-source (5 oscillators) and per-filter (2 filters)
