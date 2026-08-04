@@ -1161,6 +1161,109 @@ class ArpSpec(BaseModel):
         "the wrap point?) -- real values observed: 20-82%. ~6% real-corpus presence, "
         "low sample count, treat as lower-confidence than the other Arp fields.",
     )
+    # 11 more fields found 2026-08-05 in a full audit of every real Arp0/
+    # ArpClip key across the corpus (prompted by a direct 'are all the ARP
+    # controls reverse-engineered?' question) -- see docs/PARAMETER_SCHEMA.md
+    # §4 Arpeggiator for the full survey. Presence rates are among
+    # arp-enabled presets specifically.
+    key_zone_min: float | None = Field(
+        None,
+        ge=0.0,
+        le=127.0,
+        description="Arp0-level (not per-clip): lowest MIDI note that triggers the "
+        "arp's own key-zone (notes below this presumably pass through/play normally "
+        "instead of arpeggiating). Real values observed: 12-84. ~5% real-corpus "
+        "presence.",
+    )
+    key_zone_max: float | None = Field(
+        None,
+        ge=0.0,
+        le=127.0,
+        description="Arp0-level: highest MIDI note of the key-zone (see "
+        "`key_zone_min`). Only ever observed at 126.0 in real content (~15% "
+        "real-corpus presence) -- likely just 'effectively no upper limit' in "
+        "practice, not a meaningfully-varied control.",
+    )
+    midi_select_octave: float | None = Field(
+        None,
+        description="Arp0-level: UNCERTAIN exact meaning -- likely an octave shift for "
+        "the key-zone/note-selection above. Real values observed: -2, 0, 1. ~3% "
+        "real-corpus presence, very low sample count.",
+    )
+    beat_retrig: bool | None = Field(
+        None,
+        description="UNCERTAIN exact meaning (retrigger quantized to the beat grid?). "
+        "Only ever observed True when present. ~62% real-corpus presence (the single "
+        "most common of this batch) -- but leave unset unless copying a value from a "
+        "real preset, semantics not confirmed.",
+    )
+    launch_retrig: bool | None = Field(
+        None,
+        description="UNCERTAIN exact meaning (retrigger on pattern launch/restart?). "
+        "Only ever observed False when present. ~60% real-corpus presence.",
+    )
+    velo_retrig: bool | None = Field(
+        None,
+        description="UNCERTAIN relationship to `velo_enabled`/`velo_target` -- possibly "
+        "'does velocity affect retrigger behavior specifically'. Only ever observed "
+        "True when present. ~26% real-corpus presence.",
+    )
+    velo_decay: float | None = Field(
+        None,
+        description="UNCERTAIN exact meaning/units -- paired with the other velo_* "
+        "fields. Real values observed cluster tightly (~3.9, not a round number), "
+        "suggesting this may be a UI-touch residue Serum writes once a velocity "
+        "control is touched rather than a meaningfully hand-tuned value. ~31% "
+        "real-corpus presence.",
+    )
+    repeats: float | None = Field(
+        None,
+        ge=0.0,
+        description="UNCERTAIN exact meaning (repeat count for a step/pattern?). Real "
+        "values observed: 1, 4, 8. ~7% real-corpus presence, low sample count.",
+    )
+    transpose_step: float | None = Field(
+        None,
+        description="UNCERTAIN exact meaning -- DISTINCT from `transpose_shift` "
+        "(static whole-pattern transpose) and `transpose_range` (total wrap range); "
+        "likely the step size applied per wrap cycle, working alongside those two. "
+        "Real values observed: 1, 2, 12. ~7% real-corpus presence, low sample count.",
+    )
+    thru: bool | None = Field(
+        None,
+        description="UNCERTAIN exact meaning (possibly a MIDI-thru toggle, passing "
+        "originally-held notes through alongside the arpeggiated ones). Only ever "
+        "observed True when present. ~3% real-corpus presence, very low sample count.",
+    )
+    range_wrap_mode: str | None = Field(
+        None,
+        description="UNCERTAIN, raw Serum enum string -- only 'Phantom' observed so "
+        "far (likely paired with `wrap_phantom_note`; other option(s) presumably "
+        "exist but aren't confirmed). Written through UNVALIDATED (no known enum set "
+        "yet, unlike `shape`) -- only ever set this by copying a value extracted from "
+        "a real preset. ~25% real-corpus presence.",
+    )
+    playback_mode: str | None = Field(
+        None,
+        description="UNCERTAIN, raw Serum enum string and UNCERTAIN relationship to "
+        "`shape` -- observed values ('Random', 'RandomNoDup', 'Pendulum') overlap "
+        "partially with `shape`'s own vocabulary but use different spellings "
+        "('Random' vs. `shape`'s 'Rand') plus at least one value 'Pendulum' never "
+        "seen on `shape` at all, so this is NOT simply a duplicate/alias. Written "
+        "through UNVALIDATED, same caveat as `range_wrap_mode`. ~10% real-corpus "
+        "presence.",
+    )
+    playback_mode_time: float | None = Field(
+        None,
+        description="UNCERTAIN exact meaning/units -- paired with `playback_mode`. "
+        "Only ever observed at 2.0. ~5% real-corpus presence, low sample count.",
+    )
+    step_action: str | None = Field(
+        None,
+        description="UNCERTAIN, raw Serum enum string -- only 'Chord' observed so far. "
+        "Written through UNVALIDATED, same caveat as `range_wrap_mode`. ~11% "
+        "real-corpus presence, low sample count.",
+    )
 
 
 class PresetSpec(BaseModel):

@@ -543,6 +543,54 @@ omitted (Serum's own default applies) unless explicitly set. See
 observed value ranges (several remain UNCERTAIN in exact units/meaning,
 e.g. `offset`/`retrig_rate`/`wrap_phantom_note`).
 
+**Full ARP key audit, 11 more fields exposed 2026-08-05** — prompted by a
+direct "are ALL the ARP controls reverse-engineered?" question. Ran a
+complete key survey (every `kParam*` ever seen in `Arp0`/any `ArpClip{i}`
+slot, not just the ones already modeled) across the local Factory +
+third-party corpus. Found:
+- **3 more `Arp0`-level fields** (not per-clip): `key_zone_min`/
+  `key_zone_max` (a MIDI key-zone the arp responds within — `key_zone_max`
+  is almost always `126.0`, effectively "no upper limit" in practice, but
+  `key_zone_min` genuinely varies 12-84) and `midi_select_octave`
+  (UNCERTAIN exact meaning, very low sample count).
+- **7 more `ArpClip` fields with confirmed types** (safe to catalog with a
+  `ParamDef`): `beat_retrig` (~62% presence, the single most common field
+  in this whole batch), `launch_retrig` (~60%), `velo_retrig` (~26%),
+  `velo_decay` (~32%, values cluster tightly around a non-round constant —
+  possibly UI-touch residue, not hand-tuned), `repeats` (~7%),
+  `transpose_step` (~7%, raw key `kParamTranspose` — DISTINCT from
+  `transpose_shift`/`transpose_range`, likely the per-wrap-cycle step
+  size), `thru` (~3%, very low sample count).
+- **3 more `ArpClip` fields deliberately left UNVALIDATED**:
+  `range_wrap_mode` (~25% presence, only `'Phantom'` observed — pairs with
+  `wrap_phantom_note`), `playback_mode` (~10%, values `'Random'`/
+  `'RandomNoDup'`/`'Pendulum'` — overlaps but doesn't exactly match
+  `shape`'s own vocabulary, e.g. `'Random'` vs. `shape`'s `'Rand'`, plus
+  `'Pendulum'` never seen on `shape` at all, so NOT simply an alias),
+  `step_action` (~11%, only `'Chord'` observed). None of these three got a
+  `ParamDef` in `ARPCLIP_PARAMS` — with only 1-3 distinct values observed
+  each, a `kind="enum"` entry would be too narrow to trust, and worse,
+  would make `edit_preset` **validation-fail** on any real preset already
+  using an unobserved value (`validate_params` checks every pre-existing
+  key in the merged `plainParams` dict, not just newly-written ones).
+  Round-tripped via `ArpSpec` fields regardless, just without schema
+  validation (same `allow_unknown=True` passthrough already used for
+  every module's genuinely-unknown pre-existing keys).
+- **One more field spotted but deliberately NOT wired**: `kParamBeatSync`
+  at the `ArpClip` level (distinct from the LFO/`FXDelay` beat_sync bug
+  class already fixed elsewhere — see items 6a/6d) — only 1 real sample.
+  Given this project's history of exactly this bug shape (a bool whose own
+  default collides with "unset"), it's flagged for future scrutiny in
+  `schema.py`'s comments, but 1 sample isn't enough evidence to act on.
+
+**Answering the audit question directly**: as of this pass, every `Arp0`/
+`ArpClip0` key ever observed in the local corpus is now either modeled via
+`ArpSpec` or explicitly documented as insufficient-evidence
+(`kParamLaunchQuantize`, `kParamActiveClipID`, `kParamBeatSync`). No
+further unmodeled ARP keys are known to exist — though the corpus itself
+(Factory + a handful of third-party banks) is not exhaustive, so a
+genuinely novel Serum installation/version could still surface one.
+
 **Confirmed live** (2026-07-29, real Serum 2 in FL Studio 21), both modes:
 the original `_ArpTest/` presets (`up_down` and `chord` shapes, algorithmic
 mode) loaded and arpeggiated correctly on a held chord. `Pattern` mode took

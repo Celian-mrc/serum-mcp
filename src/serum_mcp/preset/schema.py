@@ -1782,6 +1782,24 @@ ARP_PARAMS: dict[str, ParamDef] = {
         notes="Observed values 0.0/10.0/12.0 across only 4 samples -- real unit/"
         "meaning (beats? steps?) not established. Not currently exposed via ArpSpec.",
     ),
+    # 3 more Arp0-level fields found 2026-08-05 (see ArpSpec.key_zone_min's
+    # docstring), a MIDI key-zone feature distinct from anything ArpClip
+    # models. Presence rates among the same 73-arp-enabled-preset survey.
+    "kParamKeyZoneMin": ParamDef(
+        "kParamKeyZoneMin", "float", default=0.0, min=0.0, max=127.0,
+        unit="MIDI note", confidence="uncertain",
+        notes="Real values observed: 12-84. ~5.5% real-corpus presence.",
+    ),
+    "kParamKeyZoneMax": ParamDef(
+        "kParamKeyZoneMax", "float", default=127.0, min=0.0, max=127.0,
+        unit="MIDI note", confidence="uncertain",
+        notes="Only ever observed at 126.0. ~15% real-corpus presence.",
+    ),
+    "kParamMidiSelectOctave": ParamDef(
+        "kParamMidiSelectOctave", "float", confidence="uncertain",
+        notes="Real values observed: -2, 0, 1. ~2.7% real-corpus presence, very low "
+        "sample count.",
+    ),
 }
 
 # Curated subset of the real (larger, per the module comment above) shape
@@ -1997,6 +2015,69 @@ ARPCLIP_PARAMS["kParamWrapPhantomNote"] = ParamDef(
     "chance of an extra note at the wrap point). Only 5.6% real-corpus presence, "
     "lowest-confidence of this group.",
 )
+# 7 more ArpClip fields found 2026-08-05 in a full corpus key audit (see
+# ArpSpec's docstrings for each) -- presence rates among the same
+# 73-arp-enabled-preset survey.
+ARPCLIP_PARAMS["kParamBeatRetrig"] = ParamDef(
+    "kParamBeatRetrig", "bool", default=False, confidence="uncertain",
+    notes="Only ever observed True when present. ~61.6% real-corpus presence -- the "
+    "single most common of this batch, but exact meaning still unconfirmed.",
+)
+ARPCLIP_PARAMS["kParamLaunchRetrig"] = ParamDef(
+    "kParamLaunchRetrig", "bool", default=False, confidence="uncertain",
+    notes="Only ever observed False when present. ~60.3% real-corpus presence.",
+)
+ARPCLIP_PARAMS["kParamVeloRetrig"] = ParamDef(
+    "kParamVeloRetrig", "bool", default=False, confidence="uncertain",
+    notes="Only ever observed True when present. ~26.0% real-corpus presence.",
+)
+ARPCLIP_PARAMS["kParamVeloDecay"] = ParamDef(
+    "kParamVeloDecay", "float", confidence="uncertain",
+    notes="Real values cluster tightly around ~3.9267 -- possibly a UI-touch "
+    "residue rather than a hand-tuned value. ~31.5% real-corpus presence.",
+)
+ARPCLIP_PARAMS["kParamRepeats"] = ParamDef(
+    "kParamRepeats", "float", default=0.0, min=0.0, confidence="uncertain",
+    notes="Real values observed: 1, 4, 8. ~6.8% real-corpus presence.",
+)
+ARPCLIP_PARAMS["kParamTranspose"] = ParamDef(
+    "kParamTranspose", "float", confidence="uncertain",
+    notes="DISTINCT from kParamTransposeShift/kParamTransposeRange -- likely a step "
+    "size applied per wrap cycle. Real values observed: 1, 2, 12. ~6.8% real-corpus "
+    "presence.",
+)
+ARPCLIP_PARAMS["kParamThru"] = ParamDef(
+    "kParamThru", "bool", default=False, confidence="uncertain",
+    notes="Only ever observed True when present. ~2.7% real-corpus presence, very "
+    "low sample count.",
+)
+# kParamRangeWrapMode/kParamPlaybackMode/kParamStepAction are deliberately
+# NOT catalogued here despite being real and reasonably common (25%/10%/12%
+# real-corpus presence) -- each has only 1-3 distinct raw string values
+# observed so far (e.g. RangeWrapMode: only 'Phantom'), nowhere near enough
+# to trust as a complete enum. Adding a restrictive `kind="enum"` ParamDef
+# would make `edit_preset` VALIDATION-FAIL on any real preset already using
+# an unobserved value of these fields (validate_params checks every
+# pre-existing key in a merged plainParams dict, not just newly-written
+# ones) -- worse than just passing them through unvalidated via
+# `allow_unknown=True`. `ArpSpec.range_wrap_mode`/`playback_mode`/
+# `step_action` still round-trip these values, just without schema
+# validation. kParamPlaybackModeTime (paired with kParamPlaybackMode, only
+# ever observed at 2.0, ~5.5% presence) is a plain float with no such risk
+# and IS catalogued:
+ARPCLIP_PARAMS["kParamPlaybackModeTime"] = ParamDef(
+    "kParamPlaybackModeTime", "float", confidence="uncertain",
+    notes="Paired with kParamPlaybackMode. Only ever observed at 2.0. ~5.5% "
+    "real-corpus presence, low sample count.",
+)
+# kParamBeatSync (ArpClip-level, DISTINCT from the well-known LFO/FXDelay
+# beat_sync bug class -- see docs/PARAMETER_SCHEMA.md item 6a/6d) was also
+# seen once in this audit (1 real preset, value 0.0 on 2 of its clip slots).
+# Given this project's history of beat_sync-shaped bugs (a bool field whose
+# own default collides with "unset", silently making one mode unreachable),
+# this deserves scrutiny before being wired up -- but 1 sample is nowhere
+# near enough evidence to act on yet. Not catalogued, not exposed via
+# ArpSpec.
 
 # ModSlot0..ModSlot63: the mod matrix. Structurally confirmed (destModuleID /
 # destModuleParamID / destModuleParamName / destModuleTypeString / source /

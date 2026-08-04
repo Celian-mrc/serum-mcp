@@ -1295,6 +1295,12 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         arp = spec.arp
         arp_params = _plain_params(data, "Arp0")
         arp_params["kParamEnabled"] = arp.enabled
+        if arp.key_zone_min is not None:
+            arp_params["kParamKeyZoneMin"] = arp.key_zone_min
+        if arp.key_zone_max is not None:
+            arp_params["kParamKeyZoneMax"] = arp.key_zone_max
+        if arp.midi_select_octave is not None:
+            arp_params["kParamMidiSelectOctave"] = arp.midi_select_octave
         validate_params("Arp0", arp_params, schema.ARP_PARAMS, allow_unknown=True)
 
         clip_key = "ArpClip0"
@@ -1379,7 +1385,35 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             clip_params["kParamVeloTarget"] = arp.velo_target
         if arp.wrap_phantom_note is not None:
             clip_params["kParamWrapPhantomNote"] = arp.wrap_phantom_note
+        if arp.beat_retrig is not None:
+            clip_params["kParamBeatRetrig"] = arp.beat_retrig
+        if arp.launch_retrig is not None:
+            clip_params["kParamLaunchRetrig"] = arp.launch_retrig
+        if arp.velo_retrig is not None:
+            clip_params["kParamVeloRetrig"] = arp.velo_retrig
+        if arp.velo_decay is not None:
+            clip_params["kParamVeloDecay"] = arp.velo_decay
+        if arp.repeats is not None:
+            clip_params["kParamRepeats"] = arp.repeats
+        if arp.transpose_step is not None:
+            clip_params["kParamTranspose"] = arp.transpose_step
+        if arp.thru is not None:
+            clip_params["kParamThru"] = arp.thru
+        if arp.playback_mode_time is not None:
+            clip_params["kParamPlaybackModeTime"] = arp.playback_mode_time
         validate_params(clip_key, clip_params, schema.ARPCLIP_PARAMS, allow_unknown=True)
+        # Deliberately written AFTER validate_params, not before -- these 3
+        # have no ARPCLIP_PARAMS entry at all (see the schema.py comment
+        # above kParamRangeWrapMode: too few distinct observed values to
+        # trust as a complete enum), so writing them post-validation avoids
+        # ever needing to touch this call site again if they're catalogued
+        # later.
+        if arp.range_wrap_mode is not None:
+            clip_params["kParamRangeWrapMode"] = arp.range_wrap_mode
+        if arp.playback_mode is not None:
+            clip_params["kParamPlaybackMode"] = arp.playback_mode
+        if arp.step_action is not None:
+            clip_params["kParamStepAction"] = arp.step_action
 
     if spec.voice_panel is not None:
         # Opaque passthrough -- see PresetSpec.voice_panel's docstring. Written

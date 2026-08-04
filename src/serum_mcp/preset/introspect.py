@@ -693,6 +693,42 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             wrap_phantom_note=(
                 clip_pp.get("kParamWrapPhantomNote") if isinstance(clip_pp, dict) else None
             ),
+            key_zone_min=arp_pp.get("kParamKeyZoneMin") if isinstance(arp_pp, dict) else None,
+            key_zone_max=arp_pp.get("kParamKeyZoneMax") if isinstance(arp_pp, dict) else None,
+            midi_select_octave=(
+                arp_pp.get("kParamMidiSelectOctave") if isinstance(arp_pp, dict) else None
+            ),
+            beat_retrig=(
+                bool(clip_pp["kParamBeatRetrig"])
+                if isinstance(clip_pp, dict) and "kParamBeatRetrig" in clip_pp
+                else None
+            ),
+            launch_retrig=(
+                bool(clip_pp["kParamLaunchRetrig"])
+                if isinstance(clip_pp, dict) and "kParamLaunchRetrig" in clip_pp
+                else None
+            ),
+            velo_retrig=(
+                bool(clip_pp["kParamVeloRetrig"])
+                if isinstance(clip_pp, dict) and "kParamVeloRetrig" in clip_pp
+                else None
+            ),
+            velo_decay=clip_pp.get("kParamVeloDecay") if isinstance(clip_pp, dict) else None,
+            repeats=clip_pp.get("kParamRepeats") if isinstance(clip_pp, dict) else None,
+            transpose_step=clip_pp.get("kParamTranspose") if isinstance(clip_pp, dict) else None,
+            thru=(
+                bool(clip_pp["kParamThru"])
+                if isinstance(clip_pp, dict) and "kParamThru" in clip_pp
+                else None
+            ),
+            range_wrap_mode=(
+                clip_pp.get("kParamRangeWrapMode") if isinstance(clip_pp, dict) else None
+            ),
+            playback_mode=clip_pp.get("kParamPlaybackMode") if isinstance(clip_pp, dict) else None,
+            playback_mode_time=(
+                clip_pp.get("kParamPlaybackModeTime") if isinstance(clip_pp, dict) else None
+            ),
+            step_action=clip_pp.get("kParamStepAction") if isinstance(clip_pp, dict) else None,
         )
 
     # Opaque passthrough, see PresetSpec.voice_panel's docstring -- only

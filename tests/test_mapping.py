@@ -1780,13 +1780,78 @@ def test_arp_playback_fields_2026_08_04_round_trip(init_data):
     assert extracted.arp.wrap_range == 14.0
 
 
+def test_arp_second_playback_batch_2026_08_05_round_trip(init_data):
+    """11 more Arp0/ArpClip fields found 2026-08-05 in a full audit of every
+    real Arp0/ArpClip key across the corpus (prompted by 'are ALL the ARP
+    controls reverse-engineered?'). 3 of them (range_wrap_mode/
+    playback_mode/step_action) are deliberately unvalidated raw strings --
+    see the schema.py comment above kParamRangeWrapMode."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        arp=ArpSpec(
+            shape="up_down",
+            key_zone_min=36.0,
+            key_zone_max=126.0,
+            midi_select_octave=-1.0,
+            beat_retrig=True,
+            launch_retrig=False,
+            velo_retrig=True,
+            velo_decay=3.9266837068857408,
+            repeats=4.0,
+            transpose_step=2.0,
+            thru=True,
+            range_wrap_mode="Phantom",
+            playback_mode="Pendulum",
+            playback_mode_time=2.0,
+            step_action="Chord",
+        ),
+    )
+    data = apply_spec(init_data, spec)
+    arp0 = data["Arp0"]["plainParams"]
+    clip = data["ArpClip0"]["plainParams"]
+    assert arp0["kParamKeyZoneMin"] == 36.0
+    assert arp0["kParamKeyZoneMax"] == 126.0
+    assert arp0["kParamMidiSelectOctave"] == -1.0
+    assert clip["kParamBeatRetrig"] == 1.0
+    assert clip["kParamLaunchRetrig"] == 0.0
+    assert clip["kParamVeloRetrig"] == 1.0
+    assert clip["kParamVeloDecay"] == 3.9266837068857408
+    assert clip["kParamRepeats"] == 4.0
+    assert clip["kParamTranspose"] == 2.0
+    assert clip["kParamThru"] == 1.0
+    assert clip["kParamRangeWrapMode"] == "Phantom"
+    assert clip["kParamPlaybackMode"] == "Pendulum"
+    assert clip["kParamPlaybackModeTime"] == 2.0
+    assert clip["kParamStepAction"] == "Chord"
+
+    extracted = extract_spec(data)
+    assert extracted.arp.key_zone_min == 36.0
+    assert extracted.arp.key_zone_max == 126.0
+    assert extracted.arp.midi_select_octave == -1.0
+    assert extracted.arp.beat_retrig is True
+    assert extracted.arp.launch_retrig is False
+    assert extracted.arp.velo_retrig is True
+    assert extracted.arp.velo_decay == 3.9266837068857408
+    assert extracted.arp.repeats == 4.0
+    assert extracted.arp.transpose_step == 2.0
+    assert extracted.arp.thru is True
+    assert extracted.arp.range_wrap_mode == "Phantom"
+    assert extracted.arp.playback_mode == "Pendulum"
+    assert extracted.arp.playback_mode_time == 2.0
+    assert extracted.arp.step_action == "Chord"
+
+
 def test_arp_playback_fields_unset_omitted(init_data):
     """Unset (the default) must NOT write any of the 8 new fields -- they're
     all minority-present in real content (6-31%), matching this project's
     'omission means real Serum default' convention used everywhere else."""
     spec = PresetSpec(name="X", description="", arp=ArpSpec(shape="up_down"))
     data = apply_spec(init_data, spec)
+    arp0 = data["Arp0"]["plainParams"]
     clip = data["ArpClip0"]["plainParams"]
+    for key in ("kParamKeyZoneMin", "kParamKeyZoneMax", "kParamMidiSelectOctave"):
+        assert key not in arp0, key
     for key in (
         "kParamChance",
         "kParamOffset",
@@ -1798,6 +1863,17 @@ def test_arp_playback_fields_unset_omitted(init_data):
         "kParamVeloTarget",
         "kParamWrapRange",
         "kParamWrapPhantomNote",
+        "kParamBeatRetrig",
+        "kParamLaunchRetrig",
+        "kParamVeloRetrig",
+        "kParamVeloDecay",
+        "kParamRepeats",
+        "kParamTranspose",
+        "kParamThru",
+        "kParamRangeWrapMode",
+        "kParamPlaybackMode",
+        "kParamPlaybackModeTime",
+        "kParamStepAction",
     ):
         assert key not in clip, key
 
