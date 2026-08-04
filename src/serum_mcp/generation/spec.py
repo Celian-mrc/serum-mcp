@@ -1144,9 +1144,15 @@ class ArpSpec(BaseModel):
         "step; 'converge'/'diverge' sweep inward/outward from the middle of the held "
         "notes; 'down'/'thumb_up' are directional (higher note first / lowest note "
         "held as a constant 'thumb' with the pattern moving around it); "
+        "'up_down'/'down_up'/'up_and_down'/'down_and_up' ping-pong between the lowest "
+        "and highest held note -- CONFIRMED live 2026-08-05 (a held-chord audio test): "
+        "'down'-first vs 'up'-first sets which direction it starts in, and '_and_' "
+        "present vs absent sets whether the top/bottom note repeats once before "
+        "reversing direction (e.g. for a held C/E/G chord, 'up_down' plays "
+        "C-E-G-E-C-E-G-E..., while 'up_and_down' plays C-E-G-G-E-C-C-E-G-G..., "
+        "doubling the G and C at each turnaround); "
         "'random_once'/'random_drift'/'random_no_dup' are randomized order variants. "
-        "Likely more exist (e.g. an 'up' counterpart to 'down') but aren't confirmed "
-        "yet -- see docs/PARAMETER_SCHEMA.md.",
+        "Likely more exist but aren't confirmed yet -- see docs/PARAMETER_SCHEMA.md.",
     )
     rate: float = Field(
         0.5,

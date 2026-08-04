@@ -2009,11 +2009,22 @@ ARP_PARAMS: dict[str, ParamDef] = {
 # after a second pass across all 844 real presets available (Factory + 6
 # third-party banks, not just the original 180-preset sample) -- turned up
 # 6 more confirmed shapes, including UpDown (the 2nd most common value
-# overall after Pattern). The distinction between e.g. "UpDown" and
-# "DownAndUp" vs "UpAndDown" and "DownUp" (4 separate raw values, all
-# observed) is NOT understood -- likely a real difference in whether the
-# turnaround note at top/bottom repeats, but unverified; named as
-# distinctly as possible without inventing a confident explanation.
+# overall after Pattern).
+#
+# UpDown/DownUp/UpAndDown/DownAndUp CONFIRMED 2026-08-05 via the
+# serum-verify audio pipeline: a held 3-note chord (C4/E4/G4) through each
+# shape, onset-detected step timing + per-segment pitch estimation
+# (librosa.pyin) to reconstruct the actual played note sequence. Exactly
+# matched the guessed-but-unverified hypothesis in this comment's earlier
+# version -- it IS about whether the turnaround note repeats:
+#   UpDown:     C E G E C E G E ...  (ascend then descend, extremes NOT repeated, starts ascending)
+#   DownUp:     G E C E G E C E ...  (mirror of UpDown -- starts descending)
+#   UpAndDown:  C E G G E C C E G G ...  (extremes EACH repeat once at the turnaround, starts ascending)
+#   DownAndUp:  G E C C E G G E C C ...  (mirror of UpAndDown -- starts descending)
+# i.e. "Down"-first vs "Up"-first sets the starting direction; "And"
+# present vs absent sets whether the top/bottom note doubles before
+# reversing direction. See docs/PARAMETER_SCHEMA.md's Arpeggiator section
+# for the full writeup.
 SIMPLE_ARP_SHAPES: dict[str, str] = {
     "played": "Played",
     "chord": "Chord",

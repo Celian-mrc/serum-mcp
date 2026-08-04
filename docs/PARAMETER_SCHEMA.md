@@ -511,9 +511,24 @@ the *same* enum on its own schedule):
   RandNoDup — 16 confirmed values excluding Pattern) — just a handful of
   knobs (`kParamRate`, `kParamGate`, `kParamDotted`, `kParamTriplets`,
   `kParamTransposeShift`), no note data. **Generatable** via `ArpSpec`.
-  The distinction between e.g. `UpDown`/`DownUp`/`UpAndDown`/`DownAndUp`
-  (4 separate confirmed raw values) isn't understood — likely whether the
-  turnaround note at the top/bottom repeats, unverified.
+  **`UpDown`/`DownUp`/`UpAndDown`/`DownAndUp` CONFIRMED 2026-08-05** via
+  the [[reference-serum-verify-audio-pipeline]]: a held 3-note chord
+  (C4/E4/G4), onset detection for step timing + per-segment pitch
+  estimation (`librosa.pyin`) to reconstruct the actual played note
+  sequence. Exactly matched the earlier guessed-but-unverified hypothesis
+  — it's about whether the turnaround note repeats:
+  - `UpDown`: `C E G E C E G E ...` (ascend then descend, starts
+    ascending, top/bottom NOT repeated)
+  - `DownUp`: `G E C E G E C E ...` (mirror of `UpDown` — starts
+    descending)
+  - `UpAndDown`: `C E G G E C C E G G ...` (starts ascending, top/bottom
+    EACH repeat once at the turnaround)
+  - `DownAndUp`: `G E C C E G G E C C ...` (mirror of `UpAndDown` —
+    starts descending)
+
+  i.e. `Down`-first vs `Up`-first sets the starting direction; `And`
+  present vs absent sets whether the extreme note doubles before
+  reversing.
 - **`Pattern`**: a real hand-drawn MIDI-clip-like note list in the same
   clip's own `clip.notes` array (`noteNum`/`timeStamp`/`length`/`channel`,
   plus an 8-float `attributes` vector and `expressionEvents`). The single
@@ -663,10 +678,11 @@ ones at once and testing live doesn't actually tell you which one mattered
 -- only a true single-variable swap does, and steps 3 and 5 above cost two
 extra full live-test round-trips by skipping that discipline.
 
-The exact meaning of `kParamRate` beyond "must not be too low for
-`Pattern`", the `UpDown`/`DownUp`/`UpAndDown`/`DownAndUp` distinction, and
-Pattern mode's attribute-vector index 6 remain unverified specifics either
-way.
+**Update 2026-08-05 — both `kParamRate`'s general meaning and the
+`UpDown`/`DownUp`/`UpAndDown`/`DownAndUp` distinction are now RESOLVED**
+(see this section's entries above and the Arpeggiator §4 breakpoint
+table) — only Pattern mode's attribute-vector index 6 remains a genuinely
+unverified specific.
 
 ## 5. Known gaps and open questions
 
