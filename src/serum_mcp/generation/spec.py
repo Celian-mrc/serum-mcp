@@ -1401,15 +1401,16 @@ class VoiceUnisonSpec(BaseModel):
     genuine -100..100 range), so -100..100 is used as a permissive common
     bound, not a confirmed per-field range.
 
-    This module is a DIFFERENT, more-decoded slice of the same raw
-    ``VoicePanel0`` singleton as ``PresetSpec.voice_panel`` (the opaque
-    passthrough covering ``kParamGlobalScalingEnvTime``/``LfoTime`` plus
-    everything here) -- don't set both on the same call: ``voice_panel``
-    (if set) is written first as a full wholesale replace of
-    ``VoicePanel0.plainParams``, and these fields are then written ON TOP
-    of that, so combining them is technically well-defined (this object
-    wins on any key it touches) but almost certainly not what you want --
-    prefer one or the other per call.
+    This is now the ONLY model for ``VoicePanel0`` (the earlier opaque
+    ``PresetSpec.voice_panel`` dict was removed 2026-08-05 once every real
+    key found across the full corpus -- including the 2 global scaling
+    params, whose exact 1:1 percentage relationship was confirmed the same
+    day via the SAME '-20' ground-truth technique applied to the SCALING
+    row -- got a friendly home here). Like every other module in this
+    codebase, writing these fields MERGES onto ``VoicePanel0.plainParams``
+    (via ``_plain_params``) rather than replacing it wholesale, so editing
+    a preset that already has other/unknown ``VoicePanel0`` keys leaves
+    them untouched.
 
     Each list entry can be ``None`` for a voice that doesn't set this
     param at all (vs. ``0.0``, a real explicit value) -- found live
@@ -1474,6 +1475,80 @@ class VoiceUnisonSpec(BaseModel):
         "overall randomization AMOUNT applied per-note, distinct from the SEQ pattern's "
         "fixed per-voice values.",
     )
+    random_detune: float | None = Field(
+        None,
+        ge=0.0,
+        description="The GLOBAL tab's 'RANDOM' knob for detune (kParamGlobalRandomOscDetune) "
+        "-- same convention as `random_pan`. Real values observed: near-integer 1-26%.",
+    )
+    random_detune_10x: bool | None = Field(
+        None,
+        description="UNCERTAIN exact meaning -- likely a x10 range multiplier/fine-"
+        "vs-coarse toggle for `random_detune`. Only ever observed True when present, "
+        "low sample count.",
+    )
+    random_env_time: float | None = Field(
+        None,
+        ge=0.0,
+        description="The GLOBAL tab's 'RANDOM' knob for envelope time "
+        "(kParamGlobalRandomEnvTime) -- same convention as `random_pan`. Real values "
+        "observed: near-integer 3-36%.",
+    )
+    random_filter_cutoff: float | None = Field(
+        None,
+        ge=0.0,
+        description="The GLOBAL tab's 'RANDOM' knob for filter cutoff "
+        "(kParamGlobalRandomFilterCutoff) -- same convention as `random_pan`. Real "
+        "values observed: near-integer 2-38%.",
+    )
+    scaling_env_time: float | None = Field(
+        None,
+        ge=0.0,
+        description="Global envelope-time scaling multiplier, %, 100=neutral -- "
+        "CONFIRMED 1:1 with the displayed 'ENVS' % via a live ground-truth test "
+        "2026-08-05 (typed 50 into the GLOBAL tab's SCALING row, saved, raw value "
+        "read back was 50.00000178235441). Galaxy's real value was 162% (envelope "
+        "times stretched to 1.62x).",
+    )
+    scaling_lfo_time: float | None = Field(
+        None,
+        ge=0.0,
+        description="Global LFO-time scaling multiplier, %, 100=neutral -- CONFIRMED "
+        "1:1 with the displayed 'LFOS...RATE' % via the same live test (typed 200, "
+        "raw value read back was 200.00002031953676). Root cause of a real 'the "
+        "recreated preset's LFOs sound uniformly faster' bug -- Galaxy's real value "
+        "was 1000% (LFO cycles stretched to 10x, i.e. 10x SLOWER).",
+    )
+    scaling_lfo_time_snap: bool | None = Field(
+        None,
+        description="UNCERTAIN exact meaning -- likely quantizes `scaling_lfo_time` "
+        "to musical/round increments. Only 1 real sample observed (True), very low "
+        "confidence.",
+    )
+    affects_osc_a: bool | None = Field(
+        None,
+        description="UNCERTAIN exact meaning -- the GLOBAL tab's 'OSC: S A B C N' "
+        "toggle row (visible in the same screenshot as the SEQ bar chart), likely "
+        "'does this unison randomization apply to Osc A's voices'. Only ever "
+        "observed False in the small sample collected so far.",
+    )
+    affects_osc_b: bool | None = Field(None, description="See `affects_osc_a`, for Osc B.")
+    affects_osc_c: bool | None = Field(None, description="See `affects_osc_a`, for Osc C.")
+    affects_osc_noise: bool | None = Field(
+        None, description="See `affects_osc_a`, for the Noise oscillator ('N')."
+    )
+    affects_osc_sub: bool | None = Field(
+        None, description="See `affects_osc_a`, for the Sub oscillator ('S')."
+    )
+    voice_count: float | None = Field(
+        None,
+        description="UNCERTAIN exact meaning/relationship to each oscillator's own "
+        "OscillatorSpec.unison count (kParamVoiceCount lives on VoicePanel0, a "
+        "singleton, not per-oscillator) -- only 1 real sample observed (2.0), very "
+        "low confidence. Possibly what the GLOBAL tab's bar-chart tooltip labels "
+        "'voice count' (found live 2026-08-05: hovering any SEQ bar shows this same "
+        "generic reading regardless of which bar, not that bar's own value).",
+    )
 
 
 class PresetSpec(BaseModel):
@@ -1530,39 +1605,11 @@ class PresetSpec(BaseModel):
         "than passing ArpSpec(enabled=False) unless you specifically want to disable "
         "an arp that's already on.",
     )
-    voice_panel: dict[str, float] | None = Field(
-        None,
-        description="OPAQUE passthrough for the VoicePanel module's raw plainParams -- "
-        "found 2026-08-01 root-causing a real 'recreated preset's LFOs sound audibly "
-        "faster than the original despite byte-identical LFO data' bug: this module was "
-        "never modeled at all (extract_spec silently dropped it, apply_spec never wrote "
-        "it), so a real preset's VoicePanel0 -- which can carry kParamGlobalScalingLfoTime/"
-        "kParamGlobalScalingEnvTime (global time-scale multipliers affecting EVERY LFO/"
-        "envelope uniformly; Galaxy's real value was 1000.0 vs. Serum's own unscaled "
-        "default when the key is absent) plus ~30 per-voice unison-randomization params "
-        "(kParamVoice{1-8}Detune/EnvTime/FilterCutoff/Mod1/Mod2/Pan, "
-        "kParamGlobalRandomOscPan) -- was always silently lost on recreation. "
-        "kParamGlobalScalingLfoTime/EnvTime's units are CONFIRMED as PERCENTAGES "
-        "(100% = neutral/unscaled) via a real Serum GLOBAL-tab screenshot 2026-08-05: "
-        "the 'SCALING' row's 'ENVS: 162%'/'LFOS: 1000% RATE' readout matched Galaxy's "
-        "raw values (162.18/1000.0) exactly -- Galaxy's LFOs were deliberately scaled "
-        "to 10x their normal cycle time. The per-voice unison-randomization params "
-        "themselves are now ALSO decoded and have friendly fields -- see "
-        "`VoiceUnisonSpec`/`PresetSpec.voice_unison` -- prefer that for new/hand-"
-        "authored values; this opaque dict remains for round-tripping the 2 scaling "
-        "params (still no friendly fields for those) and for preserving an entire "
-        "extracted VoicePanel0 verbatim in one shot. Do NOT hand-author entries in "
-        "THIS dict expecting a specific result -- only ever set it by copying the "
-        "dict extract_spec read off an existing preset (round-trip/preserve). Leave "
-        "unset for Serum's own unscaled/default VoicePanel behavior.",
-    )
     voice_unison: VoiceUnisonSpec | None = Field(
         None,
-        description="Per-voice unison randomization (GLOBAL tab 'VOICE CONTROL' "
-        "panel) -- see VoiceUnisonSpec for the full decode story and field-by-field "
-        "details. Prefer this over the opaque `voice_panel` dict for hand-authoring "
-        "new per-voice values; see VoiceUnisonSpec's docstring for the (well-defined "
-        "but discouraged) interaction if both are set on the same call.",
+        description="Everything on Serum's GLOBAL tab 'VOICE CONTROL'/'SCALING' "
+        "panels (VoicePanel0's raw module) -- see VoiceUnisonSpec for the full "
+        "decode story and field-by-field details.",
     )
 
     model_config = {"populate_by_name": True}

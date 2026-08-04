@@ -776,23 +776,8 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             step_action=clip_pp.get("kParamStepAction") if isinstance(clip_pp, dict) else None,
         )
 
-    # Opaque passthrough, see PresetSpec.voice_panel's docstring -- only
-    # captured when it's a real dict (not the untouched "default" sentinel).
-    # Excludes the per-voice/kParamGlobalRandomOscPan keys, which now have
-    # a dedicated friendly home in VoiceUnisonSpec below -- avoids
-    # extracting the same data twice into two different PresetSpec fields.
+    # VoicePanel0 -- see VoiceUnisonSpec's docstring for the full decode.
     voice_panel_pp = (data.get("VoicePanel0", {}) or {}).get("plainParams")
-    voice_panel = (
-        {
-            k: v
-            for k, v in voice_panel_pp.items()
-            if not (k.startswith("kParamVoice") or k == "kParamGlobalRandomOscPan")
-        }
-        if isinstance(voice_panel_pp, dict)
-        else None
-    )
-    voice_panel = voice_panel or None
-
     voice_unison = None
     if isinstance(voice_panel_pp, dict):
 
@@ -814,9 +799,43 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         env_time = _voice_list("EnvTime")
         mod1 = _voice_list("Mod1")
         mod2 = _voice_list("Mod2")
-        random_pan = voice_panel_pp.get("kParamGlobalRandomOscPan")
+        scalar_fields = {
+            "random_pan": voice_panel_pp.get("kParamGlobalRandomOscPan"),
+            "random_detune": voice_panel_pp.get("kParamGlobalRandomOscDetune"),
+            "random_detune_10x": (
+                bool(voice_panel_pp["kParamGlobalRandomOscDetune10x"])
+                if "kParamGlobalRandomOscDetune10x" in voice_panel_pp
+                else None
+            ),
+            "random_env_time": voice_panel_pp.get("kParamGlobalRandomEnvTime"),
+            "random_filter_cutoff": voice_panel_pp.get("kParamGlobalRandomFilterCutoff"),
+            "scaling_env_time": voice_panel_pp.get("kParamGlobalScalingEnvTime"),
+            "scaling_lfo_time": voice_panel_pp.get("kParamGlobalScalingLfoTime"),
+            "scaling_lfo_time_snap": (
+                bool(voice_panel_pp["kParamGlobalScalingLfoTimeSnap"])
+                if "kParamGlobalScalingLfoTimeSnap" in voice_panel_pp
+                else None
+            ),
+            "affects_osc_a": (
+                bool(voice_panel_pp["kParamOscA"]) if "kParamOscA" in voice_panel_pp else None
+            ),
+            "affects_osc_b": (
+                bool(voice_panel_pp["kParamOscB"]) if "kParamOscB" in voice_panel_pp else None
+            ),
+            "affects_osc_c": (
+                bool(voice_panel_pp["kParamOscC"]) if "kParamOscC" in voice_panel_pp else None
+            ),
+            "affects_osc_noise": (
+                bool(voice_panel_pp["kParamOscN"]) if "kParamOscN" in voice_panel_pp else None
+            ),
+            "affects_osc_sub": (
+                bool(voice_panel_pp["kParamOscS"]) if "kParamOscS" in voice_panel_pp else None
+            ),
+            "voice_count": voice_panel_pp.get("kParamVoiceCount"),
+        }
         if any(
-            v is not None for v in (pan, detune, filter_cutoff, env_time, mod1, mod2, random_pan)
+            v is not None
+            for v in (pan, detune, filter_cutoff, env_time, mod1, mod2, *scalar_fields.values())
         ):
             voice_unison = VoiceUnisonSpec(
                 pan=pan,
@@ -825,7 +844,7 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                 env_time=env_time,
                 mod1=mod1,
                 mod2=mod2,
-                random_pan=random_pan,
+                **scalar_fields,
             )
 
     return PresetSpec(
@@ -839,7 +858,6 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         fx_chain=fx_chain,
         mod_routes=mod_routes,
         arp=arp_spec,
-        voice_panel=voice_panel,
         voice_unison=voice_unison,
         **{"global": global_spec},
     )

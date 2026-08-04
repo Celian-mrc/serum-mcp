@@ -126,7 +126,7 @@ A decompressed CBOR payload's top-level keys, as observed:
 | `PitchQuantizer0` | scale/quantizer | No — round-trips untouched |
 | `RetriggerState0` | legato/retrigger config | No — round-trips untouched |
 | `RoutingSlot0`..`RoutingSlot6` | osc-to-filter / filter-to-output routing | Yes (`OscillatorSpec.filter_routing`/`filter_balance`, `FilterSpec.output_routing` — see §5 items 16-17) |
-| `VoicePanel0` | voice-level scaling options (`kParamGlobalScalingLfoTime`/`EnvTime`) + per-voice unison randomization (`kParamVoice{1-8}{Pan,Detune,FilterCutoff,EnvTime,Mod1,Mod2}`, `kParamGlobalRandomOscPan`) | Yes — the 2 scaling params via opaque passthrough (`PresetSpec.voice_panel`, since 2026-08-04); the per-voice params via friendly, decoded fields (`VoiceUnisonSpec`/`PresetSpec.voice_unison`, since 2026-08-05 — see §5 item 1's Galaxy update) |
+| `VoicePanel0` | voice-level scaling (`kParamGlobalScalingLfoTime`/`EnvTime`), per-voice unison randomization (`kParamVoice{1-8}{Pan,Detune,FilterCutoff,EnvTime,Mod1,Mod2}`, `kParamGlobalRandom*`), OSC-affect toggles, voice count | Yes, fully — `VoiceUnisonSpec`/`PresetSpec.voice_unison`, since 2026-08-05 (see §5 item 1's Galaxy update for the full decode story) |
 | `SerumGUI` | window/panel layout | No — round-trips untouched |
 | `mpeEnabled`, `mpeConfig`, `mpePitchBendRange` | MPE settings | No — round-trips untouched |
 | `lockOversampling`, `lockTuning`, `scalars` | misc engine flags | No — round-trips untouched |
@@ -1341,38 +1341,70 @@ improve generation quality if resolved:
      scaling params' exact numeric scale/units still isn't decoded, only
      that omitting the key silently reverts to Serum's unscaled default.
 
-     **Update 2026-08-05 — the per-voice unison-randomization params ARE
-     now decoded, via a live ground-truth test** (same methodology that
-     cracked LFO `curveVals`): the user typed `-20` directly into voice
-     6's PAN bar in a real Serum instance (GLOBAL tab's "VOICE CONTROL"
-     panel) and saved; the raw `kParamVoice6Pan` Serum itself wrote back
-     was `-20.259740948677063`. Cross-checked against 47 other real
-     values from Galaxy's own `VoicePanel0`, every single one turned out
-     to be an EXACT integer multiple of `10/77 ~= 0.12987` (Serum's own
-     internal quantization step for this widget) — confirming the raw
-     value is simply the displayed PERCENTAGE (negative=Left/
-     positive=Right for `pan`), with that quantization far finer than the
-     display resolution and safe to ignore when writing new values.
-     `kParamGlobalRandomOscPan` (the separate "RANDOM" knob, confirmed
-     `18%` via the 2026-08-04 screenshot) is notably NOT subject to this
-     quantization — confirming it's a genuinely different, continuously-
-     stored control from the per-voice SEQ pattern. Added
-     `VoiceUnisonSpec`/`PresetSpec.voice_unison` with friendly `pan`/
-     `detune`/`filter_cutoff`/`env_time`/`mod1`/`mod2` (each
-     `list[float | None]`, one entry per unison voice, `None` = that
-     voice doesn't set this param) plus `random_pan`. Found a second real
-     bug fixing this: a genuinely absent middle voice
+     **Update 2026-08-05 — `VoicePanel0` is now FULLY decoded, via 2 live
+     ground-truth tests** (same methodology that cracked LFO `curveVals`).
+     Test 1: the user typed `-20` directly into voice 6's PAN bar in a
+     real Serum instance (GLOBAL tab's "VOICE CONTROL" panel) and saved;
+     the raw `kParamVoice6Pan` Serum itself wrote back was
+     `-20.259740948677063`. Cross-checked against 47 other real values
+     from Galaxy's own `VoicePanel0`, every single one turned out to be an
+     EXACT integer multiple of `10/77 ~= 0.12987` (Serum's own internal
+     quantization step for this widget) — confirming the raw value is
+     simply the displayed PERCENTAGE (negative=Left/positive=Right for
+     `pan`), with that quantization far finer than the display resolution
+     and safe to ignore when writing new values. Test 2: the user typed
+     `50`/`200` into the SCALING row's ENVS/LFOS fields and saved; raw
+     values read back were `50.00000178235441`/`200.00002031953676` —
+     confirming a clean 1:1 percent mapping for the 2 global scaling
+     multipliers too (no curve, no offset).
+
+     A full corpus key-audit (same technique as the Arp/Global0 audits)
+     then found **9 more real `VoicePanel0` keys** never even catalogued:
+     `kParamGlobalRandomOscDetune`/`EnvTime`/`FilterCutoff` (the "RANDOM"
+     knobs for the other SEQ rows, paired with the already-known
+     `kParamGlobalRandomOscPan`), `kParamGlobalRandomOscDetune10x` (a
+     range multiplier/toggle, uncertain), `kParamGlobalScalingLfoTimeSnap`
+     (uncertain), `kParamOscA`/`B`/`C`/`N`/`S` (the "OSC: S A B C N"
+     toggle row visible in the same panel, likely which oscillators the
+     randomization applies to), and `kParamVoiceCount` (likely what a
+     bar's hover tooltip labels "voice count" — found live that hovering
+     ANY SEQ bar shows this SAME generic reading regardless of which bar,
+     not that bar's own value, which is why the tooltip route failed as a
+     calibration method before the double-click test succeeded instead).
+
+     Added ALL of this to `VoiceUnisonSpec`/`PresetSpec.voice_unison`:
+     `pan`/`detune`/`filter_cutoff`/`env_time`/`mod1`/`mod2` (each
+     `list[float | None]`, one entry per unison voice, `None` = that voice
+     doesn't set this param), `random_pan`/`random_detune`/
+     `random_env_time`/`random_filter_cutoff`/`random_detune_10x`,
+     `scaling_env_time`/`scaling_lfo_time`/`scaling_lfo_time_snap`,
+     `affects_osc_a`/`b`/`c`/`noise`/`sub`, `voice_count`. Found a second
+     real bug fixing the per-voice lists: a genuinely absent middle voice
      (`kParamVoice2EnvTime` missing while voices 1/3+ had it) was
      initially round-tripped as an explicit `0.0` instead of staying
      absent — the same "presence forces the DSP stage" pattern as
      everywhere else in this codebase — fixed by using `None` (not 0.0)
-     as the list-gap filler. `extract_spec` now splits `VoicePanel0` data
-     between the two fields: `voice_panel` keeps only the still-opaque
-     scaling params, `voice_unison` gets everything per-voice, so a
-     round-trip doesn't extract the same data into both. Verified against
-     the real calibration file (`serum-test-620L.SerumPreset`) — the
-     regenerated `VoicePanel0` is byte-identical to the original,
-     including the genuine gap.
+     as the list-gap filler. Also added a proper `VOICEPANEL_PARAMS`
+     schema (this module had none before) specifically so the new BOOL
+     fields go through `validate_params`'s CBOR-safe bool->float
+     normalization — writing a raw Python `bool` into `plainParams`
+     without that step is the exact crash-class bug this project hit
+     early on (see the "validate serum-mcp output" lesson).
+
+     **`PresetSpec.voice_panel` (the original opaque passthrough) was
+     REMOVED entirely** once every real key it could ever hold got a
+     friendly home — keeping both was pure redundancy (and briefly caused
+     the SAME data to get extracted into two different fields on the same
+     `extract_spec` call, before the removal). `voice_unison`'s write path
+     merges onto `VoicePanel0.plainParams` (via `_plain_params`, like
+     every other module) rather than replacing it wholesale, so editing a
+     preset with genuinely unknown `VoicePanel0` keys still preserves
+     them — the opaque dict's one remaining theoretical use case doesn't
+     actually need a dedicated field. Verified against both real
+     calibration files (`serum-test-620L.SerumPreset`,
+     `serum-test-envs-scaling.SerumPreset`) — the regenerated
+     `VoicePanel0` is byte-identical to each original, including the
+     genuine gap.
    - **8 `ArpClip` "playback" params never modeled as static fields** (see
      the Arpeggiator section in §4) — symptom: "ARP range doesn't match"
      and "the gate never seems to evolve." `kParamWrapRange` (14.0 in

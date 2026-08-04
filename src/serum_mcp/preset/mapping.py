@@ -1451,17 +1451,10 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         if arp.step_action is not None:
             clip_params["kParamStepAction"] = arp.step_action
 
-    if spec.voice_panel is not None:
-        # Opaque passthrough -- see PresetSpec.voice_panel's docstring. Written
-        # verbatim, same convention as FxUnitSpec.flex.
-        voice_panel_container = data.setdefault("VoicePanel0", {})
-        voice_panel_container["plainParams"] = dict(spec.voice_panel)
-
     if spec.voice_unison is not None:
-        # Written AFTER voice_panel (above) so it wins on any overlapping key
-        # if a caller sets both -- see VoiceUnisonSpec's docstring. Uses the
-        # standard merge-with-existing helper (unlike voice_panel's wholesale
-        # replace) since these are genuinely individual friendly fields now.
+        # Merges onto VoicePanel0.plainParams (like every other module in
+        # this file), so editing a preset with other/unknown VoicePanel0
+        # keys leaves them untouched -- see VoiceUnisonSpec's docstring.
         vu = spec.voice_unison
         voice_params = _plain_params(data, "VoicePanel0")
         _FIELD_TO_KEY_PREFIX = (
@@ -1482,5 +1475,32 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                     voice_params[f"kParamVoice{i + 1}{suffix}"] = value
         if vu.random_pan is not None:
             voice_params["kParamGlobalRandomOscPan"] = vu.random_pan
+        if vu.random_detune is not None:
+            voice_params["kParamGlobalRandomOscDetune"] = vu.random_detune
+        if vu.random_detune_10x is not None:
+            voice_params["kParamGlobalRandomOscDetune10x"] = vu.random_detune_10x
+        if vu.random_env_time is not None:
+            voice_params["kParamGlobalRandomEnvTime"] = vu.random_env_time
+        if vu.random_filter_cutoff is not None:
+            voice_params["kParamGlobalRandomFilterCutoff"] = vu.random_filter_cutoff
+        if vu.scaling_env_time is not None:
+            voice_params["kParamGlobalScalingEnvTime"] = vu.scaling_env_time
+        if vu.scaling_lfo_time is not None:
+            voice_params["kParamGlobalScalingLfoTime"] = vu.scaling_lfo_time
+        if vu.scaling_lfo_time_snap is not None:
+            voice_params["kParamGlobalScalingLfoTimeSnap"] = vu.scaling_lfo_time_snap
+        if vu.affects_osc_a is not None:
+            voice_params["kParamOscA"] = vu.affects_osc_a
+        if vu.affects_osc_b is not None:
+            voice_params["kParamOscB"] = vu.affects_osc_b
+        if vu.affects_osc_c is not None:
+            voice_params["kParamOscC"] = vu.affects_osc_c
+        if vu.affects_osc_noise is not None:
+            voice_params["kParamOscN"] = vu.affects_osc_noise
+        if vu.affects_osc_sub is not None:
+            voice_params["kParamOscS"] = vu.affects_osc_sub
+        if vu.voice_count is not None:
+            voice_params["kParamVoiceCount"] = vu.voice_count
+        validate_params("VoicePanel0", voice_params, schema.VOICEPANEL_PARAMS, allow_unknown=True)
 
     return data

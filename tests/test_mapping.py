@@ -2263,57 +2263,25 @@ def test_fx_flex_opaque_round_trip(init_data):
     assert extracted.fx_chain[0].flex == real_flex
 
 
-def test_voice_panel_opaque_round_trip(init_data):
-    """PresetSpec.voice_panel -- found 2026-08-01 root-causing a real 'the
-    recreated preset's LFOs sound audibly faster than the original' report:
-    VoicePanel0 (kParamGlobalScalingLfoTime/EnvTime + per-voice unison
-    randomization) was never modeled at all, so extract_spec silently
-    dropped it and apply_spec never wrote it back. Real values below are
-    Galaxy's actual VoicePanel0.plainParams.
-
-    Since 2026-08-05, extract_spec splits this data: the per-voice/
-    random-pan keys get a dedicated friendly home in VoiceUnisonSpec
-    (see the round-trip test below), so extracted.voice_panel only keeps
-    what VoiceUnisonSpec doesn't cover yet (the 2 scaling params) --
-    apply_spec's WRITE side still accepts the full dict verbatim (this
-    field is genuinely opaque on write, only its extraction narrowed)."""
-    real_voice_panel = {
-        "kParamGlobalRandomOscPan": 18.000000715255737,
-        "kParamGlobalScalingEnvTime": 162.18102398133,
-        "kParamGlobalScalingLfoTime": 1000.0,
-        "kParamVoice1Detune": 1.2987017631530762,
-    }
-    spec = PresetSpec(name="X", description="", voice_panel=real_voice_panel)
-    data = apply_spec(init_data, spec)
-
-    assert data["VoicePanel0"]["plainParams"] == real_voice_panel
-
-    extracted = extract_spec(data)
-    assert extracted.voice_panel == {
-        "kParamGlobalScalingEnvTime": 162.18102398133,
-        "kParamGlobalScalingLfoTime": 1000.0,
-    }
-    assert extracted.voice_unison.random_pan == 18.000000715255737
-    assert extracted.voice_unison.detune == [1.2987017631530762]
-
-
-def test_voice_panel_untouched_when_unset(init_data):
+def test_voice_unison_untouched_when_unset(init_data):
     spec = PresetSpec(name="X", description="")
     data = apply_spec(init_data, spec)
 
     assert data.get("VoicePanel0") == init_data.get("VoicePanel0")
-    assert extract_spec(data).voice_panel is None
     assert extract_spec(data).voice_unison is None
 
 
 def test_voice_unison_ground_truth_round_trip(init_data):
-    """VoiceUnisonSpec -- decoded 2026-08-05 via a live ground-truth test:
-    the user typed '-20' into voice 6's PAN bar in a real Serum instance
-    and saved; the raw kParamVoice6Pan Serum wrote back was
-    -20.259740948677063 (an exact multiple of Serum's internal 10/77
-    quantization step, confirming raw value ~= displayed percentage).
-    Values below are Galaxy's real VoicePanel0 data (post-edit for voice
-    6's pan)."""
+    """VoiceUnisonSpec -- decoded 2026-08-05 via 2 live ground-truth tests
+    (same technique as LFO curveVals): (1) the user typed '-20' into voice
+    6's PAN bar in a real Serum instance and saved; the raw
+    kParamVoice6Pan Serum wrote back was -20.259740948677063 (an exact
+    multiple of Serum's internal 10/77 quantization step, confirming raw
+    value ~= displayed percentage). (2) the user typed 50/200 into the
+    GLOBAL tab's SCALING row (ENVS/LFOS) and saved; raw values read back
+    were 50.00000178235441/200.00002031953676, confirming a clean 1:1
+    percent mapping for those too. Values below are Galaxy's real
+    VoicePanel0 data (post-edit for voice 6's pan)."""
     spec = PresetSpec(
         name="X",
         description="",
@@ -2334,6 +2302,19 @@ def test_voice_unison_ground_truth_round_trip(init_data):
             mod1=[-100.0],
             mod2=[11.688315868377686],
             random_pan=18.000000715255737,
+            random_detune=12.0,
+            random_detune_10x=True,
+            random_env_time=9.0,
+            random_filter_cutoff=9.0,
+            scaling_env_time=162.18102398133,
+            scaling_lfo_time=1000.0,
+            scaling_lfo_time_snap=True,
+            affects_osc_a=True,
+            affects_osc_b=False,
+            affects_osc_c=False,
+            affects_osc_noise=False,
+            affects_osc_sub=True,
+            voice_count=8.0,
         ),
     )
     data = apply_spec(init_data, spec)
@@ -2346,6 +2327,17 @@ def test_voice_unison_ground_truth_round_trip(init_data):
     assert vp["kParamVoice1Mod1"] == -100.0
     assert vp["kParamVoice1Mod2"] == 11.688315868377686
     assert vp["kParamGlobalRandomOscPan"] == 18.000000715255737
+    assert vp["kParamGlobalRandomOscDetune"] == 12.0
+    assert vp["kParamGlobalRandomOscDetune10x"] == 1.0
+    assert vp["kParamGlobalRandomEnvTime"] == 9.0
+    assert vp["kParamGlobalRandomFilterCutoff"] == 9.0
+    assert vp["kParamGlobalScalingEnvTime"] == 162.18102398133
+    assert vp["kParamGlobalScalingLfoTime"] == 1000.0
+    assert vp["kParamGlobalScalingLfoTimeSnap"] == 1.0
+    assert vp["kParamOscA"] == 1.0
+    assert vp["kParamOscB"] == 0.0
+    assert vp["kParamOscS"] == 1.0
+    assert vp["kParamVoiceCount"] == 8.0
 
     extracted = extract_spec(data)
     vu = extracted.voice_unison
@@ -2358,10 +2350,17 @@ def test_voice_unison_ground_truth_round_trip(init_data):
     assert vu.mod1 == [-100.0]
     assert vu.mod2 == [11.688315868377686]
     assert vu.random_pan == 18.000000715255737
-    # kParamGlobalRandomOscPan/per-voice keys must NOT leak into the
-    # separate opaque voice_panel dict (see its docstring) -- avoids
-    # extracting the same data into two different PresetSpec fields.
-    assert extracted.voice_panel is None
+    assert vu.random_detune == 12.0
+    assert vu.random_detune_10x is True
+    assert vu.random_env_time == 9.0
+    assert vu.random_filter_cutoff == 9.0
+    assert vu.scaling_env_time == 162.18102398133
+    assert vu.scaling_lfo_time == 1000.0
+    assert vu.scaling_lfo_time_snap is True
+    assert vu.affects_osc_a is True
+    assert vu.affects_osc_b is False
+    assert vu.affects_osc_sub is True
+    assert vu.voice_count == 8.0
 
 
 def test_voice_unison_middle_gap_round_trips_as_none(init_data):

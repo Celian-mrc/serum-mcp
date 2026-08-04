@@ -1769,6 +1769,112 @@ GLOBAL_PARAMS: dict[str, ParamDef] = {
     # -- internal routing target, 1 distinct value ever observed).
 }
 
+# VoicePanel0: Serum's GLOBAL tab "VOICE CONTROL"/"SCALING" panels (a
+# singleton, like Global0/Arp0). Fully decoded 2026-08-05 via 2 separate
+# live ground-truth tests (same technique as LFO curveVals): typing '-20'
+# into voice 6's PAN bar confirmed the per-voice params are simply
+# percentages stored ~1:1 with the displayed number (Serum quantizes
+# internally to steps of 10/77 ~= 0.12987, far finer than display
+# resolution); typing 50/200 into the SCALING row's ENVS/LFOS fields
+# confirmed the 2 global scaling multipliers are ALSO a clean 1:1 percent
+# mapping. See VoiceUnisonSpec in generation/spec.py for the full story
+# and per-field confidence notes. kParamVoice{1-8}{Pan,Detune,
+# FilterCutoff,EnvTime,Mod1,Mod2} generated below rather than typed by
+# hand (48 entries, same shape as every other per-slot module in this
+# file) -- confidence is "observed" for Pan (the one directly ground-
+# truth-tested) and "uncertain" for the other 5 (same storage convention
+# confirmed, but each field's own bipolar-vs-unipolar range isn't
+# independently verified).
+VOICEPANEL_PARAMS: dict[str, ParamDef] = {
+    "kParamGlobalRandomOscPan": ParamDef(
+        "kParamGlobalRandomOscPan", "float", default=0.0, min=0.0, max=100.0, unit="%",
+        confidence="confirmed",
+        notes="CONFIRMED via a real GLOBAL-tab screenshot (18% displayed matched the "
+        "raw value exactly).",
+    ),
+    "kParamGlobalRandomOscDetune": ParamDef(
+        "kParamGlobalRandomOscDetune", "float", default=0.0, min=0.0, unit="%",
+        confidence="observed", notes="Real values observed: near-integer 1-26%.",
+    ),
+    "kParamGlobalRandomOscDetune10x": ParamDef(
+        "kParamGlobalRandomOscDetune10x", "bool", default=False, confidence="uncertain",
+        notes="UNCERTAIN exact meaning. Only ever observed True when present.",
+    ),
+    "kParamGlobalRandomEnvTime": ParamDef(
+        "kParamGlobalRandomEnvTime", "float", default=0.0, min=0.0, unit="%",
+        confidence="observed", notes="Real values observed: near-integer 3-36%.",
+    ),
+    "kParamGlobalRandomFilterCutoff": ParamDef(
+        "kParamGlobalRandomFilterCutoff", "float", default=0.0, min=0.0, unit="%",
+        confidence="observed", notes="Real values observed: near-integer 2-38%.",
+    ),
+    "kParamGlobalScalingEnvTime": ParamDef(
+        "kParamGlobalScalingEnvTime", "float", default=100.0, min=0.0, unit="%",
+        confidence="confirmed",
+        notes="CONFIRMED 1:1 with the displayed 'ENVS' % via a live ground-truth test "
+        "2026-08-05 (typed 50, raw value read back was 50.00000178235441).",
+    ),
+    "kParamGlobalScalingLfoTime": ParamDef(
+        "kParamGlobalScalingLfoTime", "float", default=100.0, min=0.0, unit="%",
+        confidence="confirmed",
+        notes="CONFIRMED 1:1 with the displayed 'LFOS...RATE' % via the same live "
+        "test (typed 200, raw value read back was 200.00002031953676). Root cause of "
+        "a real 'recreated LFOs sound uniformly faster' bug.",
+    ),
+    "kParamGlobalScalingLfoTimeSnap": ParamDef(
+        "kParamGlobalScalingLfoTimeSnap", "bool", default=False, confidence="uncertain",
+        notes="UNCERTAIN exact meaning. Only 1 real sample observed, very low "
+        "confidence.",
+    ),
+    "kParamOscA": ParamDef(
+        "kParamOscA", "bool", default=False, confidence="uncertain",
+        notes="The GLOBAL tab's 'OSC: S A B C N' toggle row -- UNCERTAIN exact "
+        "meaning, likely 'does unison randomization apply to Osc A'. Only ever "
+        "observed False so far.",
+    ),
+    "kParamOscB": ParamDef(
+        "kParamOscB", "bool", default=False, confidence="uncertain",
+        notes="See kParamOscA, for Osc B.",
+    ),
+    "kParamOscC": ParamDef(
+        "kParamOscC", "bool", default=False, confidence="uncertain",
+        notes="See kParamOscA, for Osc C.",
+    ),
+    "kParamOscN": ParamDef(
+        "kParamOscN", "bool", default=False, confidence="uncertain",
+        notes="See kParamOscA, for the Noise oscillator.",
+    ),
+    "kParamOscS": ParamDef(
+        "kParamOscS", "bool", default=False, confidence="uncertain",
+        notes="See kParamOscA, for the Sub oscillator.",
+    ),
+    "kParamVoiceCount": ParamDef(
+        "kParamVoiceCount", "float", confidence="uncertain",
+        notes="UNCERTAIN exact meaning/relationship to each oscillator's own "
+        "OscillatorSpec.unison count. Only 1 real sample observed (2.0). Possibly "
+        "what the bar-chart tooltip labels 'voice count' (found live: hovering any "
+        "SEQ bar shows this same generic reading, not that bar's own value).",
+    ),
+}
+for _i in range(1, 9):
+    VOICEPANEL_PARAMS[f"kParamVoice{_i}Pan"] = ParamDef(
+        f"kParamVoice{_i}Pan", "float", min=-100.0, max=100.0, unit="%",
+        confidence="confirmed",
+        notes="CONFIRMED via a live ground-truth test 2026-08-05 (typed -20 into "
+        "voice 6's bar, raw value read back was -20.259740948677063, an exact "
+        "multiple of Serum's internal 10/77 quantization step). Negative=Left, "
+        "positive=Right.",
+    )
+    for _suffix in ("Detune", "FilterCutoff", "EnvTime", "Mod1", "Mod2"):
+        VOICEPANEL_PARAMS[f"kParamVoice{_i}{_suffix}"] = ParamDef(
+            f"kParamVoice{_i}{_suffix}", "float", min=-100.0, max=100.0,
+            confidence="uncertain",
+            notes="Same raw storage convention as kParamVoice{i}Pan (confirmed "
+            "percentage, ~1:1 with a typed/displayed value) but this specific "
+            "field's own bipolar-vs-unipolar range isn't independently confirmed.",
+        )
+del _i, _suffix
+
 # RoutingSlot0-6: per-source (5 oscillators) and per-filter (2 filters)
 # signal routing, discovered live 2026-07-29 recreating UN_PLACES_PL_Dreams
 # (see docs/REAL_SERUM_TESTING.md and PARAMETER_SCHEMA.md §5 items 11-12)
