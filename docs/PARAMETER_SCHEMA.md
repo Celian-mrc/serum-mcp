@@ -1417,7 +1417,34 @@ improve generation quality if resolved:
    Still experimental (only this one pitch-tracking check performed, not a
    full listening pass) and only 4 of many real Factory instruments are
    curated — adding more is now a simple, low-risk mechanical extraction
-   (same technique), no further reverse-engineering needed. Confirmed live 2026-07-29 recreating a second
+   (same technique), no further reverse-engineering needed.
+
+   **Update 2026-08-01, 6 more instruments curated (10 total), same
+   mechanical extraction, no new reverse-engineering.** Surveyed all 626
+   Factory presets for every real `kOsc_MultiSample` instrument reference
+   (not just the 4 already known) to pick a diverse, popular set spanning
+   categories the original 4 didn't cover: `piano_grand` (Baby Grand
+   Piano, 10 real-preset uses), `strings_full` (Full Strings LE, 11),
+   `brass_french_horn` (French Horns, 5), `synth_pad_superjx` (SuperJX 4
+   Chorus Pad, 13 — the single most-used MultiSampleOsc instrument in the
+   whole corpus), `mallet_balafon` (Balafon, 6), `epiano_suitcase`
+   (Elec.Piano Suitcase, 5). Extraction was fully mechanical (same
+   technique as the original 4: pull `embedded_sfz`/`files`/
+   `sfzPathRelative` verbatim from one real preset per instrument,
+   programmatically inserted into `schema.py` to avoid hand-transcription
+   errors) — no live testing performed on these 6 specifically, same
+   "experimental" caveat as before.
+
+   **Corrected a wrong universal claim found while curating these**:
+   `MultiSampleInstrumentDef`'s docstring used to assert `files`' path
+   separator is ALWAYS a literal double backslash, "confirmed not a
+   transcription artifact." That was only ever true for 2 of the original
+   4 (`choir_ah`/`guitar_ac`) — `violins` (already in the codebase) and
+   all 6 new instruments use a single backslash instead. Real,
+   per-instrument inconsistency on Xfer's own sample-prep side, not a bug
+   here — the code already treats `files` as opaque and preserves
+   whatever a fresh extraction produces verbatim, so this was a
+   documentation-only correction, not a functional fix. Confirmed live 2026-07-29 recreating a second
    real Unmute preset (`UN_PLACES_PL_Dreams`, chosen specifically for being
    otherwise fully within scope — no arp, no sample oscillators, single FX
    rack): its Osc C is a real `SpectralOsc` (`kOsc_Spectral`) referencing a

@@ -2615,6 +2615,36 @@ def test_multisample_source_writes_curated_instrument_and_engine_selector(init_d
     assert ex_osc.warp_mode == "soft_clip"
 
 
+def test_multisample_source_6_new_instruments_round_trip(init_data):
+    """6 more curated instruments added 2026-08-01 (extracted the same way
+    as choir_ah/synth_sid/guitar_ac/violins, mechanically from real Factory
+    presets, no reverse-engineering needed) -- one round-trip check per
+    instrument is enough given they all go through the identical code path,
+    just confirming each one's data actually made it into the schema
+    correctly (right sfz path, non-empty files, round-trips)."""
+    expected = {
+        "piano_grand": "Factory/Keys/Baby Grand Piano.sfz",
+        "strings_full": "Factory/Strings/Full Strings LE.sfz",
+        "brass_french_horn": "Factory/Winds/French Horns.sfz",
+        "synth_pad_superjx": "Factory/Synth/SuperJX 4 Chorus Pad.sfz",
+        "mallet_balafon": "Factory/Mallet/Balafon.sfz",
+        "epiano_suitcase": "Factory/Keys/Elec.Piano Suitcase.sfz",
+    }
+    for name, sfz_path in expected.items():
+        spec = PresetSpec(
+            name="X",
+            description="",
+            oscillators=[OscillatorSpec(enabled=True, multisample_source=name)],
+        )
+        data = apply_spec(init_data, spec)
+        ms0 = data["Oscillator0"]["MultiSampleOsc0"]
+        assert ms0["sfzPathRelative"] == sfz_path
+        assert len(ms0["files"]) > 0
+
+        extracted = extract_spec(data)
+        assert extracted.oscillators[0].multisample_source == name
+
+
 def test_unknown_multisample_source_rejected(init_data):
     spec = PresetSpec(
         name="X",
