@@ -2131,20 +2131,26 @@ MOD_SOURCE_IDS: dict[str, int] = {
     # original "20/23" cluster gaps from the first probe rounds.
     "filter0": 53,  # Serum UI: "Filter 1"
     "filter1": 54,  # Serum UI: "Filter 2"
+    # Resolved 2026-08-01, closing the LAST of Galaxy's original 3 unknown
+    # source ids (24, 40, 57 -- all now resolved). `40` turned out to be
+    # genuinely common in real content (34 routes found across a corpus
+    # survey spanning Bass/Chord/Drum/Lead/Organ/Pad categories) but
+    # invisible to the round-4 picker sweep -- not because it's
+    # unreachable, but because it's a CONTEXT-SENSITIVE menu entry that
+    # only appears for specific LFO shapes, not a fixed always-present
+    # item. Found by pointing the user at one specific real preset
+    # (`BA - Sewer Bros.SerumPreset`, ModSlot0, a bare no-aux route) and
+    # asking what Serum's own MATRIX tab displays for it: "LFO 2 Y" ->
+    # `oscillator0.table_position`. Presumed to be the Y-axis/secondary
+    # coordinate output of a chaotic-attractor LFO shape (Rossler/Lorenz
+    # are classic multi-axis dynamical systems, see SIMPLE_LFO_TYPES) --
+    # distinct from that LFO's own primary output (plain "lfo1", id 7).
+    # **Only this ONE instance (LFO slot 2's Y output) is confirmed** --
+    # whether other LFO slots have their own analogous "_y" sources, and
+    # if so whether they form a contiguous id block or not, is UNKNOWN.
+    # Do not extrapolate a full lfo{i}_y family from this single point.
+    "lfo1_y": 40,
 }
-# `20` and `40` (from the *original* Galaxy-recreation gap list) deserve a
-# closing note: `20` is now resolved above (`oscillator3`/"Noise OSC"). `40`
-# is NOT -- and after this probe, every single named entry in Serum 2's own
-# MATRIX-tab source picker (all 49 of them, across every submenu) has a
-# resolved id, none of which is 40. That makes `40` very unlikely to be
-# reachable via the standard UI at all -- plausibly a legacy/vestigial id
-# from an earlier Serum version's source list, or something gated behind a
-# state this project hasn't triggered (a specific engine/module combination
-# where the picker briefly shows an extra option). Further UI probing of the
-# picker itself is unlikely to resolve it; if it matters again, the more
-# promising angle is finding a REAL preset that uses it and working
-# backwards from context (mod-route amount curve, what it's paired with),
-# the same way `38` ("Fixed") was originally noticed.
 
 
 @dataclass(frozen=True)

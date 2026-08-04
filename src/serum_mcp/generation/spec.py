@@ -824,8 +824,16 @@ class ModRouteSpec(BaseModel):
     routing something INTO that module. Live audible behavior of the
     self-modulation and note-expression sources not yet independently
     tested, same "IDs confirmed, behavior not" caveat as the Note-category
-    sources above. One source id (``40``) remains genuinely unresolved --
-    see docs/PARAMETER_SCHEMA.md §6.
+    sources above.
+
+    ``lfo1_y`` (id 40, resolved 2026-08-01) closes the last of this
+    project's originally-flagged unknown source ids -- presumed to be the
+    Y-axis/secondary coordinate output of LFO slot 2 (``lfo1``) when using
+    a chaotic-attractor shape (Rossler/Lorenz), distinct from that LFO's
+    own primary output. Confirmed for this ONE specific slot only, by
+    reading a real Factory preset's own MATRIX tab directly -- whether
+    other LFO slots have an analogous ``_y`` source, and what id it would
+    use, is unknown; don't assume a contiguous family exists.
 
     ``aux_source``/``aux_inverted`` expose Serum's general "Aux"/"Via"
     system: an OPTIONAL second, independent source (same vocabulary as
@@ -861,8 +869,9 @@ class ModRouteSpec(BaseModel):
             "'release_velo', 'active_voices', 'voice_index', 'voice_mod1', "
             "'voice_mod2', 'fixed' (a constant offset, see class docstring), "
             "'note_on_alt', 'note_on_alt2', 'expr_pan', 'expr_timbre', "
-            "'expr_press', 'oscillator0'..'oscillator4', or 'filter0'/'filter1' "
-            "(self-modulation sources, see class docstring)"
+            "'expr_press', 'oscillator0'..'oscillator4', 'filter0'/'filter1' "
+            "(self-modulation sources), or 'lfo1_y' (LFO slot 2's Y-axis output, "
+            "see class docstring)"
         )
     )
     destination: str = Field(description="e.g. 'filter0.cutoff', 'oscillator0.pitch', 'env0.decay'")

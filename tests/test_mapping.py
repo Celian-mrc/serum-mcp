@@ -379,6 +379,29 @@ def test_mod_route_2026_08_01_round4_probe_sources_round_trip(init_data):
     assert sources[12.0] == "expr_press"
 
 
+def test_mod_route_lfo1_y_source_round_trip(init_data):
+    """'lfo1_y' (id 40) -- the LAST of this project's originally-flagged
+    unknown source ids, resolved 2026-08-01 by reading a real Factory
+    preset's own MATRIX tab directly (BA - Sewer Bros.SerumPreset,
+    ModSlot0: 'LFO 2 Y' -> Table Position). Presumed to be LFO slot 2's
+    Y-axis output for a chaotic-attractor shape (Rossler/Lorenz) --
+    confirmed for this one slot only, see docs/PARAMETER_SCHEMA.md §6."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[
+            ModRouteSpec(source="lfo1_y", destination="oscillator0.table_position", amount=57.95),
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["ModSlot0"]["source"] == [40, 0]
+
+    extracted = extract_spec(data)
+    routes = {r.destination: r.source for r in extracted.mod_routes}
+    assert routes["oscillator0.table_position"] == "lfo1_y"
+
+
 def test_mod_route_fixed_source_round_trip(init_data):
     """'fixed' -- Serum's own MATRIX-tab name for source id 38, decoded in
     depth 2026-07-30 (see docs/PARAMETER_SCHEMA.md item 14). A constant

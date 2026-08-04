@@ -2031,19 +2031,36 @@ patterns) and resolved an ambiguity clustering had left genuinely unsettled
 | SUB OSC (self-mod) | `52` | Direct UI probe, `confirmed`, round 4. |
 | Filter 1 (self-mod, Serum UI: `Filters > Filter 1`) | `53` | Direct UI probe, `confirmed`, round 4. Serum's own UI numbers filters 1-indexed here, unlike this project's 0-indexed `filter0`/`filter1` destination convention — `schema.MOD_SOURCE_IDS` keeps the 0-indexed convention for API consistency (`"filter0": 53`), see the table's source code comment. |
 | Filter 2 (self-mod) | `54` | Direct UI probe, `confirmed`, round 4 (`"filter1": 54`). |
+| LFO 2 Y (self-mod, chaotic-attractor Y-axis output) | `40` | Read directly from a real Factory preset's own MATRIX tab, `confirmed`, round 5 (2026-08-01). Closes the LAST of this project's originally-flagged unknown source ids (`24`/`40`/`57` from the Galaxy investigation — all three now resolved). |
 
 Round 4 (2026-08-01) resolved 12 new source names in one probe file, found
 by having the user screenshot every submenu of Serum 2's own MATRIX-tab
 source picker rather than guessing which names might still be unprobed —
 turned up 3 entire categories (`Oscillators`, `Filters`, `Note Expression`)
 this project had never even seen the contents of before, previously only
-referenced abstractly as "out of original scope" in this doc. **After this
-round, every single named entry in the picker (49 across every submenu) has
-a resolved id — none of them is `40`.** That makes `40` very unlikely to be
-reachable via the standard UI at all; see the note in `schema.py` right
-after `MOD_SOURCE_IDS`'s definition for the reasoning and a suggested
-alternate approach (work backwards from a real preset that uses it, the way
-`38`/"Fixed" was originally noticed, rather than more picker probing).
+referenced abstractly as "out of original scope" in this doc. After that
+round, every single named entry in the picker (49 across every submenu) had
+a resolved id — none of them was `40`, making it look unreachable via the
+standard UI.
+
+**Round 5 (2026-08-01), `40` resolved anyway — the suggested alternate
+approach worked.** A corpus survey (876 presets, the same technique used
+for mod-destination gaps) found `40` is actually COMMON in real content —
+34 real routes across Bass/Chord/Drum/Lead/Organ/Pad categories, not a rare
+edge case. Rather than more picker sweeping, pointed the user at one
+specific real file (`BA - Sewer Bros.SerumPreset`, `ModSlot0`, a bare
+no-aux route into `WTOsc.kParamTablePos`) and asked what Serum's own MATRIX
+tab displays for that exact row: **"LFO 2 Y."** Presumed to be the Y-axis/
+secondary coordinate output of a chaotic-attractor LFO shape (Rossler/
+Lorenz are classic multi-axis dynamical systems, see `SIMPLE_LFO_TYPES`) —
+a context-sensitive menu entry that only appears for specific LFO shapes,
+explaining why it was invisible to round 4's picker screenshots (which
+weren't necessarily looking at an LFO using that shape at the time).
+**Confirmed for this ONE LFO slot only** (`"lfo1_y": 40`, 0-indexed to
+match this project's own `lfo0`..`lfo9` convention) — whether other LFO
+slots have an analogous `_y` source, and what id it would use, is unknown;
+don't assume a contiguous `lfo{i}_y` family exists without probing each
+one.
 
 All of the above are wired into `serum-mcp`, which generates and reads back
 routes for them (see `schema.MOD_SOURCE_IDS`, `generation/spec.py::ModRouteSpec`).
@@ -2054,19 +2071,23 @@ actually three independent sources), plus all 5 of the "Note"-category
 sources this project had only ever seen in the picker without a name-to-ID
 mapping.
 
-**Still genuinely unresolved, as of round 4 (2026-08-01)**: only `subIndex`
-(`source[1]`, see below) and source id `40` (one of the 3 original
-Galaxy-recreation unknowns — `24` and `57` are now both resolved). `38` was
-resolved separately as "Fixed" (item 14) — not adjacent to `Release Velo`
-(`37`) in the picker, the very next item down turned out to be plain `Velo`
-(id `16`, Velocity appearing a second time in the Note category), so it
-needed its own targeted probe rather than positional guessing, same lesson
-that motivated round 4's screenshot-every-submenu approach instead of more
-guessing. `40` is the one id that survived even a full picker sweep — see
-the note above the source table for why it's now suspected unreachable via
-the UI at all. The direct-probe method itself is proven fast and reusable
-across 4 rounds now (round 4 alone resolved 12 IDs in one sitting from a
-single probe file, after the user provided a screenshot of every submenu).
+**Still genuinely unresolved, as of round 5 (2026-08-01)**: only `subIndex`
+itself (`source[1]`, see below — its meaning OUTSIDE the aux-source
+mechanism, which is already fully decoded, item 14) remains open. Every
+source id this project ever flagged as unknown is now resolved, including
+all 3 of Galaxy's original unknowns (`24`, `40`, `57`) and `38`
+(resolved separately as "Fixed", item 14 — not adjacent to `Release Velo`
+(`37`) in the picker, the very next item down turned out to be plain
+`Velo` (id `16`, Velocity appearing a second time in the Note category),
+needing its own targeted probe rather than positional guessing). `40`
+specifically survived a full picker sweep (round 4) and only fell to a
+DIFFERENT technique — a corpus survey to find real usage, then reading
+the answer directly off a real preset's own MATRIX tab (round 5) rather
+than more picker probing. The direct-probe method itself is proven fast
+and reusable across 5 rounds now (round 4 alone resolved 12 IDs in one
+sitting from a single probe file, after the user provided a screenshot of
+every submenu; round 5 resolved the one holdout via corpus survey +
+one targeted real-preset read instead).
 
 **Method, for resolving what's left**: open Serum 2 on any preset, go to
 the MATRIX tab, pick an unresolved source from the `Source` column dropdown
