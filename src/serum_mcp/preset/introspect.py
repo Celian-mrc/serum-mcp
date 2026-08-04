@@ -25,6 +25,7 @@ from serum_mcp.generation.spec import (
     ModRouteSpec,
     OscillatorSpec,
     PresetSpec,
+    VoiceUnisonSpec,
 )
 
 from . import schema
@@ -777,8 +778,55 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
 
     # Opaque passthrough, see PresetSpec.voice_panel's docstring -- only
     # captured when it's a real dict (not the untouched "default" sentinel).
+    # Excludes the per-voice/kParamGlobalRandomOscPan keys, which now have
+    # a dedicated friendly home in VoiceUnisonSpec below -- avoids
+    # extracting the same data twice into two different PresetSpec fields.
     voice_panel_pp = (data.get("VoicePanel0", {}) or {}).get("plainParams")
-    voice_panel = dict(voice_panel_pp) if isinstance(voice_panel_pp, dict) else None
+    voice_panel = (
+        {
+            k: v
+            for k, v in voice_panel_pp.items()
+            if not (k.startswith("kParamVoice") or k == "kParamGlobalRandomOscPan")
+        }
+        if isinstance(voice_panel_pp, dict)
+        else None
+    )
+    voice_panel = voice_panel or None
+
+    voice_unison = None
+    if isinstance(voice_panel_pp, dict):
+
+        def _voice_list(suffix: str) -> list[float | None] | None:
+            # Builds a dense list[0..N-1] up to the highest present voice
+            # index for this family; a genuinely absent middle voice (a
+            # real case found live -- kParamVoice2EnvTime absent while
+            # voices 1/3+ had it) becomes None, distinct from an explicit
+            # 0.0 -- see VoiceUnisonSpec's docstring.
+            keys = [f"kParamVoice{i}{suffix}" for i in range(1, 9)]
+            if not any(k in voice_panel_pp for k in keys):
+                return None
+            last_present = max(i for i, k in enumerate(keys) if k in voice_panel_pp)
+            return [voice_panel_pp.get(k) for k in keys[: last_present + 1]]
+
+        pan = _voice_list("Pan")
+        detune = _voice_list("Detune")
+        filter_cutoff = _voice_list("FilterCutoff")
+        env_time = _voice_list("EnvTime")
+        mod1 = _voice_list("Mod1")
+        mod2 = _voice_list("Mod2")
+        random_pan = voice_panel_pp.get("kParamGlobalRandomOscPan")
+        if any(
+            v is not None for v in (pan, detune, filter_cutoff, env_time, mod1, mod2, random_pan)
+        ):
+            voice_unison = VoiceUnisonSpec(
+                pan=pan,
+                detune=detune,
+                filter_cutoff=filter_cutoff,
+                env_time=env_time,
+                mod1=mod1,
+                mod2=mod2,
+                random_pan=random_pan,
+            )
 
     return PresetSpec(
         name="",
@@ -792,5 +840,6 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         mod_routes=mod_routes,
         arp=arp_spec,
         voice_panel=voice_panel,
+        voice_unison=voice_unison,
         **{"global": global_spec},
     )

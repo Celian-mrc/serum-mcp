@@ -1457,4 +1457,30 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         voice_panel_container = data.setdefault("VoicePanel0", {})
         voice_panel_container["plainParams"] = dict(spec.voice_panel)
 
+    if spec.voice_unison is not None:
+        # Written AFTER voice_panel (above) so it wins on any overlapping key
+        # if a caller sets both -- see VoiceUnisonSpec's docstring. Uses the
+        # standard merge-with-existing helper (unlike voice_panel's wholesale
+        # replace) since these are genuinely individual friendly fields now.
+        vu = spec.voice_unison
+        voice_params = _plain_params(data, "VoicePanel0")
+        _FIELD_TO_KEY_PREFIX = (
+            (vu.pan, "Pan"),
+            (vu.detune, "Detune"),
+            (vu.filter_cutoff, "FilterCutoff"),
+            (vu.env_time, "EnvTime"),
+            (vu.mod1, "Mod1"),
+            (vu.mod2, "Mod2"),
+        )
+        for values, suffix in _FIELD_TO_KEY_PREFIX:
+            if values is None:
+                continue
+            for i, value in enumerate(values):
+                # None = that voice doesn't set this param at all -- see
+                # VoiceUnisonSpec's docstring, distinct from an explicit 0.0.
+                if value is not None:
+                    voice_params[f"kParamVoice{i + 1}{suffix}"] = value
+        if vu.random_pan is not None:
+            voice_params["kParamGlobalRandomOscPan"] = vu.random_pan
+
     return data

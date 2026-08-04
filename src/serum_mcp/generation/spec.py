@@ -1377,6 +1377,105 @@ class ArpSpec(BaseModel):
     )
 
 
+class VoiceUnisonSpec(BaseModel):
+    """Per-voice unison randomization -- Serum's GLOBAL tab "VOICE CONTROL"
+    panel (RANDOM/SEQ columns, PAN/DETUNE/CUTOFF/ENVS/MOD1/MOD2 rows, an
+    8-bar chart, one bar per unison voice). Decoded 2026-08-05 via a
+    ground-truth test: the user typed '-20' directly into a real Serum
+    instance's PAN bar for voice 6 and saved, and the raw
+    ``VoicePanel0.kParamVoice6Pan`` Serum itself wrote back was
+    ``-20.259740948677063``.
+
+    That, cross-checked against 47 other real values from a genuine Galaxy
+    preset, confirmed: **every per-voice value here is simply a percentage,
+    stored ~1:1 with the displayed number** (Serum quantizes internally to
+    steps of ``10/77 ~= 0.12987`` -- confirmed EVERY real per-voice value
+    sampled is an exact integer multiple of that step -- but this is far
+    finer than the display resolution and doesn't need to be replicated;
+    just write the plain percentage). Negative = Left / positive = Right
+    for ``pan`` specifically (confirmed by the '-20' -> '-20L' display).
+    The exact bipolar-vs-unipolar range for each OTHER field
+    (``detune``/``filter_cutoff``/``env_time``/``mod1``/``mod2``) is NOT
+    independently confirmed the same way -- real Galaxy data included both
+    signs for most of them (``mod1`` hit exactly -100/+100, suggesting a
+    genuine -100..100 range), so -100..100 is used as a permissive common
+    bound, not a confirmed per-field range.
+
+    This module is a DIFFERENT, more-decoded slice of the same raw
+    ``VoicePanel0`` singleton as ``PresetSpec.voice_panel`` (the opaque
+    passthrough covering ``kParamGlobalScalingEnvTime``/``LfoTime`` plus
+    everything here) -- don't set both on the same call: ``voice_panel``
+    (if set) is written first as a full wholesale replace of
+    ``VoicePanel0.plainParams``, and these fields are then written ON TOP
+    of that, so combining them is technically well-defined (this object
+    wins on any key it touches) but almost certainly not what you want --
+    prefer one or the other per call.
+
+    Each list entry can be ``None`` for a voice that doesn't set this
+    param at all (vs. ``0.0``, a real explicit value) -- found live
+    round-tripping a real preset where ``kParamVoice2EnvTime`` was
+    genuinely ABSENT (voice 2 alone, surrounded by voices that DID set
+    it): matches this project's established "presence forces the DSP
+    stage" pattern everywhere else in the codebase, so a genuine gap must
+    round-trip as a gap, not get silently coerced to a real 0.0 value.
+    """
+
+    pan: list[float | None] | None = Field(
+        None,
+        max_length=8,
+        description="Per-voice pan spread, one entry per unison voice (index 0 = "
+        "voice 1, etc, up to 8; `None` = that voice doesn't set this param, omit it, "
+        "distinct from an explicit 0.0). Percentage, negative=Left/positive=Right "
+        "(CONFIRMED live). Real Galaxy values ranged -29.9 to +37.7.",
+    )
+    detune: list[float | None] | None = Field(
+        None,
+        max_length=8,
+        description="Per-voice detune spread (see `pan` for the `None`-means-absent "
+        "convention). Percentage-like (same raw storage convention as `pan`), exact "
+        "scale/unit vs. cents UNCONFIRMED. Real Galaxy values ranged -7.8 to +18.2.",
+    )
+    filter_cutoff: list[float | None] | None = Field(
+        None,
+        max_length=8,
+        description="Per-voice filter cutoff spread (see `pan` for the "
+        "`None`-means-absent convention). Real Galaxy values were all positive "
+        "(52.0-75.3) -- possibly unipolar (0..100) rather than bipolar like `pan`, "
+        "unconfirmed either way.",
+    )
+    env_time: list[float | None] | None = Field(
+        None,
+        max_length=8,
+        description="Per-voice envelope time spread (see `pan` for the "
+        "`None`-means-absent convention). Real Galaxy values ranged -5.2 to +2.6.",
+    )
+    mod1: list[float | None] | None = Field(
+        None,
+        max_length=8,
+        description="Per-voice mod 1 spread (see `pan` for the `None`-means-absent "
+        "convention). Real Galaxy values were exactly -100.0 or +100.0 for every "
+        "voice that had one set -- consistent with a genuine -100..100 range, but "
+        "this preset only ever used the extremes.",
+    )
+    mod2: list[float | None] | None = Field(
+        None,
+        max_length=8,
+        description="Per-voice mod 2 spread (see `pan` for the `None`-means-absent "
+        "convention). Real Galaxy values ranged -22.1 to +37.7.",
+    )
+    random_pan: float | None = Field(
+        None,
+        ge=0.0,
+        le=100.0,
+        description="The GLOBAL tab's 'RANDOM' knob for pan (kParamGlobalRandomOscPan) "
+        "-- CONFIRMED via a real screenshot (18% displayed matched the raw value "
+        "exactly). A DIFFERENT, continuously-stored control from the per-voice `pan` "
+        "list above (not subject to the same internal quantization) -- likely an "
+        "overall randomization AMOUNT applied per-note, distinct from the SEQ pattern's "
+        "fixed per-voice values.",
+    )
+
+
 class PresetSpec(BaseModel):
     """The full target state for a generated or edited preset."""
 
@@ -1443,19 +1542,27 @@ class PresetSpec(BaseModel):
         "default when the key is absent) plus ~30 per-voice unison-randomization params "
         "(kParamVoice{1-8}Detune/EnvTime/FilterCutoff/Mod1/Mod2/Pan, "
         "kParamGlobalRandomOscPan) -- was always silently lost on recreation. "
-        "kParamGlobalScalingLfoTime/EnvTime's units are now CONFIRMED as PERCENTAGES "
+        "kParamGlobalScalingLfoTime/EnvTime's units are CONFIRMED as PERCENTAGES "
         "(100% = neutral/unscaled) via a real Serum GLOBAL-tab screenshot 2026-08-05: "
         "the 'SCALING' row's 'ENVS: 162%'/'LFOS: 1000% RATE' readout matched Galaxy's "
         "raw values (162.18/1000.0) exactly -- Galaxy's LFOs were deliberately scaled "
-        "to 10x their normal cycle time. The per-voice unison-randomization params' "
-        "exact bar-to-value mapping (the GLOBAL tab's 'VOICE CONTROL' panel) is still "
-        "NOT decoded. Given the scaling params' units are now understood, treat this "
-        "the same way as FxUnitSpec.flex regardless: only ever set it by copying the "
-        "dict extract_spec read off an existing preset (round-trip/preserve) -- do NOT "
-        "hand-author values, since this is still a single opaque dict (no individual "
-        "friendly fields yet) and mixing a hand-picked scaling % into an otherwise-"
-        "copied dict risks an inconsistent VoicePanel0 state. Leave unset for Serum's "
-        "own unscaled/default VoicePanel behavior.",
+        "to 10x their normal cycle time. The per-voice unison-randomization params "
+        "themselves are now ALSO decoded and have friendly fields -- see "
+        "`VoiceUnisonSpec`/`PresetSpec.voice_unison` -- prefer that for new/hand-"
+        "authored values; this opaque dict remains for round-tripping the 2 scaling "
+        "params (still no friendly fields for those) and for preserving an entire "
+        "extracted VoicePanel0 verbatim in one shot. Do NOT hand-author entries in "
+        "THIS dict expecting a specific result -- only ever set it by copying the "
+        "dict extract_spec read off an existing preset (round-trip/preserve). Leave "
+        "unset for Serum's own unscaled/default VoicePanel behavior.",
+    )
+    voice_unison: VoiceUnisonSpec | None = Field(
+        None,
+        description="Per-voice unison randomization (GLOBAL tab 'VOICE CONTROL' "
+        "panel) -- see VoiceUnisonSpec for the full decode story and field-by-field "
+        "details. Prefer this over the opaque `voice_panel` dict for hand-authoring "
+        "new per-voice values; see VoiceUnisonSpec's docstring for the (well-defined "
+        "but discouraged) interaction if both are set on the same call.",
     )
 
     model_config = {"populate_by_name": True}
