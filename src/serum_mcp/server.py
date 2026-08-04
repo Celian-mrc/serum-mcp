@@ -19,6 +19,9 @@ from serum_mcp.generation.spec import PresetSpec
 from serum_mcp.tools.analyze_sample_file import analyze_sample_file as _analyze_sample_file
 from serum_mcp.tools.describe_preset import describe_preset as _describe_preset
 from serum_mcp.tools.edit_preset import edit_preset as _edit_preset
+from serum_mcp.tools.find_reference_presets import (
+    find_reference_presets as _find_reference_presets,
+)
 from serum_mcp.tools.generate_preset import generate_preset as _generate_preset
 from serum_mcp.tools.list_parameters import list_parameters as _list_parameters
 from serum_mcp.tools.list_sample_files import list_sample_files as _list_sample_files
@@ -417,6 +420,43 @@ mcp = FastMCP(
         "it's part of the same list_parameters() call already needed for valid ranges/"
         "enums, so there's no extra step. docs/SOUND_DESIGN_REFERENCE.md has the fuller "
         "prose version with sample-size caveats, for deeper reading.\n"
+        "- GENRE/ARTIST-STYLE REQUESTS ('a dubstep bass', 'something in the style of "
+        "Flume', 'a trance lead'): call find_reference_presets(query) FIRST, before "
+        "generating from scratch -- it searches this machine's real Serum Factory "
+        "library plus the user's own installed banks by folder/filename, so you can "
+        "ground the request in an actual designed preset (check its real parameters via "
+        "describe_preset() on the best match) rather than working purely from "
+        "parametric/training knowledge of the genre. This is a real corpus search, not a "
+        "database of artist names -- an artist-name query works when a genre/style-"
+        "branded pack happens to be installed, and otherwise falls back to genre-level "
+        "matches; it can come back empty for an obscure or very specific artist, which "
+        "isn't a failure, just a signal to fall back to the technique notes below plus "
+        "your own knowledge of that artist's sound. role_starting_points (see above) "
+        "already covers generic per-ROLE defaults (bass/pluck/lead/pad/...); the "
+        "technique associations below are specifically about GENRE CHARACTER on top of "
+        "that -- community sound-design convention, not measured from this project's own "
+        "corpus the way role_starting_points is, so treat these as informed starting "
+        "points to adapt, not fixed recipes: dubstep/riddim bass leans on FM/PD-style "
+        "warp modes (raw/metallic) tamed with a second filter-type warp lane (see the "
+        "warp_mode2 guidance above), heavy unison detune, an LFO synced to the beat "
+        "grid wobbling filter cutoff, and aggressive distortion/compression late in the "
+        "fx_chain; trap/hip-hop bass favors a clean sine/triangle sub layered under a "
+        "shorter mid layer, punchy fast-attack/short-release envelopes, and 808-style "
+        "pitch glide (portamento_time); house/deep house leans warmer -- softer warp "
+        "modes, a rounder low-passed filter, groove-oriented macro-driven modulation "
+        "rather than aggressive LFO wobble; trance/big-room leads favor bright "
+        "supersaw-style unison stacks (high unison count, moderate detune), a resonant "
+        "filter sweep (often macro- or envelope-driven), and long reverb/delay tails; "
+        "lo-fi favors softer/duller filtering, subtle pitch/time instability (small "
+        "amounts of random1/random2 modulation on pitch), and often benefits from a real "
+        "sample layer (see the sample_playback_source guidance above) for vinyl/tape "
+        "character rather than trying to synthesize noise/grit from scratch; ambient/"
+        "cinematic pads want long attack/release envelopes, slow-moving LFO/macro "
+        "modulation (filter cutoff, pan, table_position), and generous reverb -- often "
+        "layered oscillators with DIFFERENT wavetables per the layering guidance above "
+        "for an evolving/detuned texture rather than a single static tone. When a "
+        "request names a genre not covered here, extend this reasoning (character/"
+        "energy/typical arrangement role) rather than defaulting to a generic sound.\n"
         "- Envelope times are seconds; macro/resonance/wet/drive are 0-100%. "
         "envelopes[].hold is a rarely-needed extra plateau at full level before "
         "decay starts, seconds -- leave at 0 unless asked for.\n"
@@ -538,6 +578,35 @@ def list_sample_files(directory: str | None = None, recursive: bool = True) -> s
     raises an error -- don't guess a path.
     """
     return _list_sample_files(directory, recursive=recursive)
+
+
+@mcp.tool()
+def find_reference_presets(query: str, limit: int = 8) -> str:
+    """Search the real preset corpus (Serum's Factory library plus the
+    user's Presets/User folder, incl. any third-party banks) by keyword
+    match against folder/file names, and return the best candidates as
+    JSON -- for grounding a genre/artist-style request in a real,
+    already-designed preset instead of generating purely from parametric
+    knowledge.
+
+    Call this whenever a request references a GENRE or an ARTIST'S STYLE
+    ("dubstep bass", "something like Flume would make", "a Reese bass")
+    before generating from scratch. A genre query is automatically
+    expanded against a small curated keyword table bridging genre names
+    to Serum's own instrument/role-organized Factory folders (e.g.
+    "dubstep" also searches "reese"/"wobble"/"growl"/"modulated") -- see
+    find_reference_presets's own docstring for details and caveats.
+
+    Results are a STARTING POINT: call describe_preset() on the most
+    promising matches to see their actual parameters (filter type, FX
+    chain, mod routes) before treating one as a reference or as the base
+    for edit_preset(). A weak/empty result doesn't mean synthesis from
+    scratch won't work -- this corpus is finite (Factory plus whatever
+    this specific user has installed), so also fall back to this
+    server's own genre/technique guidance and
+    list_parameters()['role_starting_points'].
+    """
+    return _find_reference_presets(query, limit=limit)
 
 
 @mcp.tool()
