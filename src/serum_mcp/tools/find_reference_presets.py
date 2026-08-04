@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 from serum_mcp import config
+from serum_mcp.preset.packer import unpack_file
 
 _DEFAULT_LIMIT = 8
 _MAX_SCAN = 8000  # safety cap on how many files to score in one call
@@ -103,13 +104,32 @@ def find_reference_presets(query: str, limit: int = _DEFAULT_LIMIT) -> str:
     own corpus is finite (mostly Xfer's Factory library plus whatever
     third-party banks this specific user happens to have installed).
 
+    IMPORTANT, found live 2026-08-05: some of what this searches is THIS
+    PROJECT'S OWN PAST OUTPUT (any preset with metadata presetAuthor ==
+    "serum-mcp" -- every result carries an ``is_serum_mcp_generated``
+    flag for exactly this). A user reported comparing against 2 such
+    banks from earlier sessions and finding them lower-quality and not
+    using techniques discovered later in this project's own development
+    -- using past self-generated output as a QUALITY OR TECHNIQUE
+    benchmark is circular, since it's bounded by whatever this project
+    already knew how to do at generation time, not by any independent
+    design merit. Prefer non-flagged (genuine Factory/third-party)
+    results as the actual quality/technique reference; a flagged result
+    is still useful for a narrower purpose -- seeing what was already
+    tried for this exact role/style, to build on or deliberately diverge
+    from -- but don't treat it as "this is what good sounds like."
+
     Returns JSON: ``query`` (the original), ``expanded_terms`` (what was
     actually searched for, useful to see if genre expansion kicked in),
     ``count``/``truncated``, and ``results`` (each: ``path``, ``source``
     -- "Factory" or the top-level folder name under Presets/User a
-    third-party bank lives in -- and ``matched_terms``), sorted by number
-    of matched terms descending then path length ascending (shorter/more
-    specific paths first among equal-scoring candidates).
+    third-party bank lives in --, ``matched_terms``, and
+    ``is_serum_mcp_generated``), sorted by number of matched terms
+    descending then path length ascending (shorter/more specific paths
+    first among equal-scoring candidates) -- NOT deprioritized by the
+    serum-mcp-generated flag, which is informational only (checking it
+    for every match, not just the ones returned, would need opening
+    every candidate file).
     """
     terms = _expand_query(query)
     if not terms:
@@ -175,6 +195,16 @@ def find_reference_presets(query: str, limit: int = _DEFAULT_LIMIT) -> str:
     scored.sort(key=lambda t: (-t[0], t[1]))
     truncated = len(scored) > limit
     results = [entry for _, _, entry in scored[:limit]]
+
+    # Only checked for the final (already-truncated) results, not every
+    # scored candidate -- opening every match's file just to compute a
+    # sort-irrelevant informational flag doesn't scale with corpus size.
+    for entry in results:
+        try:
+            author = unpack_file(entry["path"]).metadata.get("presetAuthor")
+        except Exception:
+            author = None
+        entry["is_serum_mcp_generated"] = author == "serum-mcp"
 
     return json.dumps(
         {

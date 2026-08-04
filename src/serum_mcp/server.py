@@ -59,7 +59,34 @@ mcp = FastMCP(
         "-- they default to the same table ('default'), which sounds thin/undifferentiated "
         "when layered; picking different tables per layer is what makes a stack sound rich. "
         "unison/detune (indices 0-2) thicken a single oscillator -- use for 'fat', 'wide', "
-        "'supersaw'-style requests. warp_mode "
+        "'supersaw'-style requests.\n"
+        "- wavetable ISN'T LIMITED TO THE 12-NAME CURATED LIST -- found live 2026-08-05 "
+        "after a user noticed generated banks kept reaching for the same few tables: "
+        "`simple_wavetables` is a small friendly-name subset, but the real Serum install "
+        "ships ~300+ actual wavetable files (this project's own Tables folder, "
+        "config.get_tables_dir()), and `wavetable` accepts a real Tables-relative path "
+        "DIRECTLY as a string, not just the 12 curated names (mapping.py already falls "
+        "back to resolving it as a real file when it's not a curated name -- this existed "
+        "for edit_preset round-tripping but was never mentioned as a generation option "
+        "before). This unlocks REAL variety, including tables that sound like specific "
+        "instruments/characters the curated list has no equivalent for -- e.g. "
+        "'S2 Tables/Digital/Piano.wav', 'S2 Tables/Digital/RMrk1.wav' (Rhodes Mark 1), "
+        "'S2 Tables/Digital/Wuuurli.wav' (Wurlitzer), 'S2 Tables/Digital/Braids Bell "
+        "Pluck.wav', 'Vowel/DudaChoir.wav' (a real vowel-formant choir table -- a much "
+        "more genuine vocal character than approximating one with a formant FILTER), "
+        "'S2 Tables/Digital/Brass Stab.wav', 'S2 Tables/Digital/Xylo Pluck.wav'. When a "
+        "request names a specific instrument/character (Rhodes, Wurlitzer, choir, bell, "
+        "brass, ...), check whether a real table matches that name/character BEFORE "
+        "reaching for a generic curated table + warp_mode approximation -- it's often a "
+        "closer, more distinctive match and costs nothing extra to try. Exact file names "
+        "aren't enumerated anywhere in this server (there are hundreds); if unsure what's "
+        "available, a real Tables-relative path either resolves or raises a clear 'file "
+        "not found' error naming the path it tried -- safe to attempt speculatively for a "
+        "plausible name. This is also the fix for 'presets all sound similar' complaints "
+        "when the curated 12 aren't cutting it: actively vary between curated names AND "
+        "real Tables paths across a themed set, don't default to the same 3-4 curated "
+        "tables every time.\n"
+        "- warp_mode "
         "(one of list_parameters()['simple_warp_modes']) picks the wavetable warping "
         "character -- 'fm'/'am' for classic FM/AM timbres, 'sync' for aggressive sync "
         "leads, 'pwm' for pulse-width sounds, 'fold'/'soft_clip'/'hard_clip' for "
@@ -605,6 +632,16 @@ def find_reference_presets(query: str, limit: int = 8) -> str:
     this specific user has installed), so also fall back to this
     server's own genre/technique guidance and
     list_parameters()['role_starting_points'].
+
+    Each result carries ``is_serum_mcp_generated`` -- found live
+    2026-08-05 that some results are this project's OWN past output
+    (metadata presetAuthor == "serum-mcp"), and using an earlier
+    self-generated preset as a QUALITY/TECHNIQUE benchmark is circular
+    (it's bounded by what this project already knew how to do back
+    then, not by independent design merit). PREFER non-flagged
+    (genuine Factory/third-party) results as the actual reference; a
+    flagged one is still useful narrowly (what was already tried for
+    this role/style) but not as "this is what good sounds like."
     """
     return _find_reference_presets(query, limit=limit)
 

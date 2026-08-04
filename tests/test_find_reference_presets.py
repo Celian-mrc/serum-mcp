@@ -5,12 +5,22 @@ import json
 import pytest
 
 from serum_mcp import config
+from serum_mcp.preset.packer import SerumPreset, pack_file
 from serum_mcp.tools.find_reference_presets import find_reference_presets
 
 
 def _touch(path):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"")
+
+
+def _write_real_preset(path, *, author):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    preset = SerumPreset(
+        metadata={"presetName": path.stem, "presetAuthor": author},
+        data={},
+    )
+    pack_file(preset, path)
 
 
 @pytest.fixture
@@ -107,6 +117,22 @@ def test_matched_terms_reported(fake_corpus):
     entry = next(r for r in result["results"] if r["path"].endswith("BA - Growler.SerumPreset"))
     assert "growl" in entry["matched_terms"]
     assert "bass" in entry["matched_terms"]
+
+
+def test_is_serum_mcp_generated_flag(fake_corpus):
+    """Found live 2026-08-05: a user reported comparing against past
+    serum-mcp-generated banks (lower quality, predating later technique
+    discoveries) as if they were a genuine external reference -- this
+    flag lets the calling model tell the difference and prefer real
+    Factory/third-party content as the actual quality benchmark."""
+    user_dir, factory_dir = fake_corpus
+    _write_real_preset(user_dir / "Some Bank" / "BA - Old Gen Bass.SerumPreset", author="serum-mcp")
+    _write_real_preset(factory_dir / "Bass" / "BA - Real Bass.SerumPreset", author="Xfer Records")
+
+    result = json.loads(find_reference_presets("bass"))
+    by_name = {r["path"].split("\\")[-1].split("/")[-1]: r for r in result["results"]}
+    assert by_name["BA - Old Gen Bass.SerumPreset"]["is_serum_mcp_generated"] is True
+    assert by_name["BA - Real Bass.SerumPreset"]["is_serum_mcp_generated"] is False
 
 
 def test_more_matched_terms_ranks_first(fake_corpus):
