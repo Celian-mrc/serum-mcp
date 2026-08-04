@@ -1137,6 +1137,73 @@ improve generation quality if resolved:
    observed from real files, not guessed. Verified round-trip with a
    dedicated regression test
    (`test_new_mod_destinations_2026_08_01_survey_round_trip`).
+
+   **Update 2026-08-01 — full Galaxy re-verification: 27/27 mod routes,
+   plus a real fixture bug and 6 more presence-pattern fixes found along
+   the way.** With every mod-source/destination gap above now closed,
+   re-ran `extract_spec`/`generate_preset` against the real
+   `UN_PLACES_ARP_120_Galaxy.SerumPreset` file end-to-end (not a one-off
+   patch this time) and compared the recreation against the original with
+   a full recursive diff. Result: **all 27 real `ModSlot` routes match
+   exactly** (same source/destination/amount) when compared as an
+   unordered set — a positional (`ModSlot0` vs `ModSlot0`) diff shows
+   many mismatches, but that's a false positive: routes land at DIFFERENT
+   slot NUMBERS in the recreation than the original (extraction order
+   isn't guaranteed to match original slot indices when the real file has
+   gaps in its own numbering), which doesn't matter to Serum at all — the
+   MATRIX tab doesn't care which row number a route occupies. This closes
+   the loop on the project's original hardest gap (Galaxy went from 11/27
+   to 27/27 across the life of this investigation).
+
+   The same full-diff exercise, done properly this time (comparing
+   against a REAL preset end-to-end rather than isolated one-off patches),
+   surfaced two more real findings:
+   - **A genuine fixture bug, same class as the `RoutingSlot5` bug found
+     2026-07-29**: `fixtures/init_preset.SerumPreset`'s `MidiClip0` (a
+     Serum "preview clip" feature, separate from the `ArpClip` system)
+     still had real leftover melody + macro-automation data from the
+     donor preset used to build the fixture — meaning every
+     serum-mcp-generated preset, since the project's first commit, has
+     shipped with an unrelated leftover melody baked into its preview
+     clip. Fixed at the fixture level (reset to the genuine blank
+     `{'clip': {}, 'plainParams': 'default'}` every other clip slot
+     already used) — no `PresetSpec` change needed, same fix shape as
+     `RoutingSlot5`.
+   - **6 more "presence forces the DSP stage" instances**, found by
+     diffing every module (not just `ModSlot`) and checking each
+     candidate against a real corpus survey before fixing (3 candidates
+     that LOOKED like the same bug turned out NOT to be, once checked —
+     see below): `Global.kParamMonoToggle`/`kParamPolyCount`/
+     `kParamLimitSameNotePolyphony`/`kParamPortamentoTime` (19-33% real
+     presence, now omitted at their `GlobalSpec` defaults — unlike
+     `kParamMasterVolume`, 91% presence, stays always-explicit),
+     `LFO_PARAMS['kParamSmooth']` (94% absent across a 2652-slot survey,
+     previously excluded from the omit table for "no evidence either
+     way" — now has it), and `ENV_PARAMS['kParamHold']` (96% absent
+     across 2504 slots). **Explicitly NOT fixed despite looking similar
+     in the diff**, because a corpus check found real majority presence
+     (correctly staying always-explicit): `LFO_PARAMS['kParamMode']` (63%
+     present), `MACRO_PARAMS['kParamValue']` (59%, counting the fully
+     untouched `"default"`-sentinel slots as absent), `kUIParamMixOrGain`
+     on FX units (64%). The other 4 envelope ADSR keys
+     (attack/decay/sustain/release, 37-52% presence) were left alone too
+     — genuinely ambiguous evidence, and higher-stakes to get wrong than
+     a mono/poly-count toggle. Method matters here: don't generalize a
+     fix pattern from one example without checking the actual corpus
+     distribution for that specific key.
+
+   **What's still open, found by the same full diff, not part of this
+   round's fixes**: the arp/preview-clip note DATA itself (`ArpClip0`'s
+   raw hand-drawn/algorithmic-pattern notes, `MidiClip0-9`'s genuine
+   per-preset preview content) isn't modeled by `PresetSpec` at all —
+   `ArpSpec.shape` correctly captures NAMED algorithmic patterns (Galaxy
+   uses `'random_drift'`, confirmed round-tripping correctly), but the
+   underlying `ArpClip0.clip.notes`/`MidiClip0`'s own snapshot content
+   doesn't survive extract→regenerate (out of scope, pre-existing,
+   unrelated to mod-matrix). FX units' own `flex` curve data (e.g. a
+   distortion's saturation shape) also doesn't survive extract→regenerate
+   — `FxUnitSpec` doesn't model it, a real, likely-audible gap for FX
+   types that use it, not addressed this round.
 2. **Filter cutoff Hz curve** (§4, Filters) — **calibrated 2026-07-31** via the
    [[reference-serum-verify-audio-pipeline]] (a full sweep, not one point):
    a `lowpass_24` filter fed White noise (full-spectrum, no self-bias) at

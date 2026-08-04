@@ -1315,17 +1315,43 @@ def test_lfo_curve_2point_rising_accepted(init_data):
                 LfoCurvePointSpec(x=0.3, y=0.7),
                 LfoCurvePointSpec(x=1.0, y=0.9),
             ],
-            "strictly increasing",
+            "non-decreasing",
         ),
     ],
 )
 def test_lfo_curve_invalid_shapes_rejected(init_data, bad_curve, match):
     """The other real-corpus invariants (99.7%/3051-sample survey, see
-    docs/PARAMETER_SCHEMA.md item 4): x[0]=0.0, x[-1]=1.0, strictly
-    increasing -- reject rather than silently write a malformed curve."""
+    docs/PARAMETER_SCHEMA.md item 4): x[0]=0.0, x[-1]=1.0, non-decreasing
+    (truly out-of-order/backwards x, not just a duplicate -- see the
+    duplicate-x test below) -- reject rather than silently write a
+    malformed curve."""
     spec = PresetSpec(name="X", description="", lfos=[LfoSpec(curve=bad_curve)])
     with pytest.raises(ValueError, match=match):
         apply_spec(init_data, spec)
+
+
+def test_lfo_curve_duplicate_x_accepted_for_a_vertical_step(init_data):
+    """Found live 2026-08-01 recreating a real preset (Galaxy): a duplicate
+    x (e.g. two points both at x=0.5) is a real, deliberate Serum
+    construct -- an instant vertical step, not corruption -- used to build
+    stepped/square-ish shapes from otherwise-flat segments. Only truly
+    backwards x (see the parametrized test above) is rejected."""
+    spec = PresetSpec(
+        name="X",
+        description="",
+        lfos=[
+            LfoSpec(
+                curve=[
+                    LfoCurvePointSpec(x=0.0, y=0.5),
+                    LfoCurvePointSpec(x=0.5, y=0.5),
+                    LfoCurvePointSpec(x=0.5, y=0.9),
+                    LfoCurvePointSpec(x=1.0, y=0.9),
+                ]
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+    assert data["LFO0"]["curveData"]["xVals"] == [0.0, 0.5, 0.5, 1.0]
 
 
 def test_lfo_default_delay_rise_mono_swing_dotted_triplets_rate10x_omitted(init_data):
@@ -1530,6 +1556,49 @@ def test_global_limit_same_note_polyphony_round_trips(init_data):
 
     extracted = extract_spec(data)
     assert extracted.global_.limit_same_note_polyphony is True
+
+
+def test_global_default_fields_omitted_2026_08_01(init_data):
+    """kParamMonoToggle/kParamPolyCount/kParamLimitSameNotePolyphony/
+    kParamPortamentoTime -- found live 2026-08-01 recreating a real preset
+    (Galaxy): this project always wrote these 4 explicitly at their
+    GlobalSpec schema default, but a 626-preset corpus survey found them
+    majority-ABSENT in real content (19-33% presence) -- unlike
+    kParamMasterVolume (91% presence, stays always-explicit)."""
+    spec = PresetSpec(name="X", description="", **{"global": GlobalSpec()})
+    data = apply_spec(init_data, spec)
+
+    gp = data["Global0"]["plainParams"]
+    assert "kParamMasterVolume" in gp
+    assert "kParamMonoToggle" not in gp
+    assert "kParamPolyCount" not in gp
+    assert "kParamLimitSameNotePolyphony" not in gp
+    assert "kParamPortamentoTime" not in gp
+
+
+def test_lfo_smooth_omitted_at_default_2026_08_01(init_data):
+    """kParamSmooth -- found live 2026-08-01 recreating Galaxy: its unused
+    LFOs lacked it entirely, and a 2652-slot corpus survey confirmed 94%
+    absence (previously excluded from the omit table for lack of
+    evidence)."""
+    spec = PresetSpec(name="X", description="", lfos=[LfoSpec(smooth=0.0)])
+    data = apply_spec(init_data, spec)
+    assert "kParamSmooth" not in data["LFO0"]["plainParams"]
+
+    spec2 = PresetSpec(name="X", description="", lfos=[LfoSpec(smooth=25.0)])
+    data2 = apply_spec(init_data, spec2)
+    assert data2["LFO0"]["plainParams"]["kParamSmooth"] == 25.0
+
+
+def test_env_hold_omitted_at_default_2026_08_01(init_data):
+    """kParamHold -- found live 2026-08-01 recreating Galaxy: a 2504-slot
+    corpus survey found it present only 4% of the time, unlike the other 4
+    ADSR keys (37-52%, too ambiguous to touch)."""
+    spec = PresetSpec(name="X", description="", envelopes=[EnvelopeSpec(hold=0.0)])
+    data = apply_spec(init_data, spec)
+    assert "kParamHold" not in data["Env0"]["plainParams"]
+    # the other 4 ADSR keys still always write explicitly, unaffected
+    assert "kParamAttack" in data["Env0"]["plainParams"]
 
 
 def test_extract_spec_round_trips_fxsplit_as_an_ordinary_flat_fx_unit(init_data):

@@ -160,14 +160,20 @@ _LFO_KEYS = {
     "rate10x": "kParamRate10x",
 }
 # Presence-forces-the-DSP-stage params (see the loop below) -- every
-# _LFO_KEYS entry except kParamSmooth, all confirmed by a real-corpus survey
-# (2026-07-29) to be overwhelmingly absent when untouched: kParamRate 37%,
-# kParamBeatSync 67%, kParamDelay 99%, kParamRise 96%, kParamMono 98%,
-# kParamSwing 99%, kParamDotted/kParamTriplets/kParamRate10x 83-85% absent.
-# kParamSmooth deliberately excluded -- no evidence either way, and this
-# project's own generated LFOs commonly set it to a real non-default value.
+# _LFO_KEYS entry except kParamMode (see below), all confirmed by a
+# real-corpus survey to be overwhelmingly absent when untouched:
+# kParamRate 37%, kParamBeatSync 67%, kParamDelay 99%, kParamRise 96%,
+# kParamMono 98%, kParamSwing 99%, kParamDotted/kParamTriplets/
+# kParamRate10x 83-85% absent (2026-07-29 survey); kParamSmooth 94% absent
+# (2026-08-01, 2652-slot survey -- originally excluded for "no evidence
+# either way," now has it: found live recreating a real preset, Galaxy,
+# whose untouched LFOs lacked it entirely). kParamMode is NOT omitted --
+# survey found it PRESENT 63% of the time (a real majority, unlike every
+# key in this dict), so stays always-explicit despite Galaxy's own
+# untouched LFOs happening to lack it.
 _LFO_KEYS_OMIT_AT_DEFAULT = {
     "kParamRate": 0.0,
+    "kParamSmooth": 0.0,
     # kParamBeatSync deliberately NOT here -- LfoSpec.beat_sync is a 3-state
     # `bool | None` (None = omit, True/False = write explicitly) handled as
     # a special case in the write loop below, not the generic
@@ -531,13 +537,22 @@ def _build_lfo_curve_data(curve: list[LfoCurvePointSpec], *, lfo_index: int) -> 
     for the ground-truth-calibration story behind this inversion.
 
     Enforces the invariants a 3051-sample real-corpus survey found
-    (``xVals[0] == 0.0``, ``xVals[-1] == 1.0``, strictly increasing) and a
+    (``xVals[0] == 0.0``, ``xVals[-1] == 1.0``, non-decreasing) and a
     real, confirmed Serum-side rendering bug for exactly-2-point curves
     (a curve whose 2nd point is LOWER than its 1st -- i.e. Serum's own
     inverted storage ends up ASCENDING -- renders as a blank/inert graph;
     only descending-in-storage-terms, i.e. rising-in-natural-terms, 2-point
     curves work). Raises rather than silently shipping a preset that loads
     fine but renders as a dead flat/default LFO.
+
+    NON-decreasing, not strictly increasing: found live 2026-08-01
+    recreating a real preset (Galaxy) that this project's own docstring
+    once called an edge case (99.7% of a 3051-sample survey are strictly
+    increasing) -- a DUPLICATE x is a real, deliberate construct, not
+    corruption: two points at the same x with different y draws an
+    instant vertical step (used to build a stepped/square-ish shape from
+    otherwise-flat segments). Only truly out-of-order x (going backwards)
+    is rejected.
     """
     if len(curve) < 2:
         raise ValueError(f"LFO{lfo_index}.curve needs at least 2 points, got {len(curve)}")
@@ -546,9 +561,9 @@ def _build_lfo_curve_data(curve: list[LfoCurvePointSpec], *, lfo_index: int) -> 
     if curve[-1].x != 1.0:
         raise ValueError(f"LFO{lfo_index}.curve[-1].x must be 1.0, got {curve[-1].x}")
     for prev, nxt in zip(curve, curve[1:]):
-        if nxt.x <= prev.x:
+        if nxt.x < prev.x:
             raise ValueError(
-                f"LFO{lfo_index}.curve x values must be strictly increasing, "
+                f"LFO{lfo_index}.curve x values must be non-decreasing, "
                 f"got {prev.x} then {nxt.x}"
             )
     if len(curve) == 2 and curve[1].y <= curve[0].y:
@@ -1130,7 +1145,15 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
     for i, env in enumerate(spec.envelopes):
         env_params = _plain_params(data, f"Env{i}")
         for spec_key, param_key in _ENV_KEYS.items():
-            env_params[param_key] = getattr(env, spec_key)
+            value = getattr(env, spec_key)
+            # kParamHold specifically: a 2504-slot corpus survey found it
+            # present only 4% of the time (vs 37-52% for the other 4 ADSR
+            # keys, too ambiguous to touch without more evidence) -- found
+            # live 2026-08-01 recreating a real preset (Galaxy) whose
+            # unused envelopes lacked it entirely.
+            if param_key == "kParamHold" and value == 0.0:
+                continue
+            env_params[param_key] = value
         validate_params(f"Env{i}", env_params, schema.ENV_PARAMS, allow_unknown=True)
 
     for i, lfo in enumerate(spec.lfos):
@@ -1218,11 +1241,25 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
     # specify" contract every other section honors.
     if "global_" in spec.model_fields_set:
         global_params = _plain_params(data, "Global0")
+        # kParamMasterVolume stays always-explicit (91%/626 real presence,
+        # see the survey below) -- the other 4 are majority-ABSENT in real
+        # content, same "presence forces the DSP stage" pattern as every
+        # other module in this file. Found live 2026-08-01 recreating a
+        # real preset (Galaxy): its 6 untouched/default Global fields were
+        # genuinely absent, but this project always wrote them explicitly
+        # at the GlobalSpec schema default. A 626-preset corpus survey
+        # confirmed the skew: kParamMonoToggle 33%, kParamPolyCount 31%,
+        # kParamLimitSameNotePolyphony 27%, kParamPortamentoTime 19%
+        # present (vs kParamMasterVolume's 91%).
         global_params["kParamMasterVolume"] = spec.global_.master_volume
-        global_params["kParamMonoToggle"] = spec.global_.mono
-        global_params["kParamPortamentoTime"] = spec.global_.portamento_time
-        global_params["kParamPolyCount"] = spec.global_.poly_count
-        global_params["kParamLimitSameNotePolyphony"] = spec.global_.limit_same_note_polyphony
+        if spec.global_.mono is not False:
+            global_params["kParamMonoToggle"] = spec.global_.mono
+        if spec.global_.portamento_time != 0.0:
+            global_params["kParamPortamentoTime"] = spec.global_.portamento_time
+        if spec.global_.poly_count != 8.0:
+            global_params["kParamPolyCount"] = spec.global_.poly_count
+        if spec.global_.limit_same_note_polyphony is not False:
+            global_params["kParamLimitSameNotePolyphony"] = spec.global_.limit_same_note_polyphony
         if spec.global_.fx_bus1_volume is not None:
             global_params["kParamFXBus1Vol"] = spec.global_.fx_bus1_volume
         if spec.global_.fx_bus2_volume is not None:
