@@ -616,11 +616,18 @@ def _build_fx_entry(fx: FxUnitSpec) -> dict[str, Any]:
     validate_params(fx_module_key, plain_params, fx_schema, allow_unknown=True)
 
     type_id = next(i for i, name in schema.FX_TYPE_IDS.items() if name == fx_module_key)
-    return {
+    entry: dict[str, Any] = {
         "type": type_id,
         "kUIParamMixOrGain": 0.0,
         fx_module_key: {"plainParams": plain_params},
     }
+    if fx.flex is not None:
+        # Opaque passthrough -- see FxUnitSpec.flex's docstring. Written
+        # verbatim, no interpretation/validation of the curve shape itself
+        # (unlike LfoSpec.curve, this format's semantics for FX units
+        # aren't independently confirmed).
+        entry["flex"] = fx.flex
+    return entry
 
 
 def _fx_dest_module_id(fx_chain: list[FxUnitSpec], index: int) -> int:

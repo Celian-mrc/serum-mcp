@@ -1192,18 +1192,39 @@ improve generation quality if resolved:
      fix pattern from one example without checking the actual corpus
      distribution for that specific key.
 
-   **What's still open, found by the same full diff, not part of this
-   round's fixes**: the arp/preview-clip note DATA itself (`ArpClip0`'s
-   raw hand-drawn/algorithmic-pattern notes, `MidiClip0-9`'s genuine
+   **Update 2026-08-01, FX `flex` curve data — RESOLVED as an opaque
+   passthrough.** Investigated further: a real FX unit's `flex` (e.g.
+   `ARP - Acid101.SerumPreset`'s `FXDistortion` in `kXShaper` mode, which
+   uses 2) turned out to be the EXACT SAME `{numPoints, xVals, yVals,
+   curveVals}` structure as `LfoSpec.curve`'s underlying storage, sitting
+   as a direct sibling of the FX type's own key (`FXDistortion`) and
+   `type`/`kUIParamMixOrGain` at the top of the FX entry — no companion
+   flag needed (unlike LFO curves' `curveDisplayName` requirement).
+   Deliberately NOT exposed as a friendly "generate this curve shape"
+   feature the way `LfoSpec.curve` is — the Y-axis-inversion/tension
+   semantics were only confirmed for the LFO curve WIDGET specifically
+   (via a live ground-truth test), not independently verified for FX
+   units. Added `FxUnitSpec.flex` as an OPAQUE passthrough instead (only
+   meant to be set from a value `extract_spec` already pulled off a real
+   FX unit, preserving it through an edit rather than authoring a new
+   shape from scratch) — closes the round-trip gap safely without
+   overclaiming understanding of the exact curve semantics.
+
+   **What's still open, found by the same full diff, genuinely out of
+   scope**: the arp/preview-clip note DATA itself (`ArpClip0`'s raw
+   hand-drawn/algorithmic-pattern notes, `MidiClip0-9`'s genuine
    per-preset preview content) isn't modeled by `PresetSpec` at all —
    `ArpSpec.shape` correctly captures NAMED algorithmic patterns (Galaxy
    uses `'random_drift'`, confirmed round-tripping correctly), but the
    underlying `ArpClip0.clip.notes`/`MidiClip0`'s own snapshot content
-   doesn't survive extract→regenerate (out of scope, pre-existing,
-   unrelated to mod-matrix). FX units' own `flex` curve data (e.g. a
-   distortion's saturation shape) also doesn't survive extract→regenerate
-   — `FxUnitSpec` doesn't model it, a real, likely-audible gap for FX
-   types that use it, not addressed this round.
+   doesn't survive extract→regenerate. Different in kind from the fixture
+   bug and presence-pattern fixes above: this is Serum's own "preview
+   clip" system (an internal audition/browser convenience feature, not
+   something that affects how a preset sounds when actually played via
+   MIDI from a DAW) and, for a NAMED algorithmic arp shape like Galaxy's,
+   the raw notes are presumably just Serum's own generated realization of
+   that algorithm (not user-authored data worth preserving) — a real
+   feature-scope boundary, not a bug, and not pursued this round.
 2. **Filter cutoff Hz curve** (§4, Filters) — **calibrated 2026-07-31** via the
    [[reference-serum-verify-audio-pipeline]] (a full sweep, not one point):
    a `lowpass_24` filter fed White noise (full-spectrum, no self-bias) at

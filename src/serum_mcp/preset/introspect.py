@@ -534,7 +534,13 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             # the true absent-state value, so it must not be used here.
             wet = pp.get("kParamWet", 100.0)
             params = {k: v for k, v in pp.items() if k != "kParamWet"}
-            fx_chain.append(FxUnitSpec(type=fx_name, wet=wet, params=params, rack=rack))
+            # Opaque passthrough, see FxUnitSpec.flex's docstring -- only
+            # preserved for round-trip, semantics not interpreted here.
+            flex = entry.get("flex")
+            flex = flex if isinstance(flex, list) else None
+            fx_chain.append(
+                FxUnitSpec(type=fx_name, wet=wet, params=params, rack=rack, flex=flex)
+            )
             module_id_by_flat_index.append(rack * 100 + position_in_rack)
             position_in_rack += 1
 

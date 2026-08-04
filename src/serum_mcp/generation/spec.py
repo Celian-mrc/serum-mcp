@@ -795,6 +795,20 @@ class FxUnitSpec(BaseModel):
         "bode-shifter running alongside rack 0) -- this project had never read or "
         "written anything but rack 0 before that.",
     )
+    flex: list[dict[str, object]] | None = Field(
+        None,
+        description="OPAQUE passthrough for an FX unit's own point-based curve data "
+        "(e.g. FXDistortion's kXShaper mode uses 2 of these for its shaping curves) -- "
+        "found 2026-08-01 recreating a real preset (Galaxy), same {numPoints, xVals, "
+        "yVals, curveVals} structure as LfoSpec.curve's underlying storage, but NOT "
+        "independently verified to use the same Y-axis-inversion/tension semantics "
+        "(that was confirmed for the LFO curve WIDGET specifically via a live ground-"
+        "truth test, not for FX flex curves). Only ever set this by copying a value "
+        "extracted from an existing FX unit via extract_spec (round-trip/preserve an "
+        "existing curve) -- do NOT hand-author a new one expecting a specific "
+        "resulting shape, the semantics aren't confirmed enough for that yet. Leave "
+        "unset for a normal/flat curve (Serum's own default).",
+    )
 
 
 class GlobalSpec(BaseModel):

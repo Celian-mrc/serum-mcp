@@ -1994,6 +1994,35 @@ def test_fxeq_can_be_generated(init_data):
     assert extracted.fx_chain[0].params["kParamGain1"] == 3.0
 
 
+def test_fx_flex_opaque_round_trip(init_data):
+    """FxUnitSpec.flex -- an FX unit's own point-based curve data (e.g.
+    FXDistortion's kXShaper mode), found 2026-08-01 recreating a real
+    preset (Galaxy). Same {numPoints, xVals, yVals, curveVals} structure
+    as LfoSpec.curve's storage, but treated as fully opaque here (no
+    interpretation/validation) since the semantics aren't independently
+    confirmed for FX units the way they are for the LFO curve widget."""
+    real_flex = [
+        {"curveVals": [0.7355513996138997, 0.5], "numPoints": 1, "xVals": [0.0, 1.0], "yVals": [1.0, 0.0]},
+        {
+            "curveVals": [0.5, 0.5, 0.5],
+            "numPoints": 2,
+            "xVals": [0.0, 0.15886896306818182, 1.0],
+            "yVals": [1.0, 0.6481811052123552, 0.0],
+        },
+    ]
+    spec = PresetSpec(
+        name="X",
+        description="",
+        fx_chain=[FxUnitSpec(type="FXDistortion", wet=100.0, flex=real_flex)],
+    )
+    data = apply_spec(init_data, spec)
+
+    assert data["FXRack0"]["FX"][0]["flex"] == real_flex
+
+    extracted = extract_spec(data)
+    assert extracted.fx_chain[0].flex == real_flex
+
+
 def test_fx_wet_and_lfo_macro_mod_destinations(init_data):
     spec = PresetSpec(
         name="X",
