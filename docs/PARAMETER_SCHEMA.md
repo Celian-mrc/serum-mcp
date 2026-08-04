@@ -1196,11 +1196,29 @@ improve generation quality if resolved:
    `sample_playback_source`) plus `granular_density`/`grain_length`/
    `random_pitch`/`random_pan`/`random_grain_length`; `warp_amount`/
    `warp_mode` are shared with WTOsc/SampleOsc's existing fields (confirmed
-   GranularOsc uses the SAME `kParamWarp`/`kParamWarpMenu` keys). ~20 rarer
-   real params (window shape/skew, BPM-synced density/length, unison
-   trigger pattern, a second randomizable warp lane, ...) are documented in
-   `schema.GRANULAROSC_PARAMS` for round-trip/edit safety but not
-   independently generatable this round. **Not yet confirmed live** — only
+   GranularOsc uses the SAME `kParamWarp`/`kParamWarpMenu` keys).
+
+   **Update 2026-08-01, 8 more rarer params wired.** `granular_random_offset`
+   (confidence='observed', clearer real-corpus meaning than the rest),
+   `granular_loop`, `granular_jump_start`, `granular_reverse`,
+   `granular_length_key_track`, `granular_max_grains`,
+   `granular_random_window_amount`/`window_skew` (all confidence='uncertain'
+   -- decoded from corpus survey + VST3 binary mining, meanings inferred
+   from naming, never independently confirmed live). Low-risk addition:
+   always written explicitly (same pattern as the original 3 `random_*`
+   fields above), no omit-at-default logic involved at all, so none of
+   these carry the beat_sync-class presence-bug risk found 3 times
+   elsewhere this session. `granular_reverse` is a plausible (but still
+   unconfirmed) explanation for the real `808 - Texture` reference
+   preset's Osc B playing in reverse, noted as an open question below.
+   Remaining unwired: window shape (a small named-shape enum, not a
+   float), BPM-synced density/length toggles (`kParamDensityDotted`/
+   `Triplet`/`kParamLengthDotted`/`Triplet` -- meaningless without their
+   own base beat-sync flag, which isn't wired), a second randomizable warp
+   lane (depends on `kParamWarp2`, itself not wired for this engine), and
+   `kParamYAxisAssignment` (1/66 real samples, too rare to bother with) --
+   still documented in `schema.GRANULAROSC_PARAMS` for round-trip/edit
+   safety only. **Not yet confirmed live** — only
    confirmed reading real files and a full write→extract round-trip test
    (including an actual file copy into a temp Samples folder), same
    "experimental until tested" caveat as `LfoSpec.shape`.

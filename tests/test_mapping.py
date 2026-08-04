@@ -2492,6 +2492,58 @@ def test_granular_source_writes_granularosc_and_engine_selector(
     assert ex_osc.warp_mode == "soft_clip"
 
 
+def test_granular_rare_params_2026_08_01_round_trip(init_data, tables_dir, samples_dir, tmp_path):
+    """8 more GranularOsc params wired 2026-08-01 (random_offset, loop,
+    jump_start, reverse, length_key_track, max_grains, random_window_amount/
+    skew) -- always written explicitly, same low-risk pattern as
+    random_pitch/pan/grain_length above (no omit-at-default logic, so no
+    risk of the beat_sync-class presence bug found elsewhere this
+    session)."""
+    source = tmp_path / "texture2.wav"
+    _write_wav_fixture(source)
+
+    spec = PresetSpec(
+        name="X",
+        description="",
+        oscillators=[
+            OscillatorSpec(
+                enabled=True,
+                granular_source=str(source),
+                granular_random_offset=20.0,
+                granular_loop=False,
+                granular_jump_start=True,
+                granular_reverse=True,
+                granular_length_key_track=True,
+                granular_max_grains=32.0,
+                granular_random_window_amount=15.0,
+                granular_random_window_skew=10.0,
+            )
+        ],
+    )
+    data = apply_spec(init_data, spec)
+
+    pp = data["Oscillator0"]["GranularOsc0"]["plainParams"]
+    assert pp["kParamRandomOffset"] == 20.0
+    assert pp["kParamLoopGrains"] == 0.0
+    assert pp["kParamJumpStartGrains"] == 1.0
+    assert pp["kParamGrainReverse"] == 1.0
+    assert pp["kParamLengthKeyTrack"] == 1.0
+    assert pp["kParamMaxNumGrains"] == 32.0
+    assert pp["kParamRandomWindowAmount"] == 15.0
+    assert pp["kParamRandomWindowSkew"] == 10.0
+
+    extracted = extract_spec(data)
+    ex_osc = extracted.oscillators[0]
+    assert ex_osc.granular_random_offset == 20.0
+    assert ex_osc.granular_loop is False
+    assert ex_osc.granular_jump_start is True
+    assert ex_osc.granular_reverse is True
+    assert ex_osc.granular_length_key_track is True
+    assert ex_osc.granular_max_grains == 32.0
+    assert ex_osc.granular_random_window_amount == 15.0
+    assert ex_osc.granular_random_window_skew == 10.0
+
+
 def test_spectral_source_writes_spectralosc_and_engine_selector(
     init_data, tables_dir, samples_dir, tmp_path
 ):

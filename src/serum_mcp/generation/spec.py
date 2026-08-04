@@ -269,6 +269,61 @@ class OscillatorSpec(BaseModel):
         "each grain's length around granular_grain_length -- adds organic irregularity to "
         "the grain cloud instead of a perfectly uniform texture.",
     )
+    granular_random_offset: float = Field(
+        0.0, ge=0.0, le=100.0, description="granular_source only. % random per-grain start "
+        "offset within the source sample -- higher scatters each grain's read position "
+        "instead of every grain starting at the exact same point, adding texture/blur. "
+        "Wired 2026-08-01, always written explicitly (same low-risk pattern as "
+        "granular_random_pitch/pan/grain_length above) -- confidence='observed' in "
+        "schema.py (clearer real-corpus meaning than most of the other newly-wired "
+        "granular_* fields below, which are 'uncertain').",
+    )
+    granular_loop: bool = Field(
+        True, description="granular_source only. Whether each grain loops within its "
+        "window instead of playing once. True is Serum's own corpus-observed default -- "
+        "leave it unless deliberately going for a choppier, non-looping grain character. "
+        "Wired 2026-08-01, confidence='uncertain' in schema.py (never independently "
+        "confirmed live, only decoded from corpus survey + VST3 binary mining).",
+    )
+    granular_jump_start: bool = Field(
+        False, description="granular_source only. Presumed 'each grain jump-starts "
+        "mid-window rather than fading in' toggle -- not independently confirmed, "
+        "confidence='uncertain' in schema.py. Rare in real content; leave False unless "
+        "specifically matching a reference preset that uses it.",
+    )
+    granular_reverse: bool = Field(
+        False, description="granular_source only. Plays grains in reverse. Plausible "
+        "explanation for a real Factory reference preset ('808 - Texture', Osc B) "
+        "observed playing in reverse during GranularOsc live-testing -- see "
+        "docs/PARAMETER_SCHEMA.md item 3 -- but that connection was never independently "
+        "confirmed (a negative granular_scan_rate, not yet wired, was an equally "
+        "plausible alternate explanation at the time). confidence='uncertain' in "
+        "schema.py.",
+    )
+    granular_length_key_track: bool = Field(
+        False, description="granular_source only. Presumed 'grain length tracks the "
+        "played note' toggle (shorter grains on higher notes, or similar) -- not "
+        "independently confirmed, confidence='uncertain' in schema.py.",
+    )
+    granular_max_grains: float = Field(
+        16.0, ge=1.0, le=64.0, description="granular_source only. Ceiling on simultaneous "
+        "overlapping grains -- higher allows denser/thicker clouds at high "
+        "granular_density at the cost of more voices/CPU. confidence='uncertain' in "
+        "schema.py (real corpus range observed, exact audible effect not independently "
+        "tested).",
+    )
+    granular_random_window_amount: float = Field(
+        0.0, ge=0.0, le=100.0, description="granular_source only. % randomization of each "
+        "grain's amplitude envelope/window shape -- adds organic variation to the "
+        "grain-to-grain volume envelope, similar in spirit to granular_random_pan/"
+        "grain_length but for the window shape itself. confidence='uncertain' in "
+        "schema.py.",
+    )
+    granular_random_window_skew: float = Field(
+        0.0, ge=0.0, le=100.0, description="granular_source only. % randomization of each "
+        "grain's window skew (attack/release balance within the grain) -- 0 = every "
+        "grain uses the same symmetric-ish window. confidence='uncertain' in schema.py.",
+    )
     spectral_source: str | None = Field(
         None,
         description="slots 0-2 only. If set, uses Serum's SPECTRAL engine (SpectralOsc) "

@@ -80,6 +80,18 @@ _GRANULAROSC_KEYS = {
     "granular_random_pitch": "kParamRandomPitch",
     "granular_random_pan": "kParamRandomPan",
     "granular_random_grain_length": "kParamRandomGrainLength",
+    # Added 2026-08-01 -- same always-write pattern as the 3 above (no
+    # omit-at-default logic, so no risk of the beat_sync-class presence
+    # bug found 3 times elsewhere this session). See each OscillatorSpec
+    # field's own docstring for confidence notes.
+    "granular_random_offset": "kParamRandomOffset",
+    "granular_loop": "kParamLoopGrains",
+    "granular_jump_start": "kParamJumpStartGrains",
+    "granular_reverse": "kParamGrainReverse",
+    "granular_length_key_track": "kParamLengthKeyTrack",
+    "granular_max_grains": "kParamMaxNumGrains",
+    "granular_random_window_amount": "kParamRandomWindowAmount",
+    "granular_random_window_skew": "kParamRandomWindowSkew",
 }
 _ENGINE_TYPE_SPECTRAL = "kOsc_Spectral"
 _SPECTRALOSC_KEYS = {

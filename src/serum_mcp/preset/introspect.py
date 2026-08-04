@@ -241,6 +241,30 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                 kwargs["granular_random_grain_length"] = _resolve(
                     granular_pp, "kParamRandomGrainLength", schema.GRANULAROSC_PARAMS
                 )
+                kwargs["granular_random_offset"] = _resolve(
+                    granular_pp, "kParamRandomOffset", schema.GRANULAROSC_PARAMS
+                )
+                kwargs["granular_loop"] = bool(
+                    _resolve(granular_pp, "kParamLoopGrains", schema.GRANULAROSC_PARAMS)
+                )
+                kwargs["granular_jump_start"] = bool(
+                    _resolve(granular_pp, "kParamJumpStartGrains", schema.GRANULAROSC_PARAMS)
+                )
+                kwargs["granular_reverse"] = bool(
+                    _resolve(granular_pp, "kParamGrainReverse", schema.GRANULAROSC_PARAMS)
+                )
+                kwargs["granular_length_key_track"] = bool(
+                    _resolve(granular_pp, "kParamLengthKeyTrack", schema.GRANULAROSC_PARAMS)
+                )
+                kwargs["granular_max_grains"] = _resolve(
+                    granular_pp, "kParamMaxNumGrains", schema.GRANULAROSC_PARAMS
+                )
+                kwargs["granular_random_window_amount"] = _resolve(
+                    granular_pp, "kParamRandomWindowAmount", schema.GRANULAROSC_PARAMS
+                )
+                kwargs["granular_random_window_skew"] = _resolve(
+                    granular_pp, "kParamRandomWindowSkew", schema.GRANULAROSC_PARAMS
+                )
 
                 raw_granular_path = granular_container.get("samplePathRelative")
                 if raw_granular_path:
