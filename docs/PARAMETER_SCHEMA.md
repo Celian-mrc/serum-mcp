@@ -2237,6 +2237,28 @@ improve generation quality if resolved:
      re-measuring via an asymmetric destination signal (e.g. pitch)
      immune to the harmonic-doubling effect.
 
+     **Update 2026-08-05 — attempted the asymmetric-signal fix, found a**
+     **deeper reason it can't work this way, still open.** Reasoning
+     through it before building anything: chorus/flanger modulate a
+     DELAY LINE, which comb-filters the signal (notches sweeping through
+     the spectrum) rather than shifting its fundamental pitch -- so pitch-
+     tracking (e.g. `librosa.pyin`/`yin`) on a sustained tone through the
+     effect wouldn't show a clean periodic wobble to measure at all
+     (comb-filtering barely moves F0). More generally, ANY fixed-frequency
+     or derived-feature observation (brightness, a fixed-band RMS, pitch)
+     of a symmetric bidirectional sweep is structurally prone to the same
+     2x aliasing, because the observed feature typically can't tell "delay
+     increasing" from "delay decreasing" -- only the delay LINE'S OWN
+     instantaneous lag is genuinely asymmetric with LFO phase. The
+     properly-scoped fix is a windowed cross-correlation between the dry
+     and wet signal to directly estimate the delay lag (in samples) at
+     each time frame, then FFT *that* lag-over-time signal for the true
+     fundamental -- this reconstructs the LFO's own waveform instead of a
+     derived feature, so it can't alias the same way. Not implemented this
+     round (`serum-verify`'s toolkit doesn't have a delay-line dry/wet
+     alignment helper yet) -- left as the concrete next step for whoever
+     picks this up, rather than a vague "measure differently" note.
+
    6d. **`FX_PARAMS['FXDelay']['kParamTimeL']`/`['kParamTimeR']` —
    CONFIRMED literal seconds, but only after finding and fixing a THIRD
    instance of the exact `beat_sync` bug class first found on the LFO

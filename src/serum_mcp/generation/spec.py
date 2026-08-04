@@ -1152,14 +1152,26 @@ class ArpSpec(BaseModel):
         0.5,
         ge=0.0,
         le=1.0,
-        description="normalized step rate -- UNCERTAIN real musical meaning (note "
-        "division? Hz?). IMPORTANT, found live: for shape='pattern' specifically, low "
-        "values (this field's old default of 0.25) made the pattern appear stuck/"
+        description="normalized step rate -- CONFIRMED 2026-08-05 via the serum-verify "
+        "audio pipeline (a held chord, algorithmic shape, onset-detection on the "
+        "resulting audio) to be a DISCRETE, tempo-synced note-division dial, NOT a "
+        "continuous Hz curve -- values snap between standard binary note lengths, "
+        "doubling in speed at each breakpoint (raw ranges measured at a 120bpm host "
+        "tempo, algorithmic shapes only): ~0.0-0.08 barely retriggers at all (no clean "
+        "onsets within a 6s hold -- effectively 'off'/a very long division); "
+        "0.10-0.20=1/2 note; 0.225-0.325=1/4; 0.35-0.425=1/8; 0.45-0.55=1/16; "
+        "0.575-0.65=1/32; 0.675+=1/64 (and presumably faster divisions beyond that, not "
+        "reliably measurable -- onset detection breaks down once note density exceeds "
+        "the test envelope's own decay time). IMPORTANT, found live SEPARATELY: for "
+        "shape='pattern' specifically, low values (this field's old default of 0.25, "
+        "which lands in the confirmed 1/4-note tier) made the pattern appear stuck/"
         "frozen on its first note -- confirmed via an isolated diagnostic that the SAME "
-        "pattern only advanced through its steps once rate was raised to ~0.5. Keep "
-        "rate at 0.5 or above for shape='pattern' unless you've specifically verified a "
-        "lower value still steps through live; algorithmic shapes don't show this "
-        "issue.",
+        "pattern only advanced through its steps once rate was raised to ~0.5 (1/16 "
+        "tier). Keep rate at 0.5 or above for shape='pattern' unless you've specifically "
+        "verified a lower value still steps through live; algorithmic shapes don't show "
+        "this issue -- the breakpoint table above was measured on an algorithmic shape "
+        "('played') and Pattern mode's own stepping may interact with this value "
+        "differently.",
     )
     gate: float = Field(
         75.0,

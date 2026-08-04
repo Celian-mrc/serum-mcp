@@ -2076,14 +2076,24 @@ ARPCLIP_PARAMS: dict[str, ParamDef] = {
         default=0.5,
         min=0.0,
         max=1.0,
-        unit="normalized",
-        confidence="uncertain",
-        notes="Real musical meaning (note division? Hz?) still not established, but "
-        "found live: for shape='pattern', a low value (0.25, this field's old default) "
-        "made a real generated pattern appear stuck on its first note -- an isolated "
-        "diagnostic confirmed raising it to a real Factory preset's value (~0.51) was "
-        "the difference between stuck and correctly stepping through the pattern, "
-        "holding every other field constant. Default raised to 0.5 accordingly.",
+        unit="normalized (discrete note-division breakpoints, see notes)",
+        confidence="confirmed",
+        notes="CONFIRMED 2026-08-05 via the serum-verify audio pipeline (a held chord "
+        "through an algorithmic-shape arp, onset-detection on the render) to be a "
+        "DISCRETE, tempo-synced note-division dial, not continuous Hz -- measured "
+        "breakpoints (120bpm host tempo): ~0.0-0.08=barely retriggers within 6s "
+        "(effectively 'off'); 0.10-0.20=1/2 note; 0.225-0.325=1/4; 0.35-0.425=1/8; "
+        "0.45-0.55=1/16; 0.575-0.65=1/32; 0.675+=1/64 (and presumably faster, not "
+        "reliably measurable past this point -- onset detection breaks down once note "
+        "density exceeds the test envelope's decay time). See ArpSpec.rate's docstring "
+        "for the full breakpoint table. Separately, for shape='pattern': a low value "
+        "(0.25, this field's old default, which lands in the 1/4-note tier) made a "
+        "real generated pattern appear stuck on its first note -- an isolated "
+        "diagnostic confirmed raising it to a real Factory preset's value (~0.51, 1/16 "
+        "tier) was the difference between stuck and correctly stepping through the "
+        "pattern, holding every other field constant. Default raised to 0.5 "
+        "accordingly. Pattern mode's own stepping may interact with this value "
+        "differently from the algorithmic-shape breakpoints above.",
     ),
     "kParamGate": ParamDef(
         "kParamGate",
