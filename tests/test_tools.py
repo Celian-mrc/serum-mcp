@@ -123,6 +123,44 @@ def test_edit_preset_renames_file_when_name_changes(presets_dir):
     assert preset.data["Oscillator0"]["plainParams"]["kParamOctave"] == -1.0
 
 
+def test_generate_preset_plain_spec_has_no_dependency_note(presets_dir):
+    """A preset using only curated wavetables/multisample instruments is
+    fully self-contained (portable to another machine as just the one
+    .SerumPreset file) -- the return value must be exactly the path, no
+    extra lines, matching every pre-existing caller's ``Path(result)``
+    usage."""
+    result = generate_preset_mod.generate_preset(_bass_spec())
+
+    assert "\n" not in result
+    assert Path(result).exists()
+
+
+def test_generate_preset_custom_harmonics_surfaces_dependency_note(
+    presets_dir, tmp_path, monkeypatch
+):
+    """custom_harmonics writes a real .wav to the local Tables folder that
+    the .SerumPreset only references by relative path -- Serum's own
+    limitation, not embedded content. The tool's return value must call
+    this out (first line still the real path) rather than silently
+    producing a preset that breaks on another machine."""
+    monkeypatch.setenv(config.TABLES_ENV_VAR, str(tmp_path))
+    spec = _bass_spec(
+        oscillators=[OscillatorSpec(enabled=True, custom_harmonics=[[1.0, 0.5, 0.25]], octave=-1)]
+    )
+
+    result = generate_preset_mod.generate_preset(spec)
+
+    lines = result.splitlines()
+    assert len(lines) > 1
+    written = Path(lines[0])
+    assert written.exists()
+    assert "depends on 1 local file" in result
+    dependency_line = next(line for line in lines if line.strip().startswith("- "))
+    dependency_path = Path(dependency_line.strip()[2:])
+    assert dependency_path.exists()
+    assert dependency_path.suffix == ".wav"
+
+
 def test_describe_preset_mentions_key_sections():
     fixtures_dir = Path(__file__).resolve().parents[1] / "fixtures"
     summary = describe_preset_mod.describe_preset(str(fixtures_dir / "init_preset.SerumPreset"))

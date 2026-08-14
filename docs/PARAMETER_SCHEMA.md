@@ -357,10 +357,19 @@ but generating them is out of scope for V1 (no natural-language mapping for
 byte-for-byte-diff pass that found `kParamFine`/envelope curves) mirror the
 arpeggiator's identically-named fields — dotted/triplet rhythm timing for
 the LFO's own rate, present on 16%/15% of 4,384 real LFO slots surveyed
-(always `1.0` when present). `kParamRate10x` (14%) is presumed a ×10 rate
-multiplier, not independently confirmed — found specifically alongside a
-chaotic-shape (Rossler/Lorenz) LFO with a very low base rate, where it may
-be the difference between a near-static and a clearly-moving modulation.
+(always `1.0` when present). `kParamRate10x` (14%) is a literal ×10 rate
+multiplier, CONFIRMED 2026-08-06 via the serum-verify audio pipeline — a
+free-Hz `rate=2` LFO measured 1.9995Hz with `kParamRate10x` omitted/False
+and exactly 19.995Hz with it True. (An earlier pass the same day measured a
+spurious ~90x ratio instead of 10x; that was a `detect_modulation_rate_hz`
+measurement artifact — its default `fmin_hz=0.01` window picked up a
+broadband low-frequency component leaking from the note-on transient rather
+than the real 2Hz cycling, fixed by raising `fmin_hz` to 0.8. See
+`reference_serum_verify_audio_pipeline` memory for the general lesson:
+this function needs `fmin_hz` raised well above 0 whenever the render has a
+sharp attack, or a genuinely slow rate can get misread as a much slower
+one.) Matters for whether a slow chaotic (Rossler/Lorenz) LFO reads as
+'moving' at a musically useful speed vs. near-static.
 
 **`kParamMono`**, found live 2026-07-29 in the same Galaxy investigation as
 the warp-lane fix (§ above/below): the real preset's busiest LFO (rate 100,
@@ -408,8 +417,56 @@ distinct value observed, same "too little evidence for a trustworthy
 enum" reasoning as 3 of the Arp string fields), `note_latch`, and
 `voice_amp` (the STATIC/base value of the same `kParamVoiceAmp` key
 already usable as a mod-matrix destination — distinct concept, only 1
-real sample). **3 of these were directly confirmed against a real Serum
-GLOBAL-tab screenshot** (`reference/serum_ui_screenshots/README.md`,
+real sample). **`porta_always` CONFIRMED 2026-08-06** via the
+serum-verify audio pipeline: a MIDI-driven 2-note render (a
+non-overlapping/non-legato retrigger) pitch-tracked with librosa `pyin`
+showed an instant pitch jump (no glide at all) when this was
+False/omitted, vs. a clean glide lasting almost exactly
+`portamento_time` (measured 1.22s at a configured 1.2s) when True —
+confirms the hypothesis that it forces `portamento_time` to apply to
+every note change, not just legato-overlapping ones. The SAME
+investigation found `portamento_time` itself is not a flat constant
+duration regardless of interval (a 24-semitone glide measured ~1.22s at
+`portamento_time`=1.2, but a 7-semitone glide at the same setting
+measured only ~0.70s) — which may be why `porta_scaled` showed **no
+measurable audio difference** across 3 conditions (True/explicit
+False/omitted all produced an identical glide curve for the same
+24-semitone jump): the un-flagged default may already be the
+distance-scaled behavior `porta_scaled` was hypothesized to enable, or
+the flag matters only outside this test's conditions (e.g. natural
+legato glides rather than a `porta_always`-forced retrigger). Needs a
+live-Serum GUI check to close, same as `note_latch` below.
+`portamento_curve` **CONFIRMED 2026-08-06**, same technique extended:
+pitch-tracked a 2-note glide frame-by-frame and converted Hz to
+semitones-of-progress vs. time to compare the RAMP SHAPE (not just
+duration) across `portamento_curve` = 11/50/100 vs. the unset baseline.
+Unset gave a near-perfectly LINEAR ramp (progress at 10/25/50/75/90% of
+the glide's own duration tracked straight-line t/T almost exactly,
+lasting the full configured ~1.2s); raising the value made the ramp
+progressively more front-loaded/eased AND shortened its audible
+duration — 11 was close to unset, 50 was noticeably front-loaded and
+finished in ~1.0s, and 100 collapsed to an almost-instant ~0.1s glide
+that was still cleanly monotonic frame-to-frame (checked the raw pitch
+trace directly, not just the derived duration, to rule out a
+measurement glitch) before holding rock-steady at the target for the
+rest of the note. Direction/trend confirmed; the exact underlying curve
+formula isn't pinned down. **`swing`/`swing_div` PARTIALLY RESOLVED
+2026-08-06**, a different technique (held-note algorithmic arp at a
+confirmed 1/16-note rate, onset-detected via `librosa.onset.onset_detect`
+instead of pitch-tracked): `swing` CONFIRMED to control the
+arpeggiator's own step timing, and CONFIRMED 50%=neutral (explicit 50.0
+produced an onset grid indistinguishable from the field being absent;
+90.0 produced large, repeating ~60ms deviations from the steady grid).
+`swing_div` CONFIRMED to have SOME real, independent effect (1.0 vs 2.0
+at the same swing=90.0 gave measurably different, non-identical onset
+patterns, not a null result like `porta_scaled`) but its exact
+subdivision-selection semantics are NOT pinned down — the two
+conditions' patterns drift in and out of phase with each other rather
+than showing a simple fixed offset, which looks like an interaction
+with the arp's own rate that a single test point can't cleanly isolate;
+would need either a live-Serum check or a larger test matrix (sweeping
+arp rate alongside swing_div) to fully close. **3 of these were directly
+confirmed against a real Serum GLOBAL-tab screenshot** (`reference/serum_ui_screenshots/README.md`,
 `serum-global.png`): `s1_compatibility` = "S1 COMPATIBILITY MODE"
 checkbox, `global_tuning` = "TUNING: A = 440 Hz", `oversampling` =
 "QUALITY" dropdown. That same screenshot also resolved a real open
@@ -606,6 +663,75 @@ third-party corpus. Found:
   `transpose_step` (~7%, raw key `kParamTranspose` — DISTINCT from
   `transpose_shift`/`transpose_range`, likely the per-wrap-cycle step
   size), `thru` (~3%, very low sample count).
+
+  **`offset` and `thru` CONFIRMED 2026-08-06** via the serum-verify audio
+  pipeline (held-note algorithmic arp, `shape='played'` over a 3-note
+  chord, first-onset spectral analysis / onset detection). `offset`: a
+  starting-step-index shift into the pattern, taken MOD the pattern's own
+  length — baseline (absent) started on the chord's 2nd note; `offset=1`
+  shifted the start to the 3rd note; `offset=-8` (a real observed corpus
+  value) landed on the SAME 3rd note, matching the mod-3 prediction
+  (1+1=2 and 1-8≡2 mod 3) — two very different raw values converging on
+  the identical predicted result is strong cross-validation. `thru`: a
+  MIDI-thru toggle that passes the originally-held notes through as
+  their own audible trigger alongside the arp pattern — `thru=True`
+  produced exactly one extra onset near t=0 (matching the moment the
+  chord was first pressed) that the same render without it did not have,
+  with every later onset in both renders lining up on the arp's own
+  regular step grid. **`repeats` CONFIRMED (core mechanism) 2026-08-06**,
+  same rig, single held note: caps how many times the arp plays before
+  going SILENT, rather than looping indefinitely while the note is held
+  (originally guessed as a per-step retrigger multiplier — it's a
+  play-count LIMIT instead). Baseline looped continuously (47 onsets over
+  a 6.5s held note); `repeats`=1/4/8 fired only 1/3/7 onsets and then
+  fell silent for the rest of the note. The exact count formula isn't
+  pinned down (4 and 8 both gave `value-1` onsets on the normal grid, but
+  1 gave exactly 1 onset with different, non-grid-delayed start timing)
+  — treat "auto-stops after roughly `repeats` notes" as solid guidance,
+  not an exact note-count guarantee. **`launch_retrig` TESTED, still
+  unresolved**: a chord pressed, released, and re-pressed ~300ms later
+  (first-onset spectral analysis on each press) produced bit-for-bit
+  IDENTICAL audio whether this was False, True, or omitted — double-
+  checked the raw CBOR to confirm the value really did differ each time
+  (`kParamLaunchRetrig` 0.0/1.0/absent), ruling out a serialization bug.
+  Needs a live-Serum GUI check, same open-question shape as `note_latch`/
+  `porta_scaled`. **`beat_retrig` TESTED, still unresolved**, same
+  session: a held single note with note-on deliberately placed OFF the
+  arp's confirmed 1/16-note grid (t=0.05s) produced bit-for-bit identical
+  onset timings across False/True/omitted — all 3 conditions already
+  fired an almost-immediate first note then locked onto the absolute
+  transport-anchored grid (exact multiples of ~127.7ms from render start,
+  not from note-on) from the 3rd note onward, unaffected by this field.
+  Both `beat_retrig` and `launch_retrig` are quantization/clock-adjacent
+  ArpClip booleans that showed zero effect this session, unlike
+  note-generation fields (`offset`/`thru`/`repeats`) which DID show
+  clear differences with the same rig — plausibly the same render-
+  pipeline blind spot rather than 2 independent real no-ops; worth
+  keeping in mind before testing more ArpClip quantization/clock bools
+  this way. **`retrig_rate` TESTED, still unresolved**, same session:
+  tried 5 configurations (`shape='played'`+`note_retrig=True` at
+  retrig_rate omitted/4/11, and `shape='pattern'` with a single
+  4-grid-unit sustained step at retrig_rate omitted/4) — all bit-for-bit
+  identical, no internal ratcheting/micro-retriggers detected anywhere.
+  Joins `beat_retrig`/`launch_retrig` as a 3rd retrigger/clock-timing-
+  adjacent `ArpClip` field with zero measured effect this session, now a
+  3-for-3 pattern against the 3-for-3 confirmed note-generation fields
+  (`offset`/`thru`/`repeats`) — strong enough to treat this whole
+  sub-class (retrigger/clock-timing `ArpClip` params) as track-2 (needs
+  a live-Serum check) rather than keep re-testing individual fields in
+  it via this pipeline. **`transpose_step` PARTIALLY RESOLVED
+  2026-08-06**: CONFIRMED literal semitones — with `transpose_shape` set,
+  `transpose_step=1` measured (via precise `librosa.pyin` pitch tracking;
+  a coarse FFT-bin peak wasn't sensitive enough to catch a single
+  semitone) as almost exactly +1.0 semitone vs. the unset baseline, and
+  `transpose_step=12` measured exactly +12.0 semitones. NOT confirmed:
+  the "step size per wrap cycle" framing implying the offset walks or
+  increments over time — both an 8-second single held note (63 arp
+  steps) and 3 separate key-presses showed a flat, constant offset
+  throughout, with no incrementing/wrapping in either scenario. May need
+  a held CHORD (so the transpose shape actually has more than one
+  position to cycle through) to reveal genuine step-by-step walking, if
+  it exists.
 - **3 more `ArpClip` fields deliberately left UNVALIDATED**:
   `range_wrap_mode` (~25% presence, only `'Phantom'` observed — pairs with
   `wrap_phantom_note`), `playback_mode` (~10%, values `'Random'`/

@@ -112,7 +112,9 @@ def _infer_step_beats(values: list[float]) -> float:
     to the finest candidate (accepting some rounding) if a value is
     genuinely free-timed and fits no candidate grid well."""
     for candidate in _ARP_STEP_CANDIDATES:
-        if all(abs(v - round(v / candidate) * candidate) < _ARP_GRID_TOLERANCE_BEATS for v in values):
+        if all(
+            abs(v - round(v / candidate) * candidate) < _ARP_GRID_TOLERANCE_BEATS for v in values
+        ):
             return candidate
     return _ARP_STEP_CANDIDATES[-1]
 
@@ -131,7 +133,9 @@ def _infer_arp_pattern(clip: Any) -> tuple[list[ArpPatternNoteSpec], float] | No
     if not notes_raw:
         return None
 
-    values = [v for n in notes_raw for v in (n.get("timeStamp", 0.0), n.get("length", 0.0)) if v > 0]
+    values = [
+        v for n in notes_raw for v in (n.get("timeStamp", 0.0), n.get("length", 0.0)) if v > 0
+    ]
     if not values:
         return None
     step_beats = _infer_step_beats(values)
@@ -215,7 +219,9 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             elif engine == "kOsc_Granular":
                 granular_container = container.get(f"GranularOsc{i}") or {}
                 granular_pp = granular_container.get("plainParams")
-                kwargs["warp_amount"] = _resolve(granular_pp, "kParamWarp", schema.GRANULAROSC_PARAMS)
+                kwargs["warp_amount"] = _resolve(
+                    granular_pp, "kParamWarp", schema.GRANULAROSC_PARAMS
+                )
                 raw_warp_mode = _resolve(granular_pp, "kParamWarpMenu", schema.GRANULAROSC_PARAMS)
                 kwargs["warp_mode"] = _REVERSE_WARP_MODES.get(raw_warp_mode, raw_warp_mode)
                 # kParamDensity/kParamGrainLength store the RAW value, not
@@ -282,7 +288,9 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             elif engine == "kOsc_Spectral":
                 spectral_container = container.get(f"SpectralOsc{i}") or {}
                 spectral_pp = spectral_container.get("plainParams")
-                kwargs["warp_amount"] = _resolve(spectral_pp, "kParamWarp", schema.SPECTRALOSC_PARAMS)
+                kwargs["warp_amount"] = _resolve(
+                    spectral_pp, "kParamWarp", schema.SPECTRALOSC_PARAMS
+                )
                 raw_warp_mode = _resolve(spectral_pp, "kParamWarpMenu", schema.SPECTRALOSC_PARAMS)
                 # SpectralOsc's own warp vocabulary barely overlaps
                 # SIMPLE_WARP_MODES -- _REVERSE_WARP_MODES.get falls through
@@ -402,7 +410,9 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
         # re-applying an extracted spec doesn't start writing a key the
         # original file never had.
         routing_pp = (data.get(f"RoutingSlot{5 + i}", {}) or {}).get("plainParams")
-        raw_routing_dest = routing_pp.get("kParamRoutingDest") if isinstance(routing_pp, dict) else None
+        raw_routing_dest = (
+            routing_pp.get("kParamRoutingDest") if isinstance(routing_pp, dict) else None
+        )
         output_routing = {
             "kRoutingDestMaster": "parallel",
             "kRoutingDestFilter": "series",
@@ -420,8 +430,12 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
                 wet=_resolve(pp, "kParamWet", schema.VOICE_FILTER_PARAMS),
                 level_out=_resolve(pp, "kParamLevelOut", schema.VOICE_FILTER_PARAMS),
                 output_routing=output_routing,
-                fx_bus1_send=routing_pp.get("kParamFXBus1Level") if isinstance(routing_pp, dict) else None,
-                fx_bus2_send=routing_pp.get("kParamFXBus2Level") if isinstance(routing_pp, dict) else None,
+                fx_bus1_send=routing_pp.get("kParamFXBus1Level")
+                if isinstance(routing_pp, dict)
+                else None,
+                fx_bus2_send=routing_pp.get("kParamFXBus2Level")
+                if isinstance(routing_pp, dict)
+                else None,
             )
         )
 
@@ -456,7 +470,7 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             curve = [
                 LfoCurvePointSpec(x=x, y=1.0 - y, tension=t)
                 for x, y, t in zip(
-                    raw_curve["xVals"], raw_curve["yVals"], raw_curve["curveVals"]
+                    raw_curve["xVals"], raw_curve["yVals"], raw_curve["curveVals"], strict=True
                 )
             ]
         lfos.append(
@@ -539,9 +553,7 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             # preserved for round-trip, semantics not interpreted here.
             flex = entry.get("flex")
             flex = flex if isinstance(flex, list) else None
-            fx_chain.append(
-                FxUnitSpec(type=fx_name, wet=wet, params=params, rack=rack, flex=flex)
-            )
+            fx_chain.append(FxUnitSpec(type=fx_name, wet=wet, params=params, rack=rack, flex=flex))
             module_id_by_flat_index.append(rack * 100 + position_in_rack)
             position_in_rack += 1
 
@@ -673,7 +685,9 @@ def extract_spec(data: dict[str, Any]) -> PresetSpec:
             if isinstance(global_pp, dict) and "kParamUseUltraOnRender" in global_pp
             else None
         ),
-        voice_priority=global_pp.get("kParamVoicePriority") if isinstance(global_pp, dict) else None,
+        voice_priority=global_pp.get("kParamVoicePriority")
+        if isinstance(global_pp, dict)
+        else None,
         note_latch=(
             bool(global_pp["kParamNoteLatch"])
             if isinstance(global_pp, dict) and "kParamNoteLatch" in global_pp

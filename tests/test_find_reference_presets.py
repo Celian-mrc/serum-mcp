@@ -58,6 +58,17 @@ def test_genre_keyword_expansion_finds_factory_folder(fake_corpus):
     assert any(r["path"].endswith("BA - Oscars.SerumPreset") for r in result["results"])
 
 
+def test_amapiano_keyword_expansion_finds_factory_folder(fake_corpus):
+    user_dir, factory_dir = fake_corpus
+    _touch(factory_dir / "World" / "PL - Mallet Piece.SerumPreset")
+    _touch(factory_dir / "Lead" / "LD - Bright.SerumPreset")
+
+    result = json.loads(find_reference_presets("amapiano log drum"))
+    assert "world" in result["expanded_terms"]
+    assert "mallet" in result["expanded_terms"]
+    assert any(r["path"].endswith("PL - Mallet Piece.SerumPreset") for r in result["results"])
+
+
 def test_user_root_file_gets_user_source(fake_corpus):
     user_dir, factory_dir = fake_corpus
     _touch(user_dir / "BA - Wobble Growl.SerumPreset")

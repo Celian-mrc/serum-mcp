@@ -334,7 +334,9 @@ def test_mod_route_2026_08_01_round4_probe_sources_round_trip(init_data):
         mod_routes=[
             ModRouteSpec(source="note_on_alt", destination="filter0.cutoff", amount=1.0),
             ModRouteSpec(source="note_on_alt2", destination="filter0.cutoff", amount=2.0),
-            ModRouteSpec(source="oscillator3", destination="filter0.cutoff", amount=3.0),  # Noise OSC
+            ModRouteSpec(
+                source="oscillator3", destination="filter0.cutoff", amount=3.0
+            ),  # Noise OSC
             ModRouteSpec(source="oscillator0", destination="filter0.cutoff", amount=4.0),  # OSC A
             ModRouteSpec(source="oscillator1", destination="filter0.cutoff", amount=5.0),  # OSC B
             ModRouteSpec(source="oscillator2", destination="filter0.cutoff", amount=6.0),  # OSC C
@@ -764,9 +766,7 @@ def test_warp_var2_round_trips_and_is_a_mod_destination(init_data):
             OscillatorSpec(enabled=True, warp_var2=0.5),
             OscillatorSpec(enabled=True),  # no warp_var2 at all
         ],
-        mod_routes=[
-            ModRouteSpec(source="lfo0", destination="oscillator0.warp_var2", amount=-28.0)
-        ],
+        mod_routes=[ModRouteSpec(source="lfo0", destination="oscillator0.warp_var2", amount=-28.0)],
     )
     data = apply_spec(init_data, spec)
 
@@ -995,9 +995,7 @@ def test_oscillator_filter_routing_unset_writes_no_routing_slot(init_data):
     not touch RoutingSlot0-4 at all -- Serum's real default (through the
     filters) is reached by absence, matching the real Dreams/Beyond
     recreations' own RoutingSlot0 ('default')."""
-    spec = PresetSpec(
-        name="X", description="", oscillators=[OscillatorSpec(enabled=True)]
-    )
+    spec = PresetSpec(name="X", description="", oscillators=[OscillatorSpec(enabled=True)])
     data = apply_spec(init_data, spec)
 
     assert data["RoutingSlot0"]["plainParams"] == "default"
@@ -1084,11 +1082,7 @@ def test_global_fx_bus_volumes_and_direct_volume_round_trip(init_data):
     spec = PresetSpec(
         name="X",
         description="",
-        **{
-            "global": GlobalSpec(
-                fx_bus1_volume=1.5, fx_bus2_volume=0.8, direct_volume=0.3
-            )
-        },
+        **{"global": GlobalSpec(fx_bus1_volume=1.5, fx_bus2_volume=0.8, direct_volume=0.3)},
     )
     data = apply_spec(init_data, spec)
 
@@ -1113,11 +1107,7 @@ def test_global_fx_bus_destinations_round_trip(init_data):
     spec = PresetSpec(
         name="X",
         description="",
-        **{
-            "global": GlobalSpec(
-                fx_bus1_destination="master", fx_bus2_destination="direct"
-            )
-        },
+        **{"global": GlobalSpec(fx_bus1_destination="master", fx_bus2_destination="direct")},
     )
     data = apply_spec(init_data, spec)
 
@@ -1523,8 +1513,13 @@ def test_envelope_curve_shapes_round_trip(init_data):
         description="",
         envelopes=[
             EnvelopeSpec(
-                attack=0.01, decay=1, sustain=1, release=1,
-                attack_curve=40.0, decay_curve=60.0, release_curve=58.1,
+                attack=0.01,
+                decay=1,
+                sustain=1,
+                release=1,
+                attack_curve=40.0,
+                decay_curve=60.0,
+                release_curve=58.1,
             )
         ],
     )
@@ -1709,9 +1704,7 @@ def test_extract_spec_round_trips_fxsplit_as_an_ordinary_flat_fx_unit(init_data)
         "FX": [
             {"FXEQ": {"plainParams": {"kParamWet": 100.0}}, "type": 7},
             {
-                "FXSplit": {
-                    "plainParams": {"kParamFreq": 500.0, "kParamModuleCount2": 3.0}
-                },
+                "FXSplit": {"plainParams": {"kParamFreq": 500.0, "kParamModuleCount2": 3.0}},
                 "type": 13,
             },
             {"FXDelay": {"plainParams": {"kParamWet": 25.0}}, "type": 4},
@@ -2242,7 +2235,12 @@ def test_fx_flex_opaque_round_trip(init_data):
     interpretation/validation) since the semantics aren't independently
     confirmed for FX units the way they are for the LFO curve widget."""
     real_flex = [
-        {"curveVals": [0.7355513996138997, 0.5], "numPoints": 1, "xVals": [0.0, 1.0], "yVals": [1.0, 0.0]},
+        {
+            "curveVals": [0.7355513996138997, 0.5],
+            "numPoints": 1,
+            "xVals": [0.0, 1.0],
+            "yVals": [1.0, 0.0],
+        },
         {
             "curveVals": [0.5, 0.5, 0.5],
             "numPoints": 2,
@@ -2645,7 +2643,9 @@ def test_new_mod_destinations_2026_08_01_survey_round_trip(init_data):
             FxUnitSpec(type="FXEQ", wet=100.0),
         ],
         mod_routes=[
-            ModRouteSpec(source="macro0", destination="oscillator3.noise_initial_phase", amount=10.0),
+            ModRouteSpec(
+                source="macro0", destination="oscillator3.noise_initial_phase", amount=10.0
+            ),
             ModRouteSpec(source="macro1", destination="oscillator3.noise_fine", amount=11.0),
             ModRouteSpec(source="macro2", destination="arp.chance", amount=12.0),
             ModRouteSpec(source="macro3", destination="arp.offset", amount=13.0),
@@ -2978,7 +2978,11 @@ def test_granular_density_and_grain_length_curves_match_real_serum_calibration(
     source = tmp_path / "texture.wav"
     _write_wav_fixture(source)
 
-    real_density_pairs = [(5.0, 0.7716049382716046), (15.0, 62.49999999999999), (25.0, 482.2530864197531)]
+    real_density_pairs = [
+        (5.0, 0.7716049382716046),
+        (15.0, 62.49999999999999),
+        (25.0, 482.2530864197531),
+    ]
     real_grain_length_pairs = [(0.05, 5.000000000000001e-05), (0.3, 0.0003), (1.0, 0.001)]
 
     for displayed_density, real_raw_density in real_density_pairs:
@@ -3002,14 +3006,16 @@ def test_granular_density_and_grain_length_curves_match_real_serum_calibration(
             description="",
             oscillators=[
                 OscillatorSpec(
-                    enabled=True, granular_source=str(source), granular_grain_length=displayed_length
+                    enabled=True,
+                    granular_source=str(source),
+                    granular_grain_length=displayed_length,
                 )
             ],
         )
         data = apply_spec(init_data, spec)
-        assert data["Oscillator0"]["GranularOsc0"]["plainParams"]["kParamGrainLength"] == pytest.approx(
-            real_raw_length
-        )
+        assert data["Oscillator0"]["GranularOsc0"]["plainParams"][
+            "kParamGrainLength"
+        ] == pytest.approx(real_raw_length)
 
 
 def test_granular_source_writes_granularosc_and_engine_selector(
@@ -3297,7 +3303,9 @@ def test_unknown_multisample_source_rejected(init_data):
         apply_spec(init_data, spec)
 
 
-def test_editing_a_spectral_oscillator_preserves_its_real_curve(init_data, tables_dir, samples_dir, tmp_path):
+def test_editing_a_spectral_oscillator_preserves_its_real_curve(
+    init_data, tables_dir, samples_dir, tmp_path
+):
     """A real (non-trivial) flex curve on an existing SpectralOsc must
     survive an edit_preset call that touches the same oscillator's other
     fields -- the flat sentinel is only written when nothing is there yet."""

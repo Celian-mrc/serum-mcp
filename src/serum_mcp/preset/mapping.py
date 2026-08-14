@@ -29,6 +29,34 @@ from .validator import validate_params
 _CUSTOM_WAVETABLE_SUBDIR = ("User", "serum-mcp")
 _MAX_CUSTOM_WAVETABLE_FRAMES = 256
 _CUSTOM_SAMPLE_SUBDIR = ("User", "serum-mcp")
+# Both subdirs are identical today ("User/serum-mcp/...") but kept as
+# separate constants since they name conceptually different folders
+# (Tables vs Samples) -- this prefix is what _is_locally_generated_file
+# checks against to flag a relative_path as a portability dependency.
+_LOCAL_FILE_PREFIX = "/".join(_CUSTOM_WAVETABLE_SUBDIR) + "/"
+
+
+def _record_external_file(external_files: list[Path], root_dir: Path, relative_path: str) -> None:
+    """Append ``root_dir / relative_path`` to ``external_files`` if not
+    already present (a bank generating several presets that share one
+    custom table/sample, e.g. two presets both using the same
+    ``custom_harmonics`` spectrum, should only list it once)."""
+    absolute = (root_dir / relative_path).resolve()
+    if absolute not in external_files:
+        external_files.append(absolute)
+
+
+def _is_locally_generated_file(relative_path: str) -> bool:
+    """True if ``relative_path`` (a WTOsc/SampleOsc/GranularOsc/SpectralOsc
+    ``relativePathToWT``/``samplePathRelative``) points at a file this
+    project wrote to the LOCAL machine's Tables/Samples folder (from
+    ``custom_harmonics``, ``sample_source``, ``sample_playback_source``,
+    ``granular_source``, or ``spectral_source``) rather than a curated
+    table/instrument that ships with every Serum 2 install. Used to flag
+    presets that won't load correctly for anyone else without also
+    receiving that file -- see ``apply_spec``'s ``external_files`` param."""
+    return relative_path.replace("\\", "/").startswith(_LOCAL_FILE_PREFIX)
+
 
 _OSC_KEYS = {
     "octave": "kParamOctave",
@@ -59,6 +87,29 @@ _OSC_KEYS_OMIT_AT_DEFAULT = {
     "kParamUnison": 1.0,
     "kParamDetune": 0.0,
 }
+# KNOWN LIMITATION, found live 2026-08-06 debugging a bank preset whose
+# octave wouldn't reset: this table is correct for FRESH GENERATION (an
+# omitted key on the blank init fixture resolves to Serum's real absent-
+# state default, matching the values above), but silently breaks
+# edit_preset's ability to reset a field BACK to its default once a preset
+# already has a different value explicitly stored. The loop below skips
+# writing the key whenever the incoming spec value equals this table's
+# default -- so passing e.g. octave=0.0 to edit_preset an oscillator that
+# currently has kParamOctave=-1.0 does NOT overwrite it; the old -1.0
+# simply survives untouched in the merged dict, because nothing ever wrote
+# over it. There is no way to express "explicitly reset to default" through
+# the current PresetSpec API for these fields (a plain `float` field can't
+# distinguish "user typed 0" from "field left at its own default") -- the
+# only reliable workaround right now is a raw CBOR patch
+# (`unpack_file`/`pack_file`) bypassing `apply_spec` entirely, same as the
+# `LfoSpec.rate`/`bool`-vs-`bool | None` fix already applied elsewhere in
+# this project for the identical bug shape. A proper fix would need these
+# fields to become `float | None` (None = untouched, any float including
+# 0.0 = a real explicit write) the same way `LfoSpec.beat_sync` was fixed --
+# not done here, scope/risk too large for a live debugging session; flag
+# this table (and `_FILTER_KEYS_OMIT_AT_DEFAULT`/`_LFO_KEYS_OMIT_AT_DEFAULT`,
+# same class) before assuming an edit_preset call that "should" reset a
+# field to default actually did.
 _WTOSC_KEYS = {
     "table_position": "kParamTablePos",
     "warp_amount": "kParamWarp",
@@ -560,11 +611,10 @@ def _build_lfo_curve_data(curve: list[LfoCurvePointSpec], *, lfo_index: int) -> 
         raise ValueError(f"LFO{lfo_index}.curve[0].x must be 0.0, got {curve[0].x}")
     if curve[-1].x != 1.0:
         raise ValueError(f"LFO{lfo_index}.curve[-1].x must be 1.0, got {curve[-1].x}")
-    for prev, nxt in zip(curve, curve[1:]):
+    for prev, nxt in zip(curve, curve[1:], strict=False):
         if nxt.x < prev.x:
             raise ValueError(
-                f"LFO{lfo_index}.curve x values must be non-decreasing, "
-                f"got {prev.x} then {nxt.x}"
+                f"LFO{lfo_index}.curve x values must be non-decreasing, got {prev.x} then {nxt.x}"
             )
     if len(curve) == 2 and curve[1].y <= curve[0].y:
         raise ValueError(
@@ -822,8 +872,22 @@ def _free_modslot_indices(data: dict[str, Any], count: int) -> list[int]:
     return free[:count]
 
 
-def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
-    """Return a new raw ``data`` dict with ``spec`` merged onto ``base_data``."""
+def apply_spec(
+    base_data: dict[str, Any],
+    spec: PresetSpec,
+    *,
+    external_files: list[Path] | None = None,
+) -> dict[str, Any]:
+    """Return a new raw ``data`` dict with ``spec`` merged onto ``base_data``.
+
+    ``external_files``, if passed, is APPENDED TO (not replaced) with the
+    absolute path of every locally-generated Tables/Samples file this call
+    references (``custom_harmonics``, ``sample_source``,
+    ``sample_playback_source``, ``granular_source``, ``spectral_source``) --
+    see ``_is_locally_generated_file``. Callers that care whether the
+    resulting preset is self-contained (portable to another machine without
+    extra files) pass a list here and inspect it afterward; callers that
+    don't care can leave it ``None``."""
     data = copy.deepcopy(base_data)
 
     # Oscillator's own plainParams live directly on the Oscillator{i} dict,
@@ -837,7 +901,10 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         osc_params["kParamEnable"] = osc.enabled
         for spec_key, param_key in _OSC_KEYS.items():
             value = getattr(osc, spec_key)
-            if param_key in _OSC_KEYS_OMIT_AT_DEFAULT and value == _OSC_KEYS_OMIT_AT_DEFAULT[param_key]:
+            if (
+                param_key in _OSC_KEYS_OMIT_AT_DEFAULT
+                and value == _OSC_KEYS_OMIT_AT_DEFAULT[param_key]
+            ):
                 continue
             osc_params[param_key] = value
 
@@ -863,6 +930,12 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                 sample_container["numFrames"] = sample_def.num_frames
                 sample_container["sampleRate"] = sample_def.sample_rate
                 sample_container["numChannels"] = sample_def.num_channels
+                if external_files is not None and _is_locally_generated_file(
+                    sample_def.relative_path
+                ):
+                    _record_external_file(
+                        external_files, config.get_samples_dir(), sample_def.relative_path
+                    )
 
                 sample_params = _plain_params(osc_container, sample_key)
                 for spec_key, param_key in _SAMPLEOSC_KEYS.items():
@@ -870,7 +943,9 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                 sample_params["kParamWarpMenu"] = schema.SIMPLE_WARP_MODES.get(
                     osc.warp_mode, osc.warp_mode
                 )
-                validate_params(sample_key, sample_params, schema.SAMPLEOSC_PARAMS, allow_unknown=True)
+                validate_params(
+                    sample_key, sample_params, schema.SAMPLEOSC_PARAMS, allow_unknown=True
+                )
 
                 if osc.sample_loop != "off":
                     loop_mode = schema.SIMPLE_SAMPLE_LOOP_MODES.get(osc.sample_loop)
@@ -897,6 +972,12 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                 granular_container["numFrames"] = granular_def.num_frames
                 granular_container["sampleRate"] = granular_def.sample_rate
                 granular_container["numChannels"] = granular_def.num_channels
+                if external_files is not None and _is_locally_generated_file(
+                    granular_def.relative_path
+                ):
+                    _record_external_file(
+                        external_files, config.get_samples_dir(), granular_def.relative_path
+                    )
 
                 granular_params = _plain_params(osc_container, granular_key)
                 for spec_key, param_key in _GRANULAROSC_KEYS.items():
@@ -928,6 +1009,12 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                 spectral_container["numFrames"] = spectral_def.num_frames
                 spectral_container["sampleRate"] = spectral_def.sample_rate
                 spectral_container["numChannels"] = spectral_def.num_channels
+                if external_files is not None and _is_locally_generated_file(
+                    spectral_def.relative_path
+                ):
+                    _record_external_file(
+                        external_files, config.get_samples_dir(), spectral_def.relative_path
+                    )
                 # Not just left absent: 24/25 real SpectralOsc instances with
                 # no custom spectral-filter curve use this EXACT flat/neutral
                 # sentinel (a genuinely canonical value, not just "close
@@ -1008,6 +1095,10 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
                 wtosc_container["numFrames"] = wt_def.num_frames
                 wtosc_container["sampleRate"] = wt_def.sample_rate
                 wtosc_container["numChannels"] = wt_def.num_channels
+                if external_files is not None and _is_locally_generated_file(wt_def.relative_path):
+                    _record_external_file(
+                        external_files, config.get_tables_dir(), wt_def.relative_path
+                    )
 
                 wtosc_params = _plain_params(osc_container, wt_key)
                 for spec_key, param_key in _WTOSC_KEYS.items():
@@ -1030,7 +1121,9 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         elif i == _NOISE_SLOT:
             noise_params = _plain_params(osc_container, f"NoiseOsc{i}")
             noise_params["kParamNoiseType"] = osc.noise_type
-            validate_params(f"NoiseOsc{i}", noise_params, schema.NOISEOSC_PARAMS, allow_unknown=True)
+            validate_params(
+                f"NoiseOsc{i}", noise_params, schema.NOISEOSC_PARAMS, allow_unknown=True
+            )
         elif i == _SUB_SLOT:
             sub_params = _plain_params(osc_container, f"SubOsc{i}")
             if osc.sub_shape != "saw":
@@ -1099,7 +1192,10 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
         filter_params["kParamType"] = schema.SIMPLE_FILTER_TYPES.get(flt.type, flt.type)
         for spec_key, param_key in _FILTER_KEYS.items():
             value = getattr(flt, spec_key)
-            if param_key in _FILTER_KEYS_OMIT_AT_DEFAULT and value == _FILTER_KEYS_OMIT_AT_DEFAULT[param_key]:
+            if (
+                param_key in _FILTER_KEYS_OMIT_AT_DEFAULT
+                and value == _FILTER_KEYS_OMIT_AT_DEFAULT[param_key]
+            ):
                 # Presence, not just value, changes the sound: real presets
                 # leave a filter param key out entirely whenever it was never
                 # touched, and the untouched value happens to equal this
@@ -1119,9 +1215,10 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             f"VoiceFilter{i}", filter_params, schema.VOICE_FILTER_PARAMS, allow_unknown=True
         )
         if (
-            (flt.output_routing is not None or flt.fx_bus1_send is not None or flt.fx_bus2_send is not None)
-            and i < 2
-        ):
+            flt.output_routing is not None
+            or flt.fx_bus1_send is not None
+            or flt.fx_bus2_send is not None
+        ) and i < 2:
             # RoutingSlot5/RoutingSlot6 -- each filter's OWN output routing
             # (distinct from RoutingSlot0-4, the 5 oscillators' routing
             # INTO the filters). Found live 2026-07-29 recreating two real
@@ -1135,7 +1232,9 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             filter_routing_params: dict[str, Any] = {}
             if flt.output_routing is not None:
                 filter_routing_params["kParamRoutingDest"] = (
-                    "kRoutingDestMaster" if flt.output_routing == "parallel" else "kRoutingDestFilter"
+                    "kRoutingDestMaster"
+                    if flt.output_routing == "parallel"
+                    else "kRoutingDestFilter"
                 )
             if flt.fx_bus1_send is not None:
                 filter_routing_params["kParamFXBus1Level"] = flt.fx_bus1_send
@@ -1175,7 +1274,10 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             if spec_key == "beat_sync":
                 continue  # handled above -- 3-state, not a plain omit-at-default key
             value = getattr(lfo, spec_key)
-            if param_key in _LFO_KEYS_OMIT_AT_DEFAULT and value == _LFO_KEYS_OMIT_AT_DEFAULT[param_key]:
+            if (
+                param_key in _LFO_KEYS_OMIT_AT_DEFAULT
+                and value == _LFO_KEYS_OMIT_AT_DEFAULT[param_key]
+            ):
                 # Same presence-forces-the-DSP-stage pattern as the
                 # VoiceFilter fix above. Found live 2026-07-29
                 # (UN_PLACES_BA_Beyond): kParamRate=0.0 (LfoSpec's own
@@ -1369,7 +1471,9 @@ def apply_spec(base_data: dict[str, Any], spec: PresetSpec) -> dict[str, Any]:
             # arp.rate field, was the field actually isolated as the real
             # fix for a live "stuck on one note" bug), but consistent with
             # every working example and never observed to cause harm.
-            clip_params["kParamNoteRetrig"] = arp.note_retrig if arp.note_retrig is not None else True
+            clip_params["kParamNoteRetrig"] = (
+                arp.note_retrig if arp.note_retrig is not None else True
+            )
             clip_params["kParamWrapRange"] = arp.wrap_range if arp.wrap_range is not None else 12.0
             clip_params["kParamWrapTranspose"] = True
         else:

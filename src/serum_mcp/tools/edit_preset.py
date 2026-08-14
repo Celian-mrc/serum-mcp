@@ -8,6 +8,7 @@ from serum_mcp.generation.spec import PresetSpec
 from serum_mcp.preset.mapping import apply_spec
 from serum_mcp.preset.packer import SerumPreset, pack_file, unpack_file
 
+from ._dependencies import append_dependency_note
 from ._naming import slugify_preset_name
 
 
@@ -26,10 +27,16 @@ def edit_preset(preset_path: str, spec: PresetSpec) -> str:
     The old file is removed once the renamed one is written successfully.
 
     Returns the absolute path of the edited file -- the new path if the
-    preset was renamed, otherwise the same as ``preset_path``.
+    preset was renamed, otherwise the same as ``preset_path`` -- as the
+    FIRST LINE of the return value, always. If ``spec`` used
+    ``custom_harmonics``/``sample_source``/``sample_playback_source``/
+    ``granular_source``/``spectral_source``, additional lines list the
+    local file(s) that preset now depends on -- see
+    ``generate_preset``'s docstring / ``tools/_dependencies.py`` for why.
     """
     existing = unpack_file(preset_path)
-    data = apply_spec(existing.data, spec)
+    external_files: list[Path] = []
+    data = apply_spec(existing.data, spec, external_files=external_files)
 
     metadata = dict(existing.metadata)
     old_name = metadata.get("presetName", "")
@@ -48,4 +55,4 @@ def edit_preset(preset_path: str, spec: PresetSpec) -> str:
     written = pack_file(out_preset, dest_path)
     if dest_path != src_path and src_path.exists():
         src_path.unlink()
-    return str(written)
+    return append_dependency_note(str(written), external_files)

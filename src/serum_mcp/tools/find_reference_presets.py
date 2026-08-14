@@ -50,6 +50,10 @@ _GENRE_KEYWORDS: dict[str, tuple[str, ...]] = {
     "edm": ("lead", "pluck", "chord", "hoover"),
     "big room": ("lead", "hoover", "pluck", "chord"),
     "psytrance": ("acid", "lead", "hoover"),
+    "amapiano": ("amapiano", "log drum", "afro", "world", "mallet", "percussive"),
+    "log drum": ("log drum", "amapiano", "mallet", "tribal", "world", "wood", "drum"),
+    "afrobeat": ("afrobeat", "afro", "world", "percussion", "mallet", "pluck"),
+    "afrobeats": ("afrobeat", "afro", "world", "percussion", "mallet", "pluck"),
 }
 
 _NON_WORD = re.compile(r"[^a-z0-9]+")

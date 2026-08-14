@@ -9,6 +9,7 @@ from serum_mcp.generation.spec import PresetSpec
 from serum_mcp.preset.mapping import apply_spec
 from serum_mcp.preset.packer import SerumPreset, pack_file, unpack_file
 
+from ._dependencies import append_dependency_note
 from ._naming import sanitize_subfolder, slugify_preset_name
 
 FIXTURES_DIR = Path(__file__).resolve().parents[3] / "fixtures"
@@ -32,10 +33,19 @@ def generate_preset(spec: PresetSpec, subfolder: str | None = None) -> str:
     sanitized the same way preset names are (see
     ``_naming.sanitize_subfolder``), so it can't escape the presets folder.
 
-    Returns the absolute path of the written ``.SerumPreset`` file.
+    Returns the absolute path of the written ``.SerumPreset`` file -- the
+    FIRST LINE of the return value, always. If ``spec`` used
+    ``custom_harmonics``/``sample_source``/``sample_playback_source``/
+    ``granular_source``/``spectral_source``, additional lines list the
+    local file(s) that preset now depends on (see
+    ``tools/_dependencies.py``) -- Serum itself stores this content as a
+    separate file, not embedded in the .SerumPreset, so those files must
+    travel WITH the preset if it's shared with anyone else or copied to
+    another machine.
     """
     base = unpack_file(INIT_PRESET_PATH)
-    data = apply_spec(base.data, spec)
+    external_files: list[Path] = []
+    data = apply_spec(base.data, spec, external_files=external_files)
 
     metadata = dict(base.metadata)
     metadata["presetName"] = spec.name
@@ -50,4 +60,4 @@ def generate_preset(spec: PresetSpec, subfolder: str | None = None) -> str:
             dest_dir = dest_dir / safe_subfolder
     dest = dest_dir / f"{slugify_preset_name(spec.name)}.SerumPreset"
     written = pack_file(out_preset, dest)
-    return str(written)
+    return append_dependency_note(str(written), external_files)

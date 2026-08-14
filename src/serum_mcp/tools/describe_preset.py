@@ -101,9 +101,7 @@ def describe_preset(preset_path: str) -> str:
             delay = f"  delay={lfo.delay:.2f}s" if lfo.delay else ""
             shape = f"  shape={lfo.shape}" if lfo.shape else ""
             mono = "  mono" if lfo.mono else ""
-            lines.append(
-                f"LFO {i}: rate={lfo.rate:.0f}  mode={lfo.mode}{sync}{delay}{shape}{mono}"
-            )
+            lines.append(f"LFO {i}: rate={lfo.rate:.0f}  mode={lfo.mode}{sync}{delay}{shape}{mono}")
 
     active_macros = [(i, m) for i, m in enumerate(spec.macros, start=1) if m.value or m.name]
     if active_macros:
