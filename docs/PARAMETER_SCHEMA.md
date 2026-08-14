@@ -507,22 +507,35 @@ rack-encoded scheme; see `mapping._fx_dest_module_id`.
 
 Each rack holds an ordered `FX` list; each entry has an integer
 `type` selecting one of 16 effect kinds (`FX_TYPE_IDS` in `schema.py`) and a
-`plainParams` dict specific to that type. 13 of the 16 are modeled with full
-param schemas (`FXDistortion`, `FXChorus`, `FXFlanger`, `FXPhaser`,
-`FXDelay`, `FXReverb`, `FXComp`, `FXEQ`, `FXFilter`, `FXBode` (frequency
-shifter), `FXHyperD` ("hyper dimension" widener), `FXConv`
+`plainParams` dict specific to that type. 13 of the 16 were originally
+modeled with full param schemas (`FXDistortion`, `FXChorus`, `FXFlanger`,
+`FXPhaser`, `FXDelay`, `FXReverb`, `FXComp`, `FXEQ`, `FXFilter`, `FXBode`
+(frequency shifter), `FXHyperD` ("hyper dimension" widener), `FXConv`
 (convolution/IR — the IR file itself, `relativePathToIR`, isn't selectable
 by generation, only its processing params), `FXUtils` (width/balance/HP-LP
 cleanup; its `kParamWet` is `uncertain`-confidence, only 2 samples observed
 using one).
 
-The remaining 3 — `FXSplit`, `FXSplit3`, `FXSplitMS` — are structurally
-different from every other FX type: instead of a flat `plainParams` dict,
-they're band-splitter containers holding N nested sub-effect-chains (one per
-frequency band, via `kParamModuleCount1/2/3`). They're cataloged in
-`FX_TYPE_IDS` and round-trip fine, but aren't modeled in `FX_PARAMS` —
-targeting them would need a recursive `FxUnitSpec` (an FX chain that itself
-contains FX chains), which is a bigger feature than a flat param schema.
+**UPDATE, RESOLVED 2026-07-30 — the rest of this subsection describes the
+ORIGINAL (wrong) assumption about the remaining 3 types; see §5 item 5 for
+the corrected, verified understanding.** Kept below as historical record per
+this doc's own methodology (see the top-of-file note on that), not because
+it's still accurate — don't generate FXSplit/FXSplit3/FXSplitMS based on this
+paragraph, use §5 item 5 and `server.py`'s own `type='FXSplit'` guidance
+instead. Short version: they turned out to need NO new data structure at all
+(an ordinary flat `plainParams` dict, fully supported by the existing
+`FxUnitSpec`) — the originally-assumed "nested recursive FX chain" below was
+never actually necessary.
+
+The remaining 3 — `FXSplit`, `FXSplit3`, `FXSplitMS` — were ORIGINALLY assumed
+to be structurally different from every other FX type: instead of a flat
+`plainParams` dict, thought to be band-splitter containers holding N nested
+sub-effect-chains (one per frequency band, via `kParamModuleCount1/2/3`).
+They're cataloged in `FX_TYPE_IDS` and round-trip fine, but at the time
+weren't yet modeled in `FX_PARAMS` — targeting them was assumed to need a
+recursive `FxUnitSpec` (an FX chain that itself contains FX chains), a bigger
+feature than a flat param schema. **This assumption was wrong — see the
+UPDATE note above.**
 
 Found live against a real third-party bank (Unmüte's "Places", 180
 presets): 90 of them (50%) use at least one of these split types, and
@@ -532,14 +545,15 @@ entry to look up a default `kParamWet` from) — `describe_preset`/
 bank. Fixed by skipping split-type entries during extraction instead of
 crashing; `introspect.count_unmodeled_fx_units` lets a caller report how
 many were skipped rather than silently under-representing the FX chain.
-The branch-boundary semantics of `kParamModuleCount1/2/3` are still not
-reverse-engineered with confidence — observed so far: `FXSplit` (2-way) with
-only `kParamModuleCount2` set (e.g. `3.0`); `FXSplit3` (3-way) with
-`kParamModuleCount2`/`kParamModuleCount3` both set (e.g. `1.0`/`2.0`);
+The branch-boundary semantics of `kParamModuleCount1/2/3` were, AT THE TIME,
+not yet reverse-engineered with confidence — observed so far: `FXSplit`
+(2-way) with only `kParamModuleCount2` set (e.g. `3.0`); `FXSplit3` (3-way)
+with `kParamModuleCount2`/`kParamModuleCount3` both set (e.g. `1.0`/`2.0`);
 `FXSplitMS` (mid/side) with `kParamModuleCount1` alone or paired with
 `kParamModuleCount2`. Consistent with "how many of the following flat FX-
-list entries belong to this branch," but not verified across enough
-examples to build a recursive `FxUnitSpec` from with confidence yet.
+list entries belong to this branch" — which a later, larger survey (§5 item
+5) went on to CONFIRM with zero exceptions across 77 real examples, closing
+this out.
 
 We also confirmed empirically that an FX entry's `destModuleID` in the mod
 matrix encodes *which rack* an FX unit lives in: `0-11` for rack 0 slots,

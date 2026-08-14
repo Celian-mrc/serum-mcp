@@ -290,11 +290,10 @@ one-shot generation), and honesty about format coverage (see
   ideally with a preset exported from the new version.
 - Generated presets are only as good as the calling model's sound-design
   judgment and this project's parameter coverage (currently: oscillators,
-  filters, envelopes, macros, the full mod matrix, the arpeggiator, and 13 of
-  16 effect types — the remaining 3 are frequency-band-splitter containers
-  that round-trip safely on existing presets but aren't yet generatable from
-  scratch — see [Known
-  gaps](docs/PARAMETER_SCHEMA.md#5-known-gaps-and-open-questions)).
+  filters, envelopes, macros, the full mod matrix, the arpeggiator, and all 16
+  effect types, including the 3 frequency/channel-band splitters — see [Known
+  gaps](docs/PARAMETER_SCHEMA.md#5-known-gaps-and-open-questions) for the
+  handful of narrower open questions that remain).
 
 ## Roadmap
 
