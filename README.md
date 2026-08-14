@@ -108,6 +108,14 @@ by default (`sample_center_pan`) to correct any left/right level bias in
 the original recording (common — real one-shots are often mic'd slightly
 off-center) without altering either channel's actual content.
 
+Any of these (`custom_harmonics`, `sample_source`, `sample_playback_source`,
+`granular_source`, `spectral_source`) write a file outside the `.SerumPreset`
+itself — the same real Serum limitation as a wavetable hand-drawn in Serum's
+own editor, not something this tool routes around. `generate_preset`/
+`edit_preset` surface this: if the write depends on one of these files, the
+returned path is followed by a note listing it, so you know to send that file
+along too if you share the preset with someone else.
+
 Optionally, set `SAMPLE_BANK_PATH` to the root of your own one-shot/drumkit
 library (unrelated to Serum's own folders — this can point anywhere). With
 it set, `list_sample_files()` can be called with no arguments and defaults
@@ -217,6 +225,45 @@ mod matrix sources, ...) round-trips through edits completely untouched.
 Full parameter documentation, including exactly how each bound was verified
 (or wasn't): [`docs/PARAMETER_SCHEMA.md`](docs/PARAMETER_SCHEMA.md).
 
+## Getting good results
+
+`serum-mcp` has no sound-design opinion of its own — the model in your MCP
+client does all of it, using this server's tools plus its own general
+knowledge. A few things that noticeably change how well that goes:
+
+- **Talk to it like you'd describe a sound to a producer**, not like you're
+  filling out a form: genre, mood, role (bass/pad/lead/pluck/...), and — if
+  you have one in mind — a reference artist or track.
+- **Name a specific preset or pack you already like** if you want the result
+  to lean toward a particular character ("give this the grain of my `<X>`
+  preset"). `find_reference_presets` already searches your Factory library
+  and any installed banks by keyword automatically, with no setup required —
+  but naming something specific lets the model inspect its actual parameters
+  via `describe_preset` instead of guessing from a folder/file name, which is
+  a lot more precise.
+- **You don't need to ask it to "study the MCP" first.** This server pushes
+  its own detailed usage conventions to the calling model automatically as
+  part of the MCP connection, and `list_parameters()` is what the model calls
+  on its own whenever it needs exact ranges/enums before writing a spec.
+  There's no separate analysis step for you to trigger.
+- **Precise listening feedback is the real lever, not upfront analysis.** A
+  documented convention doesn't guarantee it gets followed every single time
+  — the most effective way to improve a result is to load it in Serum,
+  listen, and describe concretely what's off ("the attack is too slow",
+  "this reads as a pluck, not a flute", "there's no real breath/texture
+  layer") rather than a general "I don't like it." A specific complaint is
+  something the model can actually act on.
+- **Always load the result in real Serum.** Nothing in this pipeline renders
+  or listens to audio — the test suite and `describe_preset` confirm a file
+  is *structurally* valid, never that it *sounds* right. Test-listening is
+  the only way to actually judge a preset.
+- Asking for a themed **bank** of presets defaults to melodic/textural roles
+  (lead, pluck, pad, keys, arp, ...) — mention bass or FX/riser presets
+  explicitly if you want those included too.
+- Result quality tracks the capability of whichever model your MCP client is
+  running — a stronger model follows this server's conventions more
+  reliably.
+
 ## Prior art
 
 - [Serum-Preset-Generator](https://github.com/Tdub206/Serum-Preset-Generator) — Python API, generates from a JSON config you write by hand.
@@ -243,8 +290,11 @@ one-shot generation), and honesty about format coverage (see
   ideally with a preset exported from the new version.
 - Generated presets are only as good as the calling model's sound-design
   judgment and this project's parameter coverage (currently: oscillators,
-  filters, envelopes, macros, LFO/macro mod routes, and 9 of 16 effect types
-  — see [Known gaps](docs/PARAMETER_SCHEMA.md#5-known-gaps-and-open-questions)).
+  filters, envelopes, macros, the full mod matrix, the arpeggiator, and 13 of
+  16 effect types — the remaining 3 are frequency-band-splitter containers
+  that round-trip safely on existing presets but aren't yet generatable from
+  scratch — see [Known
+  gaps](docs/PARAMETER_SCHEMA.md#5-known-gaps-and-open-questions)).
 
 ## Roadmap
 
