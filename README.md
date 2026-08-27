@@ -64,6 +64,53 @@ kept in mind architecturally but not started.
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). No API key of
 any kind is required — see [How it works](#how-it-works) for why.
 
+### Not comfortable with the command line? Let an LLM do it for you
+
+Most people reaching for this tool are producers, not developers. If the
+steps below look intimidating, paste this into Claude Desktop (or any LLM
+assistant that has file/terminal access on your computer) instead of typing
+any of it yourself:
+
+```
+Please set up the serum-mcp MCP server on this computer so I can use it
+with my MCP client.
+
+1. Install `uv` (a Python package manager) if not already installed --
+   on Windows: run
+   `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+   on Mac/Linux: run `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
+2. Clone https://github.com/Celian-mrc/serum-mcp somewhere on this
+   machine (or download it as a ZIP and extract it), then run `uv sync`
+   inside that folder.
+
+3. Find my Serum presets folder -- in Serum, the hamburger menu ->
+   "Show Serum Presets folder" -> note the path ending in Presets/User
+   (Presets\User on Windows).
+
+4. Add serum-mcp as an MCP server in my client's config, pointing
+   `--directory` at the folder from step 2 and setting
+   SERUM_PRESETS_PATH to the path from step 3. If I'm on Claude Desktop
+   for Windows, the config file is claude_desktop_config.json -- NOTE:
+   if Claude Desktop was installed via the Microsoft Store, the real
+   config file is NOT in the normal %APPDATA%\Claude location, it's
+   under %LOCALAPPDATA%\Packages\Claude_<random id>\LocalCache\Roaming\Claude\
+   -- search for claude_desktop_config.json across %LOCALAPPDATA% if the
+   normal path doesn't have it or seems unused. If I'm on Claude Code,
+   use `claude mcp add serum-mcp -- uv --directory <path> run serum-mcp`
+   instead.
+
+5. Tell me exactly what you did, then tell me to fully quit and restart
+   my MCP client (not just close the window) for the change to take
+   effect.
+
+If you don't have filesystem/terminal access to do any of this, say so
+clearly and walk me through the manual steps from serum-mcp's own README
+instead.
+```
+
+Otherwise, do it yourself:
+
 ```bash
 git clone https://github.com/Celian-mrc/serum-mcp
 cd serum-mcp
@@ -263,6 +310,61 @@ knowledge. A few things that noticeably change how well that goes:
 - Result quality tracks the capability of whichever model your MCP client is
   running — a stronger model follows this server's conventions more
   reliably.
+
+### Recommended: reinforce this in your client's own project instructions
+
+This server already pushes detailed usage guidance to the calling model
+automatically (see above) — but a documented convention living inside a
+large system prompt doesn't guarantee it gets applied on every single
+generation. If your MCP client supports per-project custom instructions
+(Claude Desktop's Projects, for example), pasting this block in noticeably
+improves consistency, especially for anything more ambitious than a single
+one-off preset:
+
+```
+When generating or editing Serum presets via serum-mcp, aim for real
+depth, not a minimal valid spec:
+
+- Call list_parameters() to confirm valid field names/ranges before
+  generating. The top-level mod-matrix field is `mod_routes` (a list of
+  {source, destination, amount, bipolar}) -- not `mod_matrix` or any
+  other variant.
+- Name and use several of the 8 available macros per preset (not just
+  1-2), with real fanout -- some macros driving 2+ destinations at once,
+  some starting near 0% as performer "bring-in" controls.
+- Build out a real mod matrix -- 10+ routes per preset touching
+  velocity/key_track/envelope/LFO/macro sources, not just 2-3 obvious
+  ones.
+- Whenever an oscillator uses a curated wavetable at a meaningful
+  table_position, or a multi-frame custom_harmonics list, wire an actual
+  mod route (envelope/LFO/macro) to table_position. A static
+  table_position on a multi-frame/curated table wastes the point of it
+  -- the sound should genuinely evolve/morph over the note.
+- Before synthesizing an instrument-named role (guitar, piano, violin,
+  choir, strings, bell/mallet...), check multisample_source's curated
+  list first (brass_french_horn, choir_ah, epiano_suitcase, guitar_ac,
+  mallet_balafon, piano_grand, strings_full, synth_pad_superjx,
+  synth_sid, violins) -- a real sample reads far more convincing than a
+  synthesized approximation for these roles.
+- Before generating from scratch for any genre/artist/style-named
+  request, call find_reference_presets(query) to search the real Serum
+  Factory library and any installed third-party banks -- ground the
+  design in an actual reference via describe_preset() rather than
+  working purely from parametric knowledge. For a themed request, also
+  do a quick web search on that genre/artist's real production
+  character.
+- For a themed bank ("make me a bank of X"), default to melodic/textural
+  roles only (lead, pluck, pad, keys, arp) -- don't add bass or FX/riser
+  presets unless explicitly asked for.
+- If I mention a specific preset or pack I already like, use
+  describe_preset() on it directly to ground the new design in its
+  actual parameters, rather than guessing from its name alone.
+
+Always remind me to load the result in real Serum to check it sounds
+right -- nothing in this pipeline renders or listens to audio, so
+describe_preset()/tests only confirm the file is structurally valid,
+never that it sounds correct.
+```
 
 ## Prior art
 
