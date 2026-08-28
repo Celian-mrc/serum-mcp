@@ -495,14 +495,19 @@ def _resolve_wavetable(osc: OscillatorSpec) -> schema.WavetableDef:
     # `Path("C:/Tables") / "/Analog/x.wav"` produces "C:/Analog/x.wav", not
     # "C:/Tables/Analog/x.wav" -- so the naive join below would resolve to
     # the wrong location and always report "file not found" for these.
-    candidate = config.get_tables_dir() / osc.wavetable.lstrip("/\\")
-    if candidate.is_file():
+    try:
+        candidate = config.get_tables_dir() / osc.wavetable.lstrip("/\\")
+    except config.TablesFolderNotFoundError:
+        candidate = None
+
+    if candidate is not None and candidate.is_file():
         channels, sample_rate, num_frames = sample_library.read_wav_metadata(candidate)
         return schema.WavetableDef(osc.wavetable, num_frames, sample_rate, channels)
 
     raise ValueError(
         f"unknown wavetable {osc.wavetable!r}: not one of the curated names "
-        f"({sorted(schema.SIMPLE_WAVETABLES)}), and no file found at {candidate} either"
+        f"({sorted(schema.SIMPLE_WAVETABLES)})"
+        + ("" if candidate is None else f", and no file found at {candidate} either")
     )
 
 
