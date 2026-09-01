@@ -1,0 +1,46 @@
+# Virtual environments -- the packaged extension runs `uv run`, which
+# resolves its own environment from pyproject.toml/uv.lock at install time;
+# a pre-built .venv would just bloat the bundle.
+.venv/
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Reference clones used for research only, not part of the shipped server
+.refs/
+
+# Real-Serum UI screenshots kept locally as visual reference, not shipped
+reference/
+
+# Claude Code local project state
+.claude/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Test artifacts and the test suite itself -- not needed at runtime
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+tests/
+
+# git metadata
+.git/
+.gitignore
+
+# CI/repo scaffolding not needed inside the installed extension
+.github/
+CONTRIBUTING.md
+
+# Stray local audio file, not part of the project
+*.wav

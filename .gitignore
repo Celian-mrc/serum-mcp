@@ -35,3 +35,6 @@ Thumbs.db
 .ruff_cache/
 htmlcov/
 .coverage
+
+# Packaged MCPB build output -- rebuild with `mcpb pack .`, don't commit it
+*.mcpb
