@@ -14,6 +14,7 @@ separate, separately-billed API call.
 from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from serum_mcp.generation.spec import PresetSpec
 from serum_mcp.tools.analyze_sample_file import analyze_sample_file as _analyze_sample_file
@@ -939,7 +940,15 @@ mcp = FastMCP(
 )
 
 
-@mcp.tool()
+@mcp.tool(
+    title="Generate preset",
+    annotations=ToolAnnotations(
+        title="Generate preset",
+        readOnlyHint=False,
+        destructiveHint=True,
+        openWorldHint=False,
+    ),
+)
 def generate_preset(spec: PresetSpec, subfolder: str | None = None) -> str:
     """Write a new Serum 2 preset built from ``spec`` to the user's Serum
     presets folder.
@@ -972,7 +981,15 @@ def generate_preset(spec: PresetSpec, subfolder: str | None = None) -> str:
     return _generate_preset(spec, subfolder=subfolder)
 
 
-@mcp.tool()
+@mcp.tool(
+    title="Edit preset",
+    annotations=ToolAnnotations(
+        title="Edit preset",
+        readOnlyHint=False,
+        destructiveHint=True,
+        openWorldHint=False,
+    ),
+)
 def edit_preset(preset_path: str, spec: PresetSpec) -> str:
     """Apply a partial ``spec`` update to an existing .SerumPreset file, in place.
 
@@ -991,7 +1008,16 @@ def edit_preset(preset_path: str, spec: PresetSpec) -> str:
     return _edit_preset(preset_path, spec)
 
 
-@mcp.tool()
+@mcp.tool(
+    title="List parameters",
+    annotations=ToolAnnotations(
+        title="List parameters",
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=False,
+    ),
+)
 def list_parameters() -> str:
     """Return the full documented Serum 2 parameter schema (modules, value
     ranges, units, enum values, and how confidently each was verified) as
@@ -1003,14 +1029,32 @@ def list_parameters() -> str:
     return _list_parameters()
 
 
-@mcp.tool()
+@mcp.tool(
+    title="Describe preset",
+    annotations=ToolAnnotations(
+        title="Describe preset",
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=False,
+    ),
+)
 def describe_preset(preset_path: str) -> str:
     """Return a human-readable summary of an existing preset's sound-shaping
     parameters (oscillators, filters, envelopes, FX chain, mod routes, globals)."""
     return _describe_preset(preset_path)
 
 
-@mcp.tool()
+@mcp.tool(
+    title="List sample files",
+    annotations=ToolAnnotations(
+        title="List sample files",
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=False,
+    ),
+)
 def list_sample_files(directory: str | None = None, recursive: bool = True) -> str:
     """List audio files under ``directory`` (e.g. a drumkit/sample bank
     folder) as JSON: path, name, extension, size, and -- for ``.wav`` files
@@ -1036,7 +1080,16 @@ def list_sample_files(directory: str | None = None, recursive: bool = True) -> s
     return _list_sample_files(directory, recursive=recursive)
 
 
-@mcp.tool()
+@mcp.tool(
+    title="Find reference presets",
+    annotations=ToolAnnotations(
+        title="Find reference presets",
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=False,
+    ),
+)
 def find_reference_presets(query: str, limit: int = 8) -> str:
     """Search the real preset corpus (Serum's Factory library plus the
     user's Presets/User folder, incl. any third-party banks) by keyword
@@ -1075,7 +1128,16 @@ def find_reference_presets(query: str, limit: int = 8) -> str:
     return _find_reference_presets(query, limit=limit)
 
 
-@mcp.tool()
+@mcp.tool(
+    title="Analyze sample file",
+    annotations=ToolAnnotations(
+        title="Analyze sample file",
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=False,
+    ),
+)
 def analyze_sample_file(path: str) -> str:
     """Compute lightweight acoustic descriptors for one .wav one-shot as
     JSON: peak_dbfs/rms_dbfs, brightness (dark/warm/bright/airy), texture

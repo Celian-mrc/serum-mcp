@@ -1,0 +1,65 @@
+{
+  "manifest_version": "0.4",
+  "name": "serum-mcp",
+  "display_name": "Serum 2 Preset Generator",
+  "version": "0.1.0",
+  "description": "Generate, edit and save Xfer Serum 2 (.SerumPreset) synth presets from a plain-English description.",
+  "long_description": "serum-mcp writes and edits real Xfer Serum 2 preset files directly on disk from a plain-English description -- no DAW, no audio rendering, and no Serum plugin instance involved at any point. Ask for a sound the same way you'd ask for a code change, then open the result in Serum inside whatever DAW you use. Open source (MIT); see the README for parameter-schema confidence notes and current scope.",
+  "author": {
+    "name": "Celian-mrc",
+    "url": "https://github.com/Celian-mrc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Celian-mrc/serum-mcp"
+  },
+  "homepage": "https://github.com/Celian-mrc/serum-mcp",
+  "documentation": "https://github.com/Celian-mrc/serum-mcp#readme",
+  "support": "https://github.com/Celian-mrc/serum-mcp/issues",
+  "server": {
+    "type": "uv",
+    "entry_point": "src/serum_mcp/server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "serum-mcp"],
+      "env": {
+        "SERUM_PRESETS_PATH": "${user_config.presets_path}",
+        "SAMPLE_BANK_PATH": "${user_config.sample_bank_path}"
+      }
+    }
+  },
+  "user_config": {
+    "presets_path": {
+      "type": "directory",
+      "title": "Serum presets folder",
+      "description": "Your Serum 2 \"Presets/User\" folder (see Serum's own \"Show Serum Presets folder\" menu item). Leave empty to use the standard install location for your OS if it exists.",
+      "required": false,
+      "sensitive": false
+    },
+    "sample_bank_path": {
+      "type": "directory",
+      "title": "Default sample bank folder (optional)",
+      "description": "A folder of your own one-shots/drumkits to use as the default source for list_sample_files when you don't specify one explicitly.",
+      "required": false,
+      "sensitive": false
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "linux", "win32"],
+    "runtimes": {
+      "python": ">=3.11"
+    }
+  },
+  "keywords": [
+    "serum",
+    "xfer",
+    "synthesizer",
+    "music-production",
+    "sound-design",
+    "ai-music"
+  ],
+  "license": "MIT",
+  "privacy_policies": [
+    "https://github.com/Celian-mrc/serum-mcp/blob/main/docs/PRIVACY.md"
+  ]
+}

@@ -407,6 +407,12 @@ one-shot generation), and honesty about format coverage (see
   and spectral comparison. The current architecture deliberately avoids
   choices that would foreclose this later.
 
+## Privacy Policy
+
+See [`docs/PRIVACY.md`](docs/PRIVACY.md). Short version: `serum-mcp` makes no
+network requests and collects no data -- everything it does is local file
+I/O against your own Serum presets/tables folders.
+
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) — filling in a documented gap in
