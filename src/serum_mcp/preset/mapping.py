@@ -1134,8 +1134,8 @@ def apply_spec(
             # essentially never touched away from its true default.
             # Explicitly writing "saw" (this field's own schema default)
             # gave the Sub layer harsh/piercing highs not present in the
-            # real (untouched) preset. Only write this key at all when a
-            # caller deliberately requests a non-default shape.
+            # real (untouched) preset. Only write this key for a non-default
+            # shape; asking for saw removes a stored non-saw shape.
             _write_unless_default(
                 sub_params,
                 "kParamShape",
