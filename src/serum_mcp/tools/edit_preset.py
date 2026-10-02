@@ -17,7 +17,11 @@ def edit_preset(preset_path: str, spec: PresetSpec) -> str:
 
     Only the sections/indices present in ``spec`` are touched -- e.g. an
     edit that only sets ``filters=[...]`` leaves oscillators, envelopes,
-    macros, FX and mod routes exactly as they were. ``spec.description``
+    macros, FX and mod routes exactly as they were. Within a section, only
+    the fields that differ from the preset's current values are written, so
+    an entry resubmitted unchanged (to keep a later entry's list position)
+    leaves its data -- embedded wavetables, FX sub-data, mod curves, LFO
+    shape names -- exactly as it was. ``spec.description``
     updates the preset's metadata only if non-empty.
 
     If ``spec.name`` differs from the preset's current name, the file is
@@ -36,7 +40,7 @@ def edit_preset(preset_path: str, spec: PresetSpec) -> str:
     """
     existing = unpack_file(preset_path)
     external_files: list[Path] = []
-    data = apply_spec(existing.data, spec, external_files=external_files)
+    data = apply_spec(existing.data, spec, external_files=external_files, only_changes=True)
 
     metadata = dict(existing.metadata)
     old_name = metadata.get("presetName", "")

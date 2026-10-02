@@ -24,6 +24,7 @@ from serum_mcp.generation.spec import (
 )
 
 from . import sample_library, schema, wavetable
+from .introspect import extract_spec
 from .validator import validate_params
 
 _CUSTOM_WAVETABLE_SUBDIR = ("User", "serum-mcp")
@@ -159,6 +160,9 @@ _SPECTRALOSC_KEYS = {
     "spectral_filter_wet": "kParamSpecFltWetDry",
 }
 _ENGINE_TYPE_MULTISAMPLE = "kOsc_MultiSample"
+# The OscillatorSpec fields that ask for the wavetable engine. Without one
+# of these set explicitly, a slot running another engine keeps it.
+_WAVETABLE_SOURCE_FIELDS = frozenset({"wavetable", "custom_harmonics", "sample_source"})
 _MULTISAMPLEOSC_KEYS = {
     "multisample_env_attack": "kParamEnvAttack",
     "multisample_env_decay": "kParamEnvDecay",
@@ -430,6 +434,20 @@ def _resolve_spectral_playback(osc: OscillatorSpec) -> schema.SampleAudioDef:
     channels, sample_rate, num_frames = sample_library.read_wav_metadata(source_path)
     relative_path = "/".join((*_CUSTOM_SAMPLE_SUBDIR, dest.name))
     return schema.SampleAudioDef(relative_path, num_frames, sample_rate, channels)
+
+
+def _keeps_existing_engine(osc_params: dict[str, Any], osc: OscillatorSpec) -> bool:
+    """True when the slot runs a non-wavetable engine that ``osc`` names no
+    source for, so the engine must be left as it is.
+
+    ``extract_spec`` can't name every source: an uncurated multisample
+    instrument (choirs, strings, keys) or a spectral oscillator with no file
+    reads back with no source set. Resubmitting that oscillator used to fall
+    through to the wavetable branch and flip the engine to ``kOsc_WT``. Only
+    an explicit ``wavetable``/``custom_harmonics``/``sample_source`` switches
+    such a slot to the wavetable engine now."""
+    engine = osc_params.get("kParamType", _ENGINE_TYPE_WT)
+    return engine != _ENGINE_TYPE_WT and not (_WAVETABLE_SOURCE_FIELDS & osc.model_fields_set)
 
 
 def _resolve_wavetable(osc: OscillatorSpec) -> schema.WavetableDef:
@@ -882,6 +900,7 @@ def apply_spec(
     spec: PresetSpec,
     *,
     external_files: list[Path] | None = None,
+    only_changes: bool = False,
 ) -> dict[str, Any]:
     """Return a new raw ``data`` dict with ``spec`` merged onto ``base_data``.
 
@@ -892,7 +911,130 @@ def apply_spec(
     see ``_is_locally_generated_file``. Callers that care whether the
     resulting preset is self-contained (portable to another machine without
     extra files) pass a list here and inspect it afterward; callers that
-    don't care can leave it ``None``."""
+    don't care can leave it ``None``.
+
+    ``only_changes=True`` is for editing an existing preset: only the raw
+    keys that the spec's CHANGED fields affect are written -- see
+    ``_apply_changes``."""
+    if only_changes:
+        return _apply_changes(base_data, spec, external_files=external_files)
+    return _merge_spec(base_data, spec, external_files=external_files)
+
+
+def _apply_changes(
+    base_data: dict[str, Any],
+    spec: PresetSpec,
+    *,
+    external_files: list[Path] | None,
+) -> dict[str, Any]:
+    """Merge ``spec`` onto ``base_data`` writing only what the edit changed.
+
+    The documented edit flow reads a preset with ``extract_spec``, changes a
+    field and resubmits the section, because lists are positional. A merge
+    writes every field of every resubmitted entry, and on a real preset
+    that rewrites data ``extract_spec`` can't name: an embedded wavetable
+    gets a Default Shapes path, FX units lose their sub-data and impulse,
+    a mod route loses its curve, an LFO shape loses its name and loop point.
+
+    So the spec is merged twice onto copies of ``base_data``: once as given
+    and once as a reference spec holding the preset's own current values
+    for the same entries. Both merges make the same unwanted rewrites; only
+    the changed fields make them differ. That difference is all that is
+    applied to ``base_data``."""
+    current = extract_spec(base_data)
+    edited = _merge_spec(base_data, spec, external_files=external_files)
+    reference = _merge_spec(base_data, _reference_spec(spec, current))
+    data = copy.deepcopy(base_data)
+    _apply_difference(data, reference, edited)
+    return data
+
+
+def _reference_spec(spec: PresetSpec, current: PresetSpec) -> PresetSpec:
+    """``spec`` with every entry it sets replaced by the preset's current
+    value for that entry -- the edit that would change nothing.
+
+    Entries the preset doesn't have yet (a new mod route, an arp that is
+    off) are left out, so everything the edit writes for them is applied.
+    """
+
+    def same_positions(entries: list[Any], existing: list[Any]) -> list[Any]:
+        return [existing[i] if i < len(existing) else entry for i, entry in enumerate(entries)]
+
+    current_routes = {(r.source, r.destination): r for r in current.mod_routes}
+    update: dict[str, Any] = {
+        "oscillators": same_positions(spec.oscillators, current.oscillators),
+        "filters": same_positions(spec.filters, current.filters),
+        "envelopes": same_positions(spec.envelopes, current.envelopes),
+        "lfos": same_positions(spec.lfos, current.lfos),
+        "macros": same_positions(spec.macros, current.macros),
+        # The current racks in full: FX mod destinations ("fx0.wet") are
+        # numbered across the whole chain, and a rack the edit doesn't touch
+        # merges to the same data either way.
+        "fx_chain": current.fx_chain if spec.fx_chain else [],
+        "mod_routes": [
+            current_routes[(r.source, r.destination)]
+            for r in spec.mod_routes
+            if (r.source, r.destination) in current_routes
+        ],
+        "arp": current.arp if spec.arp is not None else None,
+        "voice_unison": current.voice_unison if spec.voice_unison is not None else None,
+    }
+    reference = spec.model_copy(update=update)
+    if "global_" in spec.model_fields_set:
+        reference = reference.model_copy(update={"global_": current.global_})
+    return reference
+
+
+def _apply_difference(target: Any, before: Any, after: Any) -> None:
+    """Apply to ``target`` every difference between ``before`` and ``after``,
+    two edited copies of it, key by key (dicts) or item by item (lists of
+    the same length)."""
+    if isinstance(after, dict):
+        for key in before.keys() - after.keys():
+            target.pop(key, None)
+        keys: Any = after.keys()
+    else:
+        keys = range(len(after))
+    for key in keys:
+        new = after[key]
+        if isinstance(after, dict) and key not in before:
+            target[key] = copy.deepcopy(new)
+            continue
+        old = before[key]
+        if old == new:
+            continue
+        if isinstance(old, dict) and isinstance(new, dict):
+            if not isinstance(_item(target, key), dict):
+                # A "default" sentinel (or nothing) in the original: both
+                # merges replaced it with a dict; only the difference
+                # belongs here.
+                target[key] = {}
+            _apply_difference(target[key], old, new)
+        elif (
+            isinstance(old, list)
+            and isinstance(new, list)
+            and len(old) == len(new)
+            and isinstance(_item(target, key), list)
+            and len(_item(target, key)) == len(new)
+        ):
+            _apply_difference(target[key], old, new)
+        else:
+            target[key] = copy.deepcopy(new)
+
+
+def _item(container: Any, key: Any) -> Any:
+    if isinstance(container, dict):
+        return container.get(key)
+    return container[key]
+
+
+def _merge_spec(
+    base_data: dict[str, Any],
+    spec: PresetSpec,
+    *,
+    external_files: list[Path] | None = None,
+) -> dict[str, Any]:
+    """Merge every field of ``spec`` onto a copy of ``base_data``."""
     data = copy.deepcopy(base_data)
 
     # Oscillator's own plainParams live directly on the Oscillator{i} dict,
@@ -1085,7 +1227,7 @@ def apply_spec(
                     schema.MULTISAMPLEOSC_PARAMS,
                     allow_unknown=True,
                 )
-            else:
+            elif not _keeps_existing_engine(osc_params, osc):
                 osc_params["kParamType"] = _ENGINE_TYPE_WT
 
                 wt_key = f"WTOsc{i}"

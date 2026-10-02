@@ -996,7 +996,10 @@ def edit_preset(preset_path: str, spec: PresetSpec) -> str:
     Call describe_preset(preset_path) first to see the current state, then
     only include the sections/indices in ``spec`` that should change --
     e.g. to just brighten the filter, pass ``filters=[FilterSpec(cutoff=0.8, ...)]``
-    and leave everything else empty; it will be left untouched.
+    and leave everything else empty; it will be left untouched. Within a
+    section, only fields that differ from the preset's current values are
+    written, so resubmitting an entry unchanged (to keep a later entry's
+    list position) is safe.
 
     Returns the absolute path of the edited file (same as ``preset_path``)
     as the FIRST LINE of the return value, always -- see

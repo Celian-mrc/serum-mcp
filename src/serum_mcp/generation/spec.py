@@ -83,7 +83,9 @@ class OscillatorSpec(BaseModel):
         description=f"slots 0-2 only, one of: {', '.join(sorted(SIMPLE_WAVETABLES))}. "
         "Different oscillators can (and often should) use different wavetables -- "
         "using the same one for every slot limits timbral variety. Ignored if "
-        "custom_harmonics, sample_source, or sample_playback_source is set. IMPORTANT: "
+        "custom_harmonics, sample_source, or sample_playback_source is set. A slot "
+        "running another engine (e.g. a multisample or spectral oscillator) keeps it "
+        "unless `wavetable`, custom_harmonics or sample_source is set explicitly. IMPORTANT: "
         "'flute' is nearly silent at the default table_position=0.0 (its frame 0 peaks "
         "at 0.004 vs a table average of 0.81, found live) -- always pair it with "
         "table_position around 130-150.",
