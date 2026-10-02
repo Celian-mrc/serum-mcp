@@ -87,29 +87,11 @@ _OSC_KEYS_OMIT_AT_DEFAULT = {
     "kParamUnison": 1.0,
     "kParamDetune": 0.0,
 }
-# KNOWN LIMITATION, found live 2026-08-06 debugging a bank preset whose
-# octave wouldn't reset: this table is correct for FRESH GENERATION (an
-# omitted key on the blank init fixture resolves to Serum's real absent-
-# state default, matching the values above), but silently breaks
-# edit_preset's ability to reset a field BACK to its default once a preset
-# already has a different value explicitly stored. The loop below skips
-# writing the key whenever the incoming spec value equals this table's
-# default -- so passing e.g. octave=0.0 to edit_preset an oscillator that
-# currently has kParamOctave=-1.0 does NOT overwrite it; the old -1.0
-# simply survives untouched in the merged dict, because nothing ever wrote
-# over it. There is no way to express "explicitly reset to default" through
-# the current PresetSpec API for these fields (a plain `float` field can't
-# distinguish "user typed 0" from "field left at its own default") -- the
-# only reliable workaround right now is a raw CBOR patch
-# (`unpack_file`/`pack_file`) bypassing `apply_spec` entirely, same as the
-# `LfoSpec.rate`/`bool`-vs-`bool | None` fix already applied elsewhere in
-# this project for the identical bug shape. A proper fix would need these
-# fields to become `float | None` (None = untouched, any float including
-# 0.0 = a real explicit write) the same way `LfoSpec.beat_sync` was fixed --
-# not done here, scope/risk too large for a live debugging session; flag
-# this table (and `_FILTER_KEYS_OMIT_AT_DEFAULT`/`_LFO_KEYS_OMIT_AT_DEFAULT`,
-# same class) before assuming an edit_preset call that "should" reset a
-# field to default actually did.
+# Omitting a key at its default only works when nothing is stored yet: an
+# edit_preset call resetting e.g. octave from -1.0 back to 0.0 used to write
+# nothing, so the old -1.0 survived (found live 2026-08-06). Every write
+# below that omits a default goes through _write_unless_default, which
+# removes a stored non-default value instead -- absent IS the default.
 _WTOSC_KEYS = {
     "table_position": "kParamTablePos",
     "warp_amount": "kParamWarp",
@@ -241,6 +223,19 @@ _LFO_KEYS_OMIT_AT_DEFAULT = {
     "kParamTriplets": False,
     "kParamRate10x": False,
 }
+
+
+def _write_unless_default(params: dict[str, Any], key: str, value: Any, default: Any) -> None:
+    """Write ``value`` unless it equals ``default``, matching how real Serum
+    leaves an untouched knob out entirely (see _OSC_KEYS_OMIT_AT_DEFAULT).
+
+    At the default, a stored non-default value is removed, so an edit can
+    reset a field. A value Serum itself stored at the default is left as
+    is: presence alone can change the sound, so it isn't ours to drop."""
+    if value != default:
+        params[key] = value
+    elif key in params and params[key] != default:
+        del params[key]
 
 
 def _plain_params(container: dict[str, Any], key: str) -> dict[str, Any]:
@@ -906,10 +901,10 @@ def apply_spec(
         osc_params["kParamEnable"] = osc.enabled
         for spec_key, param_key in _OSC_KEYS.items():
             value = getattr(osc, spec_key)
-            if (
-                param_key in _OSC_KEYS_OMIT_AT_DEFAULT
-                and value == _OSC_KEYS_OMIT_AT_DEFAULT[param_key]
-            ):
+            if param_key in _OSC_KEYS_OMIT_AT_DEFAULT:
+                _write_unless_default(
+                    osc_params, param_key, value, _OSC_KEYS_OMIT_AT_DEFAULT[param_key]
+                )
                 continue
             osc_params[param_key] = value
 
@@ -1131,20 +1126,22 @@ def apply_spec(
             )
         elif i == _SUB_SLOT:
             sub_params = _plain_params(osc_container, f"SubOsc{i}")
-            if osc.sub_shape != "saw":
-                # Same presence-forces-the-DSP-stage pattern as VoiceFilter/LFO
-                # above, found live 2026-07-29 (UN_PLACES_BA_Beyond): a
-                # real-corpus survey found kParamShape absent in EVERY single
-                # one of 896 real SubOsc4 modules (0% presence, the most
-                # extreme skew found this session) -- Serum's Sub is
-                # essentially never touched away from its true default.
-                # Explicitly writing "saw" (this field's own schema default)
-                # gave the Sub layer harsh/piercing highs not present in the
-                # real (untouched) preset. Only write this key at all when a
-                # caller deliberately requests a non-default shape.
-                sub_params["kParamShape"] = schema.SIMPLE_SUB_SHAPES.get(
-                    osc.sub_shape, osc.sub_shape
-                )
+            # Same presence-forces-the-DSP-stage pattern as VoiceFilter/LFO
+            # above, found live 2026-07-29 (UN_PLACES_BA_Beyond): a
+            # real-corpus survey found kParamShape absent in EVERY single
+            # one of 896 real SubOsc4 modules (0% presence, the most
+            # extreme skew found this session) -- Serum's Sub is
+            # essentially never touched away from its true default.
+            # Explicitly writing "saw" (this field's own schema default)
+            # gave the Sub layer harsh/piercing highs not present in the
+            # real (untouched) preset. Only write this key at all when a
+            # caller deliberately requests a non-default shape.
+            _write_unless_default(
+                sub_params,
+                "kParamShape",
+                schema.SIMPLE_SUB_SHAPES.get(osc.sub_shape, osc.sub_shape),
+                schema.SIMPLE_SUB_SHAPES["saw"],
+            )
             validate_params(f"SubOsc{i}", sub_params, schema.SUBOSC_PARAMS, allow_unknown=True)
         validate_params(f"Oscillator{i}", osc_params, schema.OSCILLATOR_PARAMS, allow_unknown=True)
 
@@ -1197,10 +1194,10 @@ def apply_spec(
         filter_params["kParamType"] = schema.SIMPLE_FILTER_TYPES.get(flt.type, flt.type)
         for spec_key, param_key in _FILTER_KEYS.items():
             value = getattr(flt, spec_key)
-            if (
-                param_key in _FILTER_KEYS_OMIT_AT_DEFAULT
-                and value == _FILTER_KEYS_OMIT_AT_DEFAULT[param_key]
-            ):
+            if param_key in _FILTER_KEYS_OMIT_AT_DEFAULT:
+                _write_unless_default(
+                    filter_params, param_key, value, _FILTER_KEYS_OMIT_AT_DEFAULT[param_key]
+                )
                 # Presence, not just value, changes the sound: real presets
                 # leave a filter param key out entirely whenever it was never
                 # touched, and the untouched value happens to equal this
@@ -1262,7 +1259,8 @@ def apply_spec(
             # keys, too ambiguous to touch without more evidence) -- found
             # live 2026-08-01 recreating a real preset (Galaxy) whose
             # unused envelopes lacked it entirely.
-            if param_key == "kParamHold" and value == 0.0:
+            if param_key == "kParamHold":
+                _write_unless_default(env_params, param_key, value, 0.0)
                 continue
             env_params[param_key] = value
         validate_params(f"Env{i}", env_params, schema.ENV_PARAMS, allow_unknown=True)
@@ -1279,10 +1277,10 @@ def apply_spec(
             if spec_key == "beat_sync":
                 continue  # handled above -- 3-state, not a plain omit-at-default key
             value = getattr(lfo, spec_key)
-            if (
-                param_key in _LFO_KEYS_OMIT_AT_DEFAULT
-                and value == _LFO_KEYS_OMIT_AT_DEFAULT[param_key]
-            ):
+            if param_key in _LFO_KEYS_OMIT_AT_DEFAULT:
+                _write_unless_default(
+                    lfo_params, param_key, value, _LFO_KEYS_OMIT_AT_DEFAULT[param_key]
+                )
                 # Same presence-forces-the-DSP-stage pattern as the
                 # VoiceFilter fix above. Found live 2026-07-29
                 # (UN_PLACES_BA_Beyond): kParamRate=0.0 (LfoSpec's own
@@ -1366,14 +1364,17 @@ def apply_spec(
         # kParamLimitSameNotePolyphony 27%, kParamPortamentoTime 19%
         # present (vs kParamMasterVolume's 91%).
         global_params["kParamMasterVolume"] = spec.global_.master_volume
-        if spec.global_.mono is not False:
-            global_params["kParamMonoToggle"] = spec.global_.mono
-        if spec.global_.portamento_time != 0.0:
-            global_params["kParamPortamentoTime"] = spec.global_.portamento_time
-        if spec.global_.poly_count != 8.0:
-            global_params["kParamPolyCount"] = spec.global_.poly_count
-        if spec.global_.limit_same_note_polyphony is not False:
-            global_params["kParamLimitSameNotePolyphony"] = spec.global_.limit_same_note_polyphony
+        _write_unless_default(global_params, "kParamMonoToggle", spec.global_.mono, False)
+        _write_unless_default(
+            global_params, "kParamPortamentoTime", spec.global_.portamento_time, 0.0
+        )
+        _write_unless_default(global_params, "kParamPolyCount", spec.global_.poly_count, 8.0)
+        _write_unless_default(
+            global_params,
+            "kParamLimitSameNotePolyphony",
+            spec.global_.limit_same_note_polyphony,
+            False,
+        )
         if spec.global_.fx_bus1_volume is not None:
             global_params["kParamFXBus1Vol"] = spec.global_.fx_bus1_volume
         if spec.global_.fx_bus2_volume is not None:
