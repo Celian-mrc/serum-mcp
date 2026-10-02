@@ -1023,6 +1023,7 @@ def _apply_difference(target: Any, before: Any, after: Any) -> None:
 
 
 def _item(container: Any, key: Any) -> Any:
+    """``container[key]`` for a list index, or ``.get(key)`` for a dict key."""
     if isinstance(container, dict):
         return container.get(key)
     return container[key]
