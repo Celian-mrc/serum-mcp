@@ -3612,3 +3612,72 @@ def test_sample_playback_source_loop_round_trips_through_introspection(
     assert osc0.sample_loop_start == 15.0
     assert osc0.sample_loop_end == 85.0
     assert osc0.sample_loop_crossfade == 8.0
+
+
+def _osc_with(**kwargs) -> PresetSpec:
+    return PresetSpec(name="X", description="", oscillators=[OscillatorSpec(**kwargs)])
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "module", "key"),
+    [
+        (_osc_with(octave=-1.0), _osc_with(octave=0.0), "Oscillator0", "kParamOctave"),
+        (_osc_with(semitone=7.0), _osc_with(semitone=0.0), "Oscillator0", "kParamPitch"),
+        (_osc_with(volume=0.5), _osc_with(volume=0.75), "Oscillator0", "kParamVolume"),
+        (
+            PresetSpec(name="X", description="", filters=[FilterSpec(resonance=60.0)]),
+            PresetSpec(name="X", description="", filters=[FilterSpec(resonance=10.0)]),
+            "VoiceFilter0",
+            "kParamReso",
+        ),
+        (
+            PresetSpec(name="X", description="", lfos=[LfoSpec(rate=4.0)]),
+            PresetSpec(name="X", description="", lfos=[LfoSpec(rate=0.0)]),
+            "LFO0",
+            "kParamRate",
+        ),
+        (
+            PresetSpec(name="X", description="", envelopes=[EnvelopeSpec(hold=1.0)]),
+            PresetSpec(name="X", description="", envelopes=[EnvelopeSpec(hold=0.0)]),
+            "Env0",
+            "kParamHold",
+        ),
+    ],
+)
+def test_editing_a_value_back_to_its_default_resets_it(init_data, first, second, module, key):
+    """Defaults are omitted from writes (absent key = Serum's own default),
+    so an edit back to the default used to write nothing and the old value
+    survived. Resetting must remove the stored key instead."""
+    edited = apply_spec(apply_spec(init_data, first), second)
+
+    plain_params = edited[module]["plainParams"]
+    assert key not in plain_params
+
+
+def test_editing_sub_shape_back_to_saw_resets_it(init_data):
+    def sub(shape: str) -> PresetSpec:
+        oscillators = [OscillatorSpec() for _ in range(4)] + [OscillatorSpec(sub_shape=shape)]
+        return PresetSpec(name="X", description="", oscillators=oscillators)
+
+    edited = apply_spec(apply_spec(init_data, sub("triangle")), sub("saw"))
+
+    assert "kParamShape" not in edited["Oscillator4"]["SubOsc4"]["plainParams"]
+
+
+def test_editing_global_mono_back_to_default_resets_it(init_data):
+    def mono(on: bool) -> PresetSpec:
+        return PresetSpec(name="X", description="", **{"global": GlobalSpec(mono=on)})
+
+    edited = apply_spec(apply_spec(init_data, mono(True)), mono(False))
+
+    assert "kParamMonoToggle" not in edited["Global0"]["plainParams"]
+
+
+def test_writing_a_default_keeps_an_explicit_default_already_stored(init_data):
+    """Only a stored NON-default value is removed: a key Serum itself saved
+    at the default value stays as it was."""
+    init_data["Oscillator0"]["plainParams"] = {"kParamOctave": 0.0}
+
+    edited = apply_spec(init_data, _osc_with(octave=0.0))
+
+    assert edited["Oscillator0"]["plainParams"]["kParamOctave"] == 0.0
