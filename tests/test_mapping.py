@@ -3614,6 +3614,21 @@ def test_sample_playback_source_loop_round_trips_through_introspection(
     assert osc0.sample_loop_crossfade == 8.0
 
 
+@pytest.mark.parametrize("engine", ["kOsc_MultiSample", "kOsc_Spectral"])
+def test_resubmitting_an_oscillator_with_no_named_source_keeps_its_engine(init_data, engine):
+    """extract_spec can't name an uncurated multisample instrument or a
+    spectral oscillator with no file, so the oscillator reads back with no
+    source. Resubmitting it must not flip the slot to the wavetable engine."""
+    init_data["Oscillator1"]["plainParams"] = {"kParamEnable": 1.0, "kParamType": engine}
+    current = extract_spec(init_data).oscillators[:2]
+    current[1] = current[1].model_copy(update={"semitone": 7.0})
+
+    data = apply_spec(init_data, PresetSpec(name="X", description="", oscillators=current))
+
+    assert data["Oscillator1"]["plainParams"]["kParamType"] == engine
+    assert data["Oscillator1"]["plainParams"]["kParamPitch"] == 7.0
+
+
 def _osc_with(**kwargs) -> PresetSpec:
     return PresetSpec(name="X", description="", oscillators=[OscillatorSpec(**kwargs)])
 
