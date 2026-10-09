@@ -200,6 +200,33 @@ def test_extract_spec_matches_known_defaults(init_data):
     assert spec.mod_routes == []
 
 
+def test_mod_route_reuses_default_sentinel_slots(init_data):
+    # Real third-party presets (found live 2026-09-30 on BRAINWAVEZ's Ternion
+    # Evolving Bass Main) store all 64 ModSlots, with unused ones as just
+    # {"plainParams": "default"} and no source/destination. Those are free,
+    # not occupied.
+    base = copy.deepcopy(init_data)
+    base["ModSlot0"] = {
+        "destModuleID": 0,
+        "destModuleParamID": 3,
+        "destModuleParamName": "kParamFreq",
+        "destModuleTypeString": "VoiceFilter",
+        "plainParams": {"kParamAmount": 24.0},
+        "source": [6, 0],
+    }
+    for i in range(1, 64):
+        base[f"ModSlot{i}"] = {"plainParams": "default"}
+    spec = PresetSpec(
+        name="X",
+        description="",
+        mod_routes=[ModRouteSpec(source="macro2", destination="oscillator0.pan", amount=-25.0)],
+    )
+    data = apply_spec(base, spec)
+
+    assert data["ModSlot0"]["source"] == [6, 0]  # existing route untouched
+    assert data["ModSlot1"]["source"] == [27, 0]  # first sentinel slot reused
+
+
 def test_mod_route_round_trips_through_introspection(init_data):
     spec = PresetSpec(
         name="X",

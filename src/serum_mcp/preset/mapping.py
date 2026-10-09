@@ -864,10 +864,16 @@ def _resolve_modslot_indices(
 
 
 def _free_modslot_indices(data: dict[str, Any], count: int) -> list[int]:
+    # A slot with no source and no destination is empty even when its key is
+    # present -- real third-party presets store all 64 slots, unused ones as
+    # just {"plainParams": "default"} (found live 2026-09-30).
     used = {
         int(k[len("ModSlot") :])
-        for k in data
-        if isinstance(k, str) and k.startswith("ModSlot") and k[len("ModSlot") :].isdigit()
+        for k, v in data.items()
+        if isinstance(k, str)
+        and k.startswith("ModSlot")
+        and k[len("ModSlot") :].isdigit()
+        and not (isinstance(v, dict) and "source" not in v and "destModuleTypeString" not in v)
     }
     free = [i for i in range(64) if i not in used]
     if len(free) < count:

@@ -2482,9 +2482,14 @@ audible over-wobbling, kept wobbling just as hard — the file had two
 matching the resolved `(source_id, dest)` first and reuses it, only
 falling back to a free slot for genuinely new routes.
 
-Each `ModSlot{n}` (`n` in `0..63`, only slots actually in use are serialized
-— an unused slot is simply absent from the CBOR dict, there is no "off"
-value):
+Each `ModSlot{n}` (`n` in `0..63`). Presets saved by this tool serialize
+only the slots in use, so an unused slot is simply absent from the CBOR
+dict. There is no "off" value. Found live 2026-09-30, though: real
+third-party presets (e.g. BRAINWAVEZ's Ternion "Evolving Bass Main") store
+all 64 slots, with each unused one as just `{"plainParams": "default"}`
+and no `source` or destination. `_free_modslot_indices` in `mapping.py`
+treats a slot with neither `source` nor `destModuleTypeString` as free.
+A used slot looks like this:
 
 ```jsonc
 {
